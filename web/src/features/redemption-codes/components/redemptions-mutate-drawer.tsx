@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
-import { type FormEvent, useEffect, useState } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -41,6 +41,14 @@ import {
   FormMessage,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import {
   Sheet,
   SheetClose,
@@ -224,6 +232,8 @@ export function RedemptionsMutateDrawer({
   const quotaPlaceholder = tokensOnly
     ? t('Enter quota in tokens')
     : t('Enter quota in {{currency}}', { currency: currencyLabel })
+  // eslint-disable-next-line react/incompatible-library
+  const redemptionType = form.watch('type')
   let submitButtonLabel = t('Save changes')
   if (isLoadingRedemption) {
     submitButtonLabel = t('Loading...')
@@ -288,34 +298,119 @@ export function RedemptionsMutateDrawer({
 
                 <FormField
                   control={form.control}
-                  name='quota_dollars'
+                  name='type'
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>{quotaLabel}</FormLabel>
-                      <FormControl>
-                        <Input
-                          {...field}
-                          type='number'
-                          step={quotaStep}
-                          placeholder={quotaPlaceholder}
-                          onChange={(e) =>
-                            field.onChange(
-                              Number.parseFloat(e.target.value) || 0
-                            )
-                          }
-                        />
-                      </FormControl>
+                      <FormLabel>{t('Redemption Type')}</FormLabel>
+                      <Select
+                        items={[
+                          { value: 'quota', label: t('Quota') },
+                          { value: 'lottery', label: t('Lottery Chances') },
+                          { value: 'subscription', label: t('Subscription') },
+                        ]}
+                        value={field.value}
+                        onValueChange={field.onChange}
+                        disabled={isUpdate}
+                      >
+                        <SelectTrigger className='w-full'>
+                          <SelectValue placeholder={t('Select type')} />
+                        </SelectTrigger>
+                        <SelectContent alignItemWithTrigger={false}>
+                          <SelectGroup>
+                            <SelectItem value='quota'>{t('Quota')}</SelectItem>
+                            <SelectItem value='lottery'>
+                              {t('Lottery Chances')}
+                            </SelectItem>
+                            <SelectItem value='subscription'>
+                              {t('Subscription')}
+                            </SelectItem>
+                          </SelectGroup>
+                        </SelectContent>
+                      </Select>
                       <FormDescription>
-                        {tokensOnly
-                          ? t('Enter the quota amount in tokens')
-                          : t('Enter the quota amount in {{currency}}', {
-                              currency: currencyLabel,
-                            })}
+                        {t(
+                          'Choose what this code grants: quota, lottery chances, or a subscription plan'
+                        )}
                       </FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
+
+                {redemptionType === 'quota' && (
+                  <FormField
+                    control={form.control}
+                    name='quota_dollars'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{quotaLabel}</FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            type='number'
+                            step={quotaStep}
+                            placeholder={quotaPlaceholder}
+                            onChange={(e) =>
+                              field.onChange(
+                                Number.parseFloat(e.target.value) || 0
+                              )
+                            }
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          {tokensOnly
+                            ? t('Enter the quota amount in tokens')
+                            : t('Enter the quota amount in {{currency}}', {
+                                currency: currencyLabel,
+                              })}
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
+
+                {redemptionType !== 'quota' && (
+                  <FormField
+                    control={form.control}
+                    name='value'
+                    render={({ field }) => {
+                      const type = redemptionType
+                      return (
+                        <FormItem>
+                          <FormLabel>
+                            {type === 'lottery'
+                              ? t('Lottery Chances Count')
+                              : t('Subscription Plan ID')}
+                          </FormLabel>
+                          <FormControl>
+                            <Input
+                              {...field}
+                              type='number'
+                              min='1'
+                              placeholder={
+                                type === 'lottery'
+                                  ? t('Number of lottery chances')
+                                  : t('Subscription plan ID')
+                              }
+                              onChange={(e) =>
+                                field.onChange(
+                                  Number.parseInt(e.target.value, 10) || 0
+                                )
+                              }
+                            />
+                          </FormControl>
+                          <FormDescription>
+                            {type === 'lottery'
+                              ? t('Granted lottery draw chances when redeemed')
+                              : t('Subscription plan to activate when redeemed')}
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )
+                    }}
+                  />
+                )}
 
                 <FormField
                   control={form.control}

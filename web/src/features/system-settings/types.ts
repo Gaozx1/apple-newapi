@@ -185,6 +185,7 @@ export type ContentSettings = {
   MjForwardUrlEnabled: boolean
   MjModeClearEnabled: boolean
   MjActionCheckSuccessEnabled: boolean
+  LotteryEnabled: boolean
 }
 
 export type ModelSettings = {
@@ -218,6 +219,8 @@ export type ModelSettings = {
   'billing_setting.billing_mode': string
   'billing_setting.billing_expr': string
   'tool_price_setting.prices': string
+  'tool_injection.enabled': boolean
+  'tool_injection.tools': string
   TopupGroupRatio: string
   GroupRatio: string
   UserUsableGroups: string
@@ -253,8 +256,8 @@ export type ModelSettings = {
 export type BillingSettings = {
   QuotaForNewUser: number
   PreConsumedQuota: number
-  QuotaForInviter: number
-  QuotaForInvitee: number
+  InviterRechargeRebateRate: number
+  VideoPerSecondBillingEnabled: boolean
   TopUpLink: string
   'general_setting.docs_link': string
   'quota_setting.enable_free_model_pre_consume': boolean

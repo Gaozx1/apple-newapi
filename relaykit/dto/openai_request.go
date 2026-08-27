@@ -252,11 +252,21 @@ func (r *GeneralOpenAIRequest) GetSystemRoleName() string {
 
 const CustomType = "custom"
 
+// FunctionType is the OpenAI function-tool type. Built-in and custom tools are
+// forwarded to OpenAI-compatible channels (including OpenRouter) using this type
+// so upstream proxies that reject bare server-tool entries accept them.
+const FunctionType = "function"
+
 type ToolCallRequest struct {
 	ID       string          `json:"id,omitempty"`
 	Type     string          `json:"type"`
 	Function FunctionRequest `json:"function,omitempty"`
-	Custom   json.RawMessage `json:"custom,omitempty"`
+	// InputParameters carries provider-native server-tool parameters. OpenRouter
+	// server tools (web_search, url_context, image_generation, ...) declare their
+	// configuration at the top level as `input_parameters` instead of wrapping in
+	// a `function` object like OpenAI function tools.
+	InputParameters json.RawMessage `json:"input_parameters,omitempty"`
+	Custom          json.RawMessage `json:"custom,omitempty"`
 }
 
 type FunctionRequest struct {

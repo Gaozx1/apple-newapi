@@ -19,6 +19,7 @@ import (
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting/billing_setting"
 	"github.com/gin-gonic/gin"
 )
 
@@ -184,6 +185,28 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 		return nil, service.TaskErrorWrapper(err, "model_price_error", http.StatusBadRequest)
 	}
 	info.PriceData = priceData
+
+	// 4.5 视频按秒扣费：当模型计费模式为 per_second 时，用模型自身在价格
+	//     配置里的单价作为每秒价格，覆盖基础额度；后续 seconds OtherRatio
+	//     会将其乘以实际秒数。每个视频模型可以单独选择计费模式
+	//     （token / 表达式 / 按次 / 按秒），无需全局开关。
+	//     final quota = modelPrice(每秒) × QuotaPerUnit × groupRatio × seconds
+	if billing_setting.GetBillingMode(info.OriginModelName) == billing_setting.BillingModePerSecond {
+		modelPrice := info.PriceData.ModelPrice
+		// 仅当模型配置了按价格计费（UsePrice）且单价为正时才启用按秒计费；
+		// 否则退回到模型的基础额度，避免 0 单价导致免费或错误覆盖。
+		if info.PriceData.UsePrice && modelPrice > 0 {
+			groupRatio := info.PriceData.GroupRatioInfo.GroupRatio
+			if info.PriceData.GroupRatioInfo.HasSpecialRatio {
+				groupRatio = info.PriceData.GroupRatioInfo.GroupSpecialRatio
+			}
+			perSecondBase := modelPrice * common.QuotaPerUnit * groupRatio
+			perSecondQuota, clamp := common.QuotaFromFloatChecked(perSecondBase)
+			info.PriceData.Quota = perSecondQuota
+			info.PriceData.UsePrice = true
+			noteTaskQuotaClamp(info, clamp)
+		}
+	}
 
 	// 5. 计费估算：让适配器根据用户请求提供 OtherRatios（时长、分辨率等）
 	//    必须在 ModelPriceHelperPerCall 之后调用（它会重建 PriceData）。

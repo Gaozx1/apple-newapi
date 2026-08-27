@@ -48,6 +48,8 @@ export function getRedemptionFormSchema(t: TFunction) {
       .min(REDEMPTION_VALIDATION.COUNT_MIN, msg.COUNT_INVALID)
       .max(REDEMPTION_VALIDATION.COUNT_MAX, msg.COUNT_INVALID)
       .optional(),
+    type: z.enum(['quota', 'lottery', 'subscription']),
+    value: z.number().int().min(0),
   })
 }
 
@@ -56,6 +58,8 @@ export type RedemptionFormValues = {
   quota_dollars: number
   expired_time?: Date
   count?: number
+  type: 'quota' | 'lottery' | 'subscription'
+  value: number
 }
 
 // ============================================================================
@@ -67,6 +71,8 @@ export const REDEMPTION_FORM_DEFAULT_VALUES: RedemptionFormValues = {
   quota_dollars: 10,
   expired_time: undefined,
   count: 1,
+  type: 'quota',
+  value: 0,
 }
 
 // ============================================================================
@@ -86,6 +92,8 @@ export function transformFormDataToPayload(
       ? Math.floor(data.expired_time.getTime() / 1000)
       : 0,
     count: data.count || 1,
+    type: data.type,
+    value: data.value,
   }
 }
 
@@ -103,5 +111,7 @@ export function transformRedemptionToFormDefaults(
         ? new Date(redemption.expired_time * 1000)
         : undefined,
     count: 1,
+    type: (redemption.type as 'quota' | 'lottery' | 'subscription') || 'quota',
+    value: redemption.value || 0,
   }
 }

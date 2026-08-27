@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import type { PermissionCatalog } from '@/lib/admin-permissions'
 import { api } from '@/lib/api'
+import { encryptPassword } from '@/lib/password-crypto'
 import type { CustomOAuthBinding } from '@/lib/oauth'
 
 import type {
@@ -90,13 +91,38 @@ export async function getUser(id: number): Promise<ApiResponse<User>> {
   return res.data
 }
 
+// Read the login RSA public key from the cached /api/status data.
+function getLoginRSAPublicKey(): string | undefined {
+  try {
+    if (typeof window !== 'undefined') {
+      const saved = window.localStorage.getItem('status')
+      if (saved) {
+        const status = JSON.parse(saved)
+        return (
+          status?.login_rsa_public_key ??
+          status?.data?.login_rsa_public_key ??
+          undefined
+        )
+      }
+    }
+  } catch {
+    /* empty */
+  }
+  return undefined
+}
+
 /**
  * Create a new user
  */
 export async function createUser(
   data: UserFormData
 ): Promise<ApiResponse<User>> {
-  const res = await api.post('/api/user/', data)
+  const rsaPublicKey = getLoginRSAPublicKey()
+  const payload: UserFormData = { ...data }
+  if (payload.password) {
+    payload.password = await encryptPassword(payload.password, rsaPublicKey)
+  }
+  const res = await api.post('/api/user/', payload)
   return res.data
 }
 
@@ -106,7 +132,12 @@ export async function createUser(
 export async function updateUser(
   data: UserFormData & { id: number }
 ): Promise<ApiResponse<Partial<User>>> {
-  const res = await api.put('/api/user/', data)
+  const rsaPublicKey = getLoginRSAPublicKey()
+  const payload: UserFormData & { id: number } = { ...data }
+  if (payload.password) {
+    payload.password = await encryptPassword(payload.password, rsaPublicKey)
+  }
+  const res = await api.put('/api/user/', payload)
   return res.data
 }
 
@@ -210,5 +241,19 @@ export async function adminUnbindCustomOAuth(
   const res = await api.delete(
     `/api/user/${userId}/oauth/bindings/${providerId}`
   )
+  return res.data
+}
+
+/**
+ * Grant lottery draw chances to a user (admin only)
+ */
+export async function grantLotteryChances(
+  userId: number,
+  count: number
+): Promise<ApiResponse> {
+  const res = await api.post('/api/user/lottery/grant', {
+    user_id: userId,
+    count,
+  })
   return res.data
 }

@@ -33,6 +33,8 @@ export const redemptionSchema = z.object({
   redeemed_time: z.number(),
   expired_time: z.number(), // 0 for never expires
   used_user_id: z.number(),
+  type: z.string().default('quota'), // quota/lottery/subscription
+  value: z.number().default(0), // lottery: count; subscription: plan id
 })
 
 export type Redemption = z.infer<typeof redemptionSchema>
@@ -77,6 +79,8 @@ export interface RedemptionFormData {
   expired_time: number
   count?: number // Only for create
   status?: number // Only for status update
+  type?: string // quota/lottery/subscription
+  value?: number // lottery: count; subscription: plan id
 }
 
 // ============================================================================

@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { api } from '@/lib/api'
+import { encryptPassword } from '@/lib/password-crypto'
 import type { CustomOAuthBinding } from '@/lib/oauth'
 import type { LoginSession } from '@/stores/auth-store'
 
@@ -34,6 +35,26 @@ import type {
 // User Profile APIs
 // ============================================================================
 
+// Read the login RSA public key from the cached /api/status data.
+function getLoginRSAPublicKey(): string | undefined {
+  try {
+    if (typeof window !== 'undefined') {
+      const saved = window.localStorage.getItem('status')
+      if (saved) {
+        const status = JSON.parse(saved)
+        return (
+          status?.login_rsa_public_key ??
+          status?.data?.login_rsa_public_key ??
+          undefined
+        )
+      }
+    }
+  } catch {
+    /* empty */
+  }
+  return undefined
+}
+
 /**
  * Get current user profile
  */
@@ -48,8 +69,20 @@ export async function getUserProfile(): Promise<ApiResponse<UserProfile>> {
 export async function updateUserProfile(
   data: UpdateUserRequest
 ): Promise<ApiResponse> {
-  const res = await api.put('/api/user/self', data, {
-    acceptAuthRotation: Boolean(data.password),
+  // Encrypt passwords in transit if RSA is available.
+  const rsaPublicKey = getLoginRSAPublicKey()
+  const payload: UpdateUserRequest = { ...data }
+  if (payload.password) {
+    payload.password = await encryptPassword(payload.password, rsaPublicKey)
+  }
+  if (payload.original_password) {
+    payload.original_password = await encryptPassword(
+      payload.original_password,
+      rsaPublicKey
+    )
+  }
+  const res = await api.put('/api/user/self', payload, {
+    acceptAuthRotation: Boolean(payload.password),
   })
   return res.data
 }

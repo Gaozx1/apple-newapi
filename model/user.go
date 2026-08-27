@@ -104,6 +104,8 @@ type User struct {
 	DeletedAt        gorm.DeletedAt             `gorm:"index"`
 	LinuxDOId        string                     `json:"linux_do_id" gorm:"column:linux_do_id;index"`
 	Setting          string                     `json:"setting" gorm:"type:text;column:setting"`
+	Avatar           string                     `json:"avatar" gorm:"type:varchar(512);column:avatar;default:''"` // avatar URL (GitHub auto-fetched, user-uploaded, or user-provided link)
+	LotteryChances   int                        `json:"lottery_chances" gorm:"type:int;not null;default:0;column:lottery_chances"`
 	Remark           string                     `json:"remark,omitempty" gorm:"type:varchar(255)" validate:"max=255"`
 	StripeCustomer   string                     `json:"stripe_customer" gorm:"type:varchar(64);column:stripe_customer;index"`
 	CreatedAt        int64                      `json:"created_at" gorm:"autoCreateTime;column:created_at"`
@@ -529,11 +531,12 @@ func HardDeleteUserById(id int) error {
 	return user.HardDelete()
 }
 
+// inviteUser increments the inviter's invite count. The actual rebate is now
+// percentage-based and applied when the invited user recharges (see
+// model/topup.go applyRechargeRebate), replacing the old fixed-quota reward.
 func inviteUser(inviterId int) error {
 	result := DB.Model(&User{}).Where("id = ?", inviterId).Updates(map[string]interface{}{
-		"aff_count":   gorm.Expr("aff_count + ?", 1),
-		"aff_quota":   gorm.Expr("aff_quota + ?", common.QuotaForInviter),
-		"aff_history": gorm.Expr("aff_history + ?", common.QuotaForInviter),
+		"aff_count": gorm.Expr("aff_count + ?", 1),
 	})
 	if result.Error != nil {
 		return result.Error
@@ -677,16 +680,13 @@ func (user *User) finishInsert(inviterId int) {
 	if common.QuotaForNewUser > 0 {
 		RecordLog(user.Id, LogTypeSystem, fmt.Sprintf("新用户注册赠送 %s", logger.LogQuota(common.QuotaForNewUser)))
 	}
+	// The old fixed-quota invitation reward has been replaced by the
+	// percentage-based recharge rebate (InviterRechargeRebateRate), applied
+	// when the invited user recharges. We still record the invite count so the
+	// inviter's affiliate statistics remain accurate.
 	if inviterId != 0 && operation_setting.IsPaymentComplianceConfirmed() {
-		if common.QuotaForInvitee > 0 {
-			_ = IncreaseUserQuota(user.Id, common.QuotaForInvitee, true)
-			RecordLog(user.Id, LogTypeSystem, fmt.Sprintf("使用邀请码赠送 %s", logger.LogQuota(common.QuotaForInvitee)))
-		}
-		if common.QuotaForInviter > 0 {
-			//_ = IncreaseUserQuota(inviterId, common.QuotaForInviter)
-			RecordLog(inviterId, LogTypeSystem, fmt.Sprintf("邀请用户赠送 %s", logger.LogQuota(common.QuotaForInviter)))
-			_ = inviteUser(inviterId)
-		}
+		_ = inviteUser(inviterId)
+		RecordLog(inviterId, LogTypeSystem, fmt.Sprintf("新邀请用户注册，充值将按 %s%% 返利", strconv.FormatFloat(common.InviterRechargeRebateRate, 'f', -1, 64)))
 	}
 }
 
@@ -734,15 +734,11 @@ func (user *User) FinalizeOAuthUserCreation(inviterId int) {
 	if common.QuotaForNewUser > 0 {
 		RecordLog(user.Id, LogTypeSystem, fmt.Sprintf("新用户注册赠送 %s", logger.LogQuota(common.QuotaForNewUser)))
 	}
+	// The old fixed-quota invitation reward has been replaced by the
+	// percentage-based recharge rebate (InviterRechargeRebateRate).
 	if inviterId != 0 && operation_setting.IsPaymentComplianceConfirmed() {
-		if common.QuotaForInvitee > 0 {
-			_ = IncreaseUserQuota(user.Id, common.QuotaForInvitee, true)
-			RecordLog(user.Id, LogTypeSystem, fmt.Sprintf("使用邀请码赠送 %s", logger.LogQuota(common.QuotaForInvitee)))
-		}
-		if common.QuotaForInviter > 0 {
-			RecordLog(inviterId, LogTypeSystem, fmt.Sprintf("邀请用户赠送 %s", logger.LogQuota(common.QuotaForInviter)))
-			_ = inviteUser(inviterId)
-		}
+		_ = inviteUser(inviterId)
+		RecordLog(inviterId, LogTypeSystem, fmt.Sprintf("新邀请用户注册，充值将按 %s%% 返利", strconv.FormatFloat(common.InviterRechargeRebateRate, 'f', -1, 64)))
 	}
 }
 
@@ -1041,6 +1037,18 @@ func (user *User) UpdateGitHubId(newGitHubId string) error {
 		return errors.New("user id is empty")
 	}
 	return DB.Model(user).Update("github_id", newGitHubId).Error
+}
+
+// UpdateUserAvatar sets the user's avatar URL. Empty values are rejected so a
+// failed provider fetch cannot clear an existing avatar.
+func UpdateUserAvatar(userId int, avatarURL string) error {
+	if userId == 0 {
+		return errors.New("user id is empty")
+	}
+	if avatarURL == "" {
+		return errors.New("avatar url is empty")
+	}
+	return DB.Model(&User{}).Where("id = ?", userId).Update("avatar", avatarURL).Error
 }
 
 func (user *User) FillUserByDiscordId() error {

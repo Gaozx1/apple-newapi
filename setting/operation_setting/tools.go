@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/setting/config"
 )
 
@@ -27,6 +28,12 @@ import (
 
 const ToolPriceOptionKey = "tool_price_setting.prices"
 
+// Tool injection (gateway-level) lets admins force built-in tools onto every
+// outbound request so upstream models "see" them even when the client did not
+// send a tools array. DB keys: tool_injection.enabled / tool_injection.tools
+const ToolInjectionEnabledKey = "tool_injection.enabled"
+const ToolInjectionToolsKey = "tool_injection.tools"
+
 const (
 	defaultWebSearchToolPrice        = 10.0
 	defaultWebSearchPreviewToolPrice = 10.0
@@ -35,6 +42,15 @@ const (
 	defaultImageGenerationToolPrice  = 150.0
 	defaultSearchPreviewModelPrice   = 25.0
 )
+
+// DefaultInjectedTools is the set of built-in tools offered in the admin UI.
+// Only these names are allowed for injection; unknown names are rejected.
+var DefaultInjectedTools = []string{
+	dto.BuildInToolWebSearch,
+	dto.BuildInToolWebSearchPreview,
+	dto.BuildInToolGoogleSearch,
+	dto.BuildInToolFileSearch,
+}
 
 // seedHardcodedToolPrices injects compile-time built-in fallbacks (tool
 // defaults and model-prefix overrides) into the destination. The source is
@@ -64,6 +80,106 @@ var toolPriceSetting = ToolPriceSetting{
 func init() {
 	config.GlobalConfig.Register("tool_price_setting", &toolPriceSetting)
 	RebuildToolPriceIndex()
+}
+
+// ---------------------------------------------------------------------------
+// Tool injection (gateway-level)
+// ---------------------------------------------------------------------------
+
+// ToolInjectionSetting controls whether the gateway injects built-in tools into
+// outbound requests so models can discover them without the client sending a
+// tools array. Registered under the "tool_injection" config namespace.
+type ToolInjectionSetting struct {
+	Enabled bool     `json:"enabled"`
+	Tools   []string `json:"tools"`
+}
+
+var toolInjectionSetting = ToolInjectionSetting{
+	Enabled: false,
+	Tools:   nil,
+}
+
+func init() {
+	config.GlobalConfig.Register("tool_injection", &toolInjectionSetting)
+}
+
+// IsToolInjectionEnabled reports whether gateway-level tool injection is on.
+func IsToolInjectionEnabled() bool {
+	return toolInjectionSetting.Enabled
+}
+
+// GetInjectedTools returns the list of built-in tool names to inject. Unknown
+// names (not in DefaultInjectedTools) are filtered out.
+func GetInjectedTools() []string {
+	if !toolInjectionSetting.Enabled {
+		return nil
+	}
+	allowed := make(map[string]struct{}, len(DefaultInjectedTools))
+	for _, name := range DefaultInjectedTools {
+		allowed[name] = struct{}{}
+	}
+	var result []string
+	for _, name := range toolInjectionSetting.Tools {
+		if _, ok := allowed[name]; ok {
+			result = append(result, name)
+		}
+	}
+	return result
+}
+
+// ValidateInjectedToolsJSON validates an operator-supplied JSON array of tool
+// names. Unknown names are rejected so admins get immediate feedback.
+func ValidateInjectedToolsJSON(value string) error {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+	var raw json.RawMessage = json.RawMessage(value)
+	if common.GetJsonType(raw) != "array" {
+		return fmt.Errorf("工具注入列表必须是 JSON 数组")
+	}
+	var names []string
+	if err := common.Unmarshal(raw, &names); err != nil {
+		return fmt.Errorf("解析工具注入列表失败: %w", err)
+	}
+	allowed := make(map[string]struct{}, len(DefaultInjectedTools))
+	for _, name := range DefaultInjectedTools {
+		allowed[name] = struct{}{}
+	}
+	for _, name := range names {
+		if _, ok := allowed[name]; !ok {
+			return fmt.Errorf("工具 %q 不在可注入列表中", name)
+		}
+	}
+	return nil
+}
+
+// LoadInjectedToolsFromJSONString replaces the injected tool list from a JSON
+// array string. Invalid/unknown names are silently dropped so a saved bad
+// config never poisons the hot path.
+func LoadInjectedToolsFromJSONString(value string) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		toolInjectionSetting.Tools = nil
+		return
+	}
+	var names []string
+	if err := common.Unmarshal([]byte(value), &names); err != nil {
+		common.SysError("加载工具注入列表失败: " + err.Error())
+		toolInjectionSetting.Tools = nil
+		return
+	}
+	allowed := make(map[string]struct{}, len(DefaultInjectedTools))
+	for _, name := range DefaultInjectedTools {
+		allowed[name] = struct{}{}
+	}
+	var result []string
+	for _, name := range names {
+		if _, ok := allowed[name]; ok {
+			result = append(result, name)
+		}
+	}
+	toolInjectionSetting.Tools = result
 }
 
 // ---------------------------------------------------------------------------

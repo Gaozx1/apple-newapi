@@ -281,6 +281,26 @@ func InjectGoogleAnalytics() {
 	indexPage = bytes.ReplaceAll(indexPage, placeholder, analyticsInject)
 }
 
+// initLoginRSAKeyPair loads (or generates and persists) the RSA key pair used
+// to encrypt login passwords in transit. The private key is stored in the
+// options table under "LoginRsaPrivateKey" so every instance shares it.
+func initLoginRSAKeyPair() error {
+	persistedPEM := common.OptionMap["LoginRsaPrivateKey"]
+	if err := common.InitLoginRSAKey(persistedPEM); err != nil {
+		return err
+	}
+	if persistedPEM == "" {
+		// New key generated — persist it so other instances and restarts reuse it.
+		privatePEM := common.GetLoginRSAPrivateKeyPEM()
+		if privatePEM != "" {
+			if err := model.UpdateOption("LoginRsaPrivateKey", privatePEM); err != nil {
+				common.SysError("failed to persist login RSA key: " + err.Error())
+			}
+		}
+	}
+	return nil
+}
+
 func InitResources() error {
 	// Initialize resources here if needed
 	// This is a placeholder function for future resource initialization
@@ -323,6 +343,14 @@ func InitResources() error {
 		}
 	}
 	model.InitOptionMap()
+
+	// Initialize login RSA key pair for password-in-transit encryption.
+	// Persists to the options table so all instances share the same key.
+	if err := initLoginRSAKeyPair(); err != nil {
+		common.SysError("failed to initialize login RSA key: " + err.Error())
+	} else {
+		common.SysLog("login RSA key pair initialized")
+	}
 
 	// 清理旧的磁盘缓存文件
 	common.CleanupOldCacheFiles()

@@ -89,6 +89,35 @@ func AddRedemption(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": msg})
 		return
 	}
+	// 校验兑换码类型及其关联值
+	if redemption.Type == "" {
+		redemption.Type = model.RedemptionTypeQuota
+	}
+	switch redemption.Type {
+	case model.RedemptionTypeQuota:
+		if redemption.Quota <= 0 {
+			common.ApiErrorI18n(c, i18n.MsgRedemptionCountPositive)
+			return
+		}
+	case model.RedemptionTypeLottery:
+		if redemption.Value <= 0 {
+			common.ApiErrorMsg(c, "抽奖次数必须大于 0")
+			return
+		}
+	case model.RedemptionTypeSubscription:
+		if redemption.Value <= 0 {
+			common.ApiErrorMsg(c, "订阅套餐 ID 必须大于 0")
+			return
+		}
+		// 确认套餐存在
+		if _, err := model.GetSubscriptionPlanById(redemption.Value); err != nil {
+			common.ApiErrorMsg(c, "订阅套餐不存在")
+			return
+		}
+	default:
+		common.ApiErrorMsg(c, "无效的兑换码类型")
+		return
+	}
 	var keys []string
 	for i := 0; i < redemption.Count; i++ {
 		key := common.GetUUID()
@@ -99,6 +128,8 @@ func AddRedemption(c *gin.Context) {
 			CreatedTime: common.GetTimestamp(),
 			Quota:       redemption.Quota,
 			ExpiredTime: redemption.ExpiredTime,
+			Type:        redemption.Type,
+			Value:       redemption.Value,
 		}
 		err = cleanRedemption.Insert()
 		if err != nil {
@@ -161,6 +192,15 @@ func UpdateRedemption(c *gin.Context) {
 		cleanRedemption.Name = redemption.Name
 		cleanRedemption.Quota = redemption.Quota
 		cleanRedemption.ExpiredTime = redemption.ExpiredTime
+		cleanRedemption.Type = redemption.Type
+		switch redemption.Type {
+		case model.RedemptionTypeLottery:
+			cleanRedemption.Value = redemption.Value
+		case model.RedemptionTypeSubscription:
+			cleanRedemption.Value = redemption.Value
+		default:
+			cleanRedemption.Value = 0
+		}
 	}
 	if statusOnly != "" {
 		cleanRedemption.Status = redemption.Status

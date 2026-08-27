@@ -16,6 +16,7 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/model_setting"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/samber/lo"
 
@@ -38,6 +39,13 @@ func TextHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types
 	if request.WebSearchOptions != nil {
 		c.Set("chat_completion_web_search_context_size", request.WebSearchOptions.SearchContextSize)
 	}
+
+	// Gateway-level tool injection: admins can force built-in tools onto every
+	// outbound request so upstream models can discover them even when the
+	// client did not send a tools array. Built-in tools execute at the
+	// upstream provider (OpenAI / Claude / Gemini); the gateway only injects
+	// the definition and bills the resulting calls.
+	injectGatewayTools(c, info, request)
 
 	err = helper.ModelMappedHelper(c, info, request)
 	if err != nil {
@@ -219,4 +227,114 @@ func TextHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types
 		service.PostTextConsumeQuota(c, info, usage.(*dto.Usage), nil)
 	}
 	return nil
+}
+
+// injectGatewayTools appends admin-configured built-in tools to the request so
+// the selected upstream model can discover them. The injection format depends
+// on the target provider:
+//   - OpenAI / OpenAI-compatible: {"type":"web_search"} style entries in Tools.
+//   - Claude: WebSearchOptions (the Claude converter translates it to
+//     web_search_20250305).
+//   - Gemini: a function tool named "googleSearch".
+//
+// Only tools that are not already present are added, and the request is left
+// untouched when injection is disabled or no channel-appropriate tool applies.
+func injectGatewayTools(c *gin.Context, info *relaycommon.RelayInfo, request *dto.GeneralOpenAIRequest) {
+	toolNames := operation_setting.GetInjectedTools()
+	if len(toolNames) == 0 {
+		return
+	}
+
+	apiType := info.ApiType
+	channelType := info.ChannelType
+
+	hasTool := func(name string) bool {
+		for _, t := range request.Tools {
+			if t.Type == name {
+				return true
+			}
+			if t.Function.Name == name {
+				return true
+			}
+		}
+		return false
+	}
+
+	for _, name := range toolNames {
+		switch name {
+		case dto.BuildInToolWebSearch, dto.BuildInToolWebSearchPreview:
+			// Claude channels use WebSearchOptions instead of a Tools entry.
+			if apiType == constant.APITypeAnthropic {
+				if request.WebSearchOptions == nil {
+					request.WebSearchOptions = &dto.WebSearchOptions{}
+				}
+				continue
+			}
+			// Gemini channels need a "googleSearch" function tool.
+			if apiType == constant.APITypeGemini {
+				if !hasTool("googleSearch") {
+					request.Tools = append(request.Tools, dto.ToolCallRequest{
+						Type: dto.CustomType,
+						Function: dto.FunctionRequest{
+							Name: "googleSearch",
+						},
+					})
+				}
+				continue
+			}
+			// OpenRouter and OpenAI-compatible channels accept the OpenAI
+			// function-tool format. Note: some upstream proxies (e.g. dsh) reject
+			// the bare OpenRouter server-tool format {"type":"web_search"} and
+			// require {"type":"function","function":{...}}, so we emit the
+			// function-tool form for OpenRouter as well.
+			if !hasTool(name) {
+				request.Tools = append(request.Tools, dto.ToolCallRequest{
+					Type: dto.FunctionType,
+					Function: dto.FunctionRequest{
+						Name: name,
+					},
+				})
+			}
+		case dto.BuildInToolGoogleSearch:
+			// Gemini channels: inject "googleSearch" function tool.
+			if apiType == constant.APITypeGemini {
+				if !hasTool("googleSearch") {
+					request.Tools = append(request.Tools, dto.ToolCallRequest{
+						Type: dto.CustomType,
+						Function: dto.FunctionRequest{
+							Name: "googleSearch",
+						},
+					})
+				}
+				continue
+			}
+			// OpenAI-compatible channels (incl. OpenRouter) accept the function
+			// tool form.
+			if !hasTool(name) {
+				request.Tools = append(request.Tools, dto.ToolCallRequest{
+					Type: dto.FunctionType,
+					Function: dto.FunctionRequest{
+						Name: name,
+					},
+				})
+			}
+		case dto.BuildInToolFileSearch:
+			// File search is an OpenAI Responses/Assistants concept. Inject the
+			// OpenAI function-tool entry for OpenAI-compatible channels (incl.
+			// OpenRouter).
+			if apiType == constant.APITypeOpenAI ||
+				channelType == constant.ChannelTypeAzure ||
+				channelType == constant.ChannelTypeCodex ||
+				channelType == constant.ChannelTypeOpenRouter {
+				if !hasTool(name) {
+					request.Tools = append(request.Tools, dto.ToolCallRequest{
+						Type: dto.FunctionType,
+						Function: dto.FunctionRequest{
+							Name: name,
+						},
+					})
+				}
+			}
+		}
+	}
 }

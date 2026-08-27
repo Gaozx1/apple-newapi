@@ -283,6 +283,13 @@ func handleOAuthBind(c *gin.Context, provider oauth.Provider, pendingFlow *model
 		}
 	}
 
+	// Sync avatar from the provider when it supplies one (e.g. GitHub).
+	if oauthUser.AvatarURL != "" {
+		if err := model.UpdateUserAvatar(userId, oauthUser.AvatarURL); err != nil {
+			common.SysLog(fmt.Sprintf("[OAuth] failed to sync avatar for user %d: %s", userId, err.Error()))
+		}
+	}
+
 	common.ApiSuccessI18n(c, i18n.MsgOAuthBindSuccess, gin.H{
 		"action": "bind",
 	})
@@ -404,14 +411,22 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 
 			// Set the provider user ID on the user model and update
 			provider.SetProviderUserID(user, oauthUser.ProviderUserID)
-			if err := tx.Model(user).Updates(map[string]interface{}{
+			// Set avatar from the OAuth provider (GitHub, etc.) for new users.
+			if oauthUser.AvatarURL != "" {
+				user.Avatar = oauthUser.AvatarURL
+			}
+			updates := map[string]interface{}{
 				"github_id":   user.GitHubId,
 				"discord_id":  user.DiscordId,
 				"oidc_id":     user.OidcId,
 				"linux_do_id": user.LinuxDOId,
 				"wechat_id":   user.WeChatId,
 				"telegram_id": user.TelegramId,
-			}).Error; err != nil {
+			}
+			if user.Avatar != "" {
+				updates["avatar"] = user.Avatar
+			}
+			if err := tx.Model(user).Updates(updates).Error; err != nil {
 				return err
 			}
 

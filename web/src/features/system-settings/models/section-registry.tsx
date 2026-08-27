@@ -25,6 +25,7 @@ import { GeminiSettingsCard } from './gemini-settings-card'
 import { GlobalSettingsCard } from './global-settings-card'
 import { GrokSettingsCard } from './grok-settings-card'
 import { RoutingReliabilitySection } from './routing-reliability-section'
+import { ToolInjectionSettings } from './tool-injection-settings'
 
 function formatJsonForEditor(value: string, fallback: string) {
   const raw = (value ?? '').toString().trim()
@@ -181,7 +182,32 @@ const MODELS_SECTIONS = [
       />
     ),
   },
+  {
+    id: 'tool-injection',
+    titleKey: 'Tool Injection',
+    build: (settings: ModelSettings) => (
+      <ToolInjectionSettings
+        defaultEnabled={settings['tool_injection.enabled']}
+        defaultTools={
+          safeParseToolList(settings['tool_injection.tools']) ?? []
+        }
+      />
+    ),
+  },
 ] as const
+
+function safeParseToolList(raw: string | boolean | number | undefined): string[] | null {
+  if (typeof raw !== 'string' || raw.trim() === '') return null
+  try {
+    const parsed = JSON.parse(raw)
+    if (Array.isArray(parsed)) {
+      return parsed.filter((item): item is string => typeof item === 'string')
+    }
+  } catch {
+    // ignore malformed value
+  }
+  return null
+}
 
 export type ModelSectionId = (typeof MODELS_SECTIONS)[number]['id']
 

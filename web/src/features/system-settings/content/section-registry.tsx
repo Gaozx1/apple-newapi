@@ -24,6 +24,7 @@ import { ChatSettingsSection } from './chat-settings-section'
 import { DashboardSection } from './dashboard-section'
 import { DrawingSettingsSection } from './drawing-settings-section'
 import { FAQSection } from './faq-section'
+import { LotterySettingsSection } from './lottery-settings-section'
 import { UptimeKumaSection } from './uptime-kuma-section'
 
 /**
@@ -112,6 +113,17 @@ const CONTENT_SECTIONS = [
           MjForwardUrlEnabled: settings.MjForwardUrlEnabled,
           MjModeClearEnabled: settings.MjModeClearEnabled,
           MjActionCheckSuccessEnabled: settings.MjActionCheckSuccessEnabled,
+        }}
+      />
+    ),
+  },
+  {
+    id: 'lottery',
+    titleKey: 'Lottery',
+    build: (settings: ContentSettings) => (
+      <LotterySettingsSection
+        defaultValues={{
+          LotteryEnabled: settings.LotteryEnabled,
         }}
       />
     ),

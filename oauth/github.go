@@ -31,10 +31,11 @@ type gitHubOAuthResponse struct {
 }
 
 type gitHubUser struct {
-	Id    int64  `json:"id"`    // GitHub numeric ID (permanent, never changes)
-	Login string `json:"login"` // GitHub username (can be changed by user)
-	Name  string `json:"name"`
-	Email string `json:"email"`
+	Id        int64  `json:"id"`        // GitHub numeric ID (permanent, never changes)
+	Login     string `json:"login"`     // GitHub username (can be changed by user)
+	Name      string `json:"name"`
+	Email     string `json:"email"`
+	AvatarURL string `json:"avatar_url"` // GitHub avatar URL
 }
 
 func (p *GitHubProvider) GetName() string {
@@ -149,11 +150,19 @@ func (p *GitHubProvider) GetUserInfo(ctx context.Context, token *OAuthToken) (*O
 	logger.LogDebug(ctx, "[OAuth-GitHub] GetUserInfo success: id=%d, login=%s, name=%s, email=%s",
 		githubUser.Id, githubUser.Login, githubUser.Name, githubUser.Email)
 
+	// GitHub avatar URL: prefer the API-provided avatar_url, fall back to the
+	// canonical numeric-ID URL which is stable and always valid.
+	avatarURL := githubUser.AvatarURL
+	if avatarURL == "" && githubUser.Id != 0 {
+		avatarURL = fmt.Sprintf("https://avatars.githubusercontent.com/u/%d?v=4", githubUser.Id)
+	}
+
 	return &OAuthUser{
 		ProviderUserID: strconv.FormatInt(githubUser.Id, 10), // Use numeric ID as primary identifier
 		Username:       githubUser.Login,
 		DisplayName:    githubUser.Name,
 		Email:          githubUser.Email,
+		AvatarURL:      avatarURL,
 		Extra: map[string]any{
 			"legacy_id": githubUser.Login, // Store login for migration from old accounts
 		},

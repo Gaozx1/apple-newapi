@@ -22,7 +22,9 @@ import {
   CreditCard,
   FileText,
   FlaskConical,
+  Gift,
   Key,
+  KeyRound,
   LayoutDashboard,
   ListTodo,
   MessageSquare,
@@ -109,6 +111,16 @@ export function useSidebarData(): SidebarData {
             icon: Wallet,
           },
           {
+            title: t('Lottery'),
+            url: '/lottery',
+            icon: Gift,
+          },
+          {
+            title: t('Support Tickets'),
+            url: '/tickets',
+            icon: Ticket,
+          },
+          {
             title: t('Profile'),
             url: '/profile',
             icon: User,
@@ -138,6 +150,11 @@ export function useSidebarData(): SidebarData {
             title: t('Redemption Codes'),
             url: '/redemption-codes',
             icon: Ticket,
+          },
+          {
+            title: t('OAuth 2.0 Clients'),
+            url: '/oauth2-clients',
+            icon: KeyRound,
           },
           {
             title: t('Subscriptions'),

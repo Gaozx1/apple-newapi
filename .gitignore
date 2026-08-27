@@ -41,3 +41,13 @@ service/relayconvert/chat_responses_live_local_test.go
 service/openaicompat/chat_responses_live_local_test.go
 go.work
 go.work.sum
+
+# Go vendored dependencies (regenerated at build time via `go mod vendor`).
+vendor/
+
+# Local deployment / SSH helper and scratch scripts (may contain secrets).
+.askpass.bat
+query_redemption.sh
+deploy_rc*.tar.gz
+deploy_rc*.sh
+*.tar.gz

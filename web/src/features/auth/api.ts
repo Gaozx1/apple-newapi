@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import axios from 'axios'
 
 import { api, refreshAuthentication, type RefreshOutcome } from '@/lib/api'
+import { encryptPassword } from '@/lib/password-crypto'
 import { useAuthStore } from '@/stores/auth-store'
 
 import { getAffiliateCode } from './lib/storage'
@@ -40,14 +41,40 @@ import type {
 // Login & Logout
 // ----------------------------------------------------------------------------
 
+// Read the login RSA public key from the cached /api/status data in
+// localStorage. The status is fetched and cached by useStatus().
+function getLoginRSAPublicKey(): string | undefined {
+  try {
+    if (typeof window !== 'undefined') {
+      const saved = window.localStorage.getItem('status')
+      if (saved) {
+        const status = JSON.parse(saved)
+        return (
+          status?.login_rsa_public_key ??
+          status?.data?.login_rsa_public_key ??
+          undefined
+        )
+      }
+    }
+  } catch {
+    /* empty */
+  }
+  return undefined
+}
+
 // User login with username and password
 export async function login(payload: LoginPayload) {
   const turnstile = payload.turnstile ?? ''
+  const rsaPublicKey = getLoginRSAPublicKey()
+  const encryptedPassword = await encryptPassword(
+    payload.password,
+    rsaPublicKey
+  )
   const res = await api.post<LoginResponse>(
     `/api/user/login?turnstile=${turnstile}`,
     {
       username: payload.username,
-      password: payload.password,
+      password: encryptedPassword,
     },
     { skipAuthRefresh: true }
   )
@@ -182,9 +209,18 @@ export async function telegramLogin(
 
 // User registration
 export async function register(payload: RegisterPayload): Promise<ApiResponse> {
-  const res = await api.post(`/api/user/register`, payload, {
-    params: { turnstile: payload.turnstile ?? '' },
-  })
+  const rsaPublicKey = getLoginRSAPublicKey()
+  const encryptedPassword = await encryptPassword(
+    payload.password,
+    rsaPublicKey
+  )
+  const res = await api.post(
+    `/api/user/register`,
+    { ...payload, password: encryptedPassword },
+    {
+      params: { turnstile: payload.turnstile ?? '' },
+    }
+  )
   return res.data
 }
 

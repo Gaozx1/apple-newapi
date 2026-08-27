@@ -49,7 +49,7 @@ func Login(c *gin.Context) {
 		return
 	}
 	username := loginRequest.Username
-	password := loginRequest.Password
+	password := common.MaybeDecryptPassword(loginRequest.Password)
 	if username == "" || password == "" {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
@@ -220,6 +220,8 @@ func Register(c *gin.Context) {
 	}
 	user.Username = strings.TrimSpace(user.Username)
 	user.Email = model.NormalizeEmail(user.Email)
+	// Decrypt password if it was RSA-encrypted by the frontend.
+	user.Password = common.MaybeDecryptPassword(user.Password)
 	if user.Username == "" {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
@@ -531,6 +533,8 @@ func buildSelfUserData(user *model.User) map[string]interface{} {
 		"aff_history_quota": user.AffHistoryQuota,
 		"inviter_id":        user.InviterId,
 		"linux_do_id":       user.LinuxDOId,
+		"avatar":            user.Avatar,
+		"lottery_chances":   user.LotteryChances,
 		"setting":           user.Setting,
 		"stripe_customer":   user.StripeCustomer,
 		"sidebar_modules":   userSetting.SidebarModules, // 正确提取sidebar_modules字段
@@ -670,6 +674,8 @@ func UpdateUser(c *gin.Context) {
 		return
 	}
 	updatedUser.Username = strings.TrimSpace(updatedUser.Username)
+	// Decrypt RSA-encrypted password from the admin frontend.
+	updatedUser.Password = common.MaybeDecryptPassword(updatedUser.Password)
 	if updatedUser.Username == "" {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
@@ -851,6 +857,10 @@ func UpdateSelf(c *gin.Context) {
 		return
 	}
 
+	// Decrypt RSA-encrypted passwords (original + new) from the frontend.
+	user.OriginalPassword = common.MaybeDecryptPassword(user.OriginalPassword)
+	user.Password = common.MaybeDecryptPassword(user.Password)
+
 	if user.Password == "" {
 		user.Password = "$I_LOVE_U" // make Validator happy :)
 	}
@@ -864,6 +874,7 @@ func UpdateSelf(c *gin.Context) {
 		Username:    user.Username,
 		Password:    user.Password,
 		DisplayName: user.DisplayName,
+		Avatar:      user.Avatar,
 	}
 	if user.Password == "$I_LOVE_U" {
 		user.Password = "" // rollback to what it should be
@@ -1004,6 +1015,8 @@ func CreateUser(c *gin.Context) {
 	var user model.User
 	err := common.DecodeJson(c.Request.Body, &user)
 	user.Username = strings.TrimSpace(user.Username)
+	// Decrypt RSA-encrypted password from the admin frontend.
+	user.Password = common.MaybeDecryptPassword(user.Password)
 	if err != nil || user.Username == "" || user.Password == "" {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return

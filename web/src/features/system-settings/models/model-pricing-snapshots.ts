@@ -261,6 +261,22 @@ export const buildModelSnapshots = ({
       }
     }
 
+    if (modeForModel === 'per_second') {
+      return {
+        name,
+        billingMode: 'per-second',
+        price,
+        ratio,
+        cacheRatio: cache,
+        createCacheRatio: createCache,
+        completionRatio: completion,
+        imageRatio: image,
+        audioRatio: audio,
+        audioCompletionRatio: audioCompletion,
+        hasConflict: false,
+      }
+    }
+
     return {
       name,
       price,

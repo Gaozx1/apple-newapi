@@ -1,0 +1,7 @@
+{
+  "One or more redirect URIs, separated by newlines.": "One or more redirect URIs, separated by newlines.",
+  "Percentage of an invited user recharge credited to the inviter as rebate (0–100)": "Percentage of an invited user recharge credited to the inviter as rebate (0–100)",
+  "Space-separated list of allowed scopes. Leave empty to allow any scope.": "Space-separated list of allowed scopes. Leave empty to allow any scope.",
+  "The client secret is shown only once. Store it securely.": "The client secret is shown only once. Store it securely.",
+  "When enabled, video tasks are billed by seconds × per-second unit price instead of the model price": "When enabled, video tasks are billed by seconds × per-second unit price instead of the model price"
+}

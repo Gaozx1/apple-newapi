@@ -81,6 +81,10 @@ export interface UserProfile {
   telegram_id?: string
   /** LinuxDO ID (OAuth) */
   linux_do_id?: string
+  /** Avatar URL (GitHub auto-fetched, user-uploaded, or user-provided link) */
+  avatar?: string
+  /** Admin-granted free lottery draw chances */
+  lottery_chances?: number
 }
 
 /**
@@ -127,6 +131,8 @@ export interface UpdateUserRequest {
   display_name?: string
   password?: string
   original_password?: string
+  /** Avatar URL; omit to keep the current avatar unchanged */
+  avatar?: string
 }
 
 /**

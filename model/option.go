@@ -132,8 +132,9 @@ func InitOptionMap() {
 	common.OptionMap["TurnstileSiteKey"] = ""
 	common.OptionMap["TurnstileSecretKey"] = ""
 	common.OptionMap["QuotaForNewUser"] = strconv.Itoa(common.QuotaForNewUser)
-	common.OptionMap["QuotaForInviter"] = strconv.Itoa(common.QuotaForInviter)
-	common.OptionMap["QuotaForInvitee"] = strconv.Itoa(common.QuotaForInvitee)
+	common.OptionMap["InviterRechargeRebateRate"] = strconv.FormatFloat(common.InviterRechargeRebateRate, 'f', -1, 64)
+	common.OptionMap["VideoPerSecondBillingEnabled"] = strconv.FormatBool(common.VideoPerSecondBillingEnabled)
+	common.OptionMap["LotteryEnabled"] = strconv.FormatBool(common.LotteryEnabled)
 	common.OptionMap["QuotaRemindThreshold"] = strconv.Itoa(common.QuotaRemindThreshold)
 	common.OptionMap["PreConsumedQuota"] = strconv.Itoa(common.PreConsumedQuota)
 	common.OptionMap["ModelRequestRateLimitCount"] = strconv.Itoa(setting.ModelRequestRateLimitCount)
@@ -532,10 +533,12 @@ func updateOptionMap(key string, value string) (err error) {
 		common.TurnstileSecretKey = value
 	case "QuotaForNewUser":
 		common.QuotaForNewUser, _ = strconv.Atoi(value)
-	case "QuotaForInviter":
-		common.QuotaForInviter, _ = strconv.Atoi(value)
-	case "QuotaForInvitee":
-		common.QuotaForInvitee, _ = strconv.Atoi(value)
+	case "InviterRechargeRebateRate":
+		common.InviterRechargeRebateRate, _ = strconv.ParseFloat(value, 64)
+	case "VideoPerSecondBillingEnabled":
+		common.VideoPerSecondBillingEnabled, _ = strconv.ParseBool(value)
+	case "LotteryEnabled":
+		common.LotteryEnabled, _ = strconv.ParseBool(value)
 	case "QuotaRemindThreshold":
 		common.QuotaRemindThreshold, _ = strconv.Atoi(value)
 	case "PreConsumedQuota":
@@ -610,6 +613,10 @@ func updateOptionMap(key string, value string) (err error) {
 func handleConfigUpdate(key, value string) bool {
 	if key == operation_setting.ToolPriceOptionKey {
 		operation_setting.LoadToolPricesFromJSONString(value)
+		return true
+	}
+	if key == operation_setting.ToolInjectionToolsKey {
+		operation_setting.LoadInjectedToolsFromJSONString(value)
 		return true
 	}
 
