@@ -407,9 +407,9 @@ func SetApiRouter(router *gin.Engine) {
 			deploymentsRoute.DELETE("/:id", controller.DeleteDeployment)
 		}
 
-		// OAuth 2.0 authorization server
-		apiRouter.GET("/oauth2/authorize", middleware.UserAuth(), controller.OAuthAuthorize)
-		apiRouter.POST("/oauth2/authorize", middleware.UserAuth(), middleware.DisableCache(), controller.OAuthAuthorize)
+		// OAuth 2.0 authorization server: the authorize endpoint lives at the
+		// site root (SetOAuthRouter) because browser navigation carries only
+		// the session cookie. The token/userinfo endpoints stay on /api.
 		apiRouter.POST("/oauth2/token", anonymousRequestBodyLimit, controller.OAuthToken)
 		apiRouter.GET("/oauth2/userinfo", controller.OAuthUserInfo)
 

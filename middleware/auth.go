@@ -89,6 +89,33 @@ func TryUserAuth() func(c *gin.Context) {
 	}
 }
 
+// TryBrowserSessionAuth authenticates navigation-style requests that carry no
+// Authorization header. Top-level browser navigations (e.g. a third-party app
+// sending the user's browser to /oauth2/authorize) carry the refresh-session
+// cookie but never a Bearer header, which UserAuth requires. The cookie is
+// validated read-only (no rotation); the Authorization header is kept as a
+// fallback so SPA-driven flows keep working. Never aborts: handlers decide
+// how to treat anonymous visitors (the consent page redirects to login).
+func TryBrowserSessionAuth() func(c *gin.Context) {
+	return func(c *gin.Context) {
+		if c.GetInt("id") != 0 {
+			c.Next()
+			return
+		}
+		if raw, err := c.Cookie(service.RefreshCookieName); err == nil && raw != "" {
+			if user, identity, ok := service.ValidateRefreshSession(raw); ok {
+				setDashboardAuthContext(c, user, identity, false)
+				c.Next()
+				return
+			}
+		}
+		if user, identity, credentialKind, err := classifyDashboardCredential(c); err == nil && credentialKind == dashboardCredentialInternal {
+			setDashboardAuthContext(c, user, identity, false)
+		}
+		c.Next()
+	}
+}
+
 func UserAuth() func(c *gin.Context) {
 	return func(c *gin.Context) {
 		authHelper(c, common.RoleCommonUser)

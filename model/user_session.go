@@ -126,6 +126,17 @@ func userSessionCacheKey(sid string) string {
 	return "auth:session:" + digest
 }
 
+// GetActiveUserSessionForRefreshHash loads a session row including RefreshHash
+// for read-only refresh-token validation. The session cache intentionally
+// omits RefreshHash, so this must query the database.
+func GetActiveUserSessionForRefreshHash(sid string) (*UserSession, error) {
+	var session UserSession
+	if err := DB.Where("sid = ?", sid).First(&session).Error; err != nil {
+		return nil, err
+	}
+	return &session, nil
+}
+
 func userSessionCacheDeadline() time.Time {
 	return time.Now().Add(time.Duration(userCacheTTLSeconds()) * time.Second)
 }

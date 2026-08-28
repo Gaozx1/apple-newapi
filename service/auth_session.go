@@ -289,6 +289,42 @@ func ListLoginSessions(userID int, currentSID string) ([]LoginSessionView, error
 	return views, nil
 }
 
+// ValidateRefreshSession validates a refresh token in read-only fashion (no
+// rotation, no replay-window update) and returns the bound user. Browser-only
+// surfaces such as the OAuth 2.0 consent page authenticate with it because
+// top-level navigation requests carry the session cookie but never an
+// Authorization header.
+func ValidateRefreshSession(rawRefreshToken string) (*model.UserBase, AuthIdentity, bool) {
+	sid, secret, ok := splitRefreshToken(rawRefreshToken)
+	if !ok {
+		return nil, AuthIdentity{}, false
+	}
+	session, err := model.GetActiveUserSessionForRefreshHash(sid)
+	if err != nil {
+		return nil, AuthIdentity{}, false
+	}
+	if session.Status != model.UserSessionStatusActive || session.RevokedAt != 0 || session.ExpiresAt <= time.Now().Unix() {
+		return nil, AuthIdentity{}, false
+	}
+	if hashRefreshSecret(secret) != session.RefreshHash {
+		return nil, AuthIdentity{}, false
+	}
+	userCache, err := model.GetUserCache(session.UserID)
+	if err != nil {
+		return nil, AuthIdentity{}, false
+	}
+	if userCache.Status != common.UserStatusEnabled || userCache.AuthVersion != session.UserAuthVersion {
+		return nil, AuthIdentity{}, false
+	}
+	identity := AuthIdentity{
+		UserID:          session.UserID,
+		SessionID:       session.SID,
+		UserAuthVersion: session.UserAuthVersion,
+		SessionVersion:  session.Version,
+	}
+	return userCache, identity, true
+}
+
 func WriteRefreshCookie(c *gin.Context, rawToken string) {
 	expiresAt := time.Now().Add(LoginSessionTTL)
 	if sid, _, ok := splitRefreshToken(rawToken); ok {
@@ -303,26 +339,33 @@ func WriteRefreshCookie(c *gin.Context, rawToken string) {
 	http.SetCookie(c.Writer, &http.Cookie{
 		Name:     RefreshCookieName,
 		Value:    rawToken,
-		Path:     "/api/user/auth",
+		Path:     "/",
 		MaxAge:   maxAge,
 		Expires:  expiresAt,
 		HttpOnly: true,
 		Secure:   common.SessionCookieSecure,
-		SameSite: http.SameSiteStrictMode,
+		// Lax so cross-site top-level navigations (third-party apps sending
+		// the user's browser to /oauth2/authorize) still carry the session,
+		// while cross-site POSTs stay cookie-less (CSRF-safe).
+		SameSite: http.SameSiteLaxMode,
 	})
 }
 
 func ClearRefreshCookie(c *gin.Context) {
-	http.SetCookie(c.Writer, &http.Cookie{
-		Name:     RefreshCookieName,
-		Value:    "",
-		Path:     "/api/user/auth",
-		MaxAge:   -1,
-		Expires:  time.Unix(1, 0),
-		HttpOnly: true,
-		Secure:   common.SessionCookieSecure,
-		SameSite: http.SameSiteStrictMode,
-	})
+	// Clear both the current "/" path and the legacy "/api/user/auth" path
+	// written by older versions, so stale duplicates never linger.
+	for _, path := range []string{"/", "/api/user/auth"} {
+		http.SetCookie(c.Writer, &http.Cookie{
+			Name:     RefreshCookieName,
+			Value:    "",
+			Path:     path,
+			MaxAge:   -1,
+			Expires:  time.Unix(1, 0),
+			HttpOnly: true,
+			Secure:   common.SessionCookieSecure,
+			SameSite: http.SameSiteLaxMode,
+		})
+	}
 }
 
 func issueAuthBundle(session *model.UserSession, rawRefreshToken string, current bool) (*AuthBundle, error) {

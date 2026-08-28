@@ -65,9 +65,10 @@ func OAuthAuthorize(c *gin.Context) {
 
 	userId := c.GetInt("id")
 	if userId == 0 {
-		// Not logged in: bounce to the SPA login with a return hint. The SPA
-		// handles login and sends the user back to /oauth2/authorize.
-		c.Redirect(http.StatusFound, "/login?oauth=1")
+		// Not logged in: bounce to the SPA sign-in page with a return hint so
+		// the user lands back on this consent page after authenticating.
+		returnTo := c.Request.URL.RequestURI()
+		c.Redirect(http.StatusFound, "/sign-in?redirect="+url.QueryEscape(returnTo))
 		return
 	}
 
