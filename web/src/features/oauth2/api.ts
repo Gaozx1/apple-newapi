@@ -39,14 +39,14 @@ export type OAuthClientForm = {
 }
 
 export async function getOAuthClients(): Promise<ApiResponse<OAuthClient[]>> {
-  const res = await api.get('/api/oauth2/client/')
+  const res = await api.get('/api/user/oauth2/clients')
   return res.data
 }
 
 export async function createOAuthClient(
   data: OAuthClientForm
 ): Promise<ApiResponse<OAuthClient>> {
-  const res = await api.post('/api/oauth2/client/', data)
+  const res = await api.post('/api/user/oauth2/clients', data)
   return res.data
 }
 
@@ -54,11 +54,11 @@ export async function updateOAuthClient(
   id: number,
   data: OAuthClientForm
 ): Promise<ApiResponse<OAuthClient>> {
-  const res = await api.put(`/api/oauth2/client/${id}`, data)
+  const res = await api.put(`/api/user/oauth2/clients/${id}`, data)
   return res.data
 }
 
 export async function deleteOAuthClient(id: number): Promise<ApiResponse> {
-  const res = await api.delete(`/api/oauth2/client/${id}`)
+  const res = await api.delete(`/api/user/oauth2/clients/${id}`)
   return res.data
 }

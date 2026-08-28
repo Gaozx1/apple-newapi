@@ -25,6 +25,7 @@ import {
   DollarSign,
   Users,
   HeartHandshake,
+  KeyRound,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
@@ -151,6 +152,51 @@ export function Features(_props: FeaturesProps) {
             <Code className='size-3.5 text-blue-500' />
             {t('Multi-protocol Compatible')}
           </div>
+        </div>
+      ),
+    },
+    {
+      id: 'oauth',
+      num: '05',
+      title: t('OAuth 2.0 Open Platform'),
+      desc: t(
+        'Connect third-party apps with the standard OAuth 2.0 flow. Every user gets 50 free API calls per day.'
+      ),
+      span: 'md:col-span-3',
+      icon: <KeyRound className='size-4 text-sky-400' />,
+      visual: (
+        <div className='mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4'>
+          {[
+            { range: '1 - 50', price: t('Free of charge'), free: true },
+            { range: '51 - 100', price: '$0.001', free: false },
+            { range: '101 - 200', price: '$0.002', free: false },
+            { range: '201+', price: '$0.003', free: false },
+          ].map((tier) => (
+            <div
+              key={tier.range}
+              className={`rounded-lg border px-3 py-2 transition-colors duration-300 ${
+                tier.free
+                  ? 'border-emerald-500/30 bg-emerald-500/5'
+                  : 'border-border/30 bg-muted/20 hover:border-sky-500/30 hover:bg-sky-500/5'
+              }`}
+            >
+              <p className='text-muted-foreground text-[10px] tracking-wider uppercase'>
+                {t('Calls / day')}
+              </p>
+              <p className='mt-0.5 font-mono text-xs font-semibold'>
+                {tier.range}
+              </p>
+              <p
+                className={`mt-0.5 text-xs font-medium ${
+                  tier.free
+                    ? 'text-emerald-600 dark:text-emerald-400'
+                    : 'text-muted-foreground'
+                }`}
+              >
+                {tier.price}
+              </p>
+            </div>
+          ))}
         </div>
       ),
     },

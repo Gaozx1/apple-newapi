@@ -128,6 +128,12 @@ export function SidebarModulesSection({
         title: t('Profile'),
         description: t('Personal settings and profile management.'),
       },
+      oauth2: {
+        title: t('OAuth 2.0 Apps'),
+        description: t(
+          'Connect third-party applications via the standard OAuth 2.0 protocol. First 50 API calls per day are free.'
+        ),
+      },
     },
     admin: {
       channel: {

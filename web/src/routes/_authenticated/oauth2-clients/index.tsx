@@ -14,21 +14,10 @@ GNU Affero General License for more details.
 You should have received a copy of the GNU Affero General License
 along with this program. If not, see <https://www.gnu.org/licenses/>.
 */
-import { createFileRoute, redirect } from '@tanstack/react-router'
+import { createFileRoute } from '@tanstack/react-router'
 
 import { OAuthClientsPage } from '@/features/oauth2/oauth-clients-page'
-import { ROLE } from '@/lib/roles'
-import { useAuthStore } from '@/stores/auth-store'
 
 export const Route = createFileRoute('/_authenticated/oauth2-clients/')({
-  beforeLoad: () => {
-    const { auth } = useAuthStore.getState()
-
-    if (!auth.user || auth.user.role < ROLE.ADMIN) {
-      throw redirect({
-        to: '/403',
-      })
-    }
-  },
   component: OAuthClientsPage,
 })

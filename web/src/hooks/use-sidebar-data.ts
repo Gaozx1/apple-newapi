@@ -38,7 +38,7 @@ import {
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
-import { type SidebarData } from '@/components/layout/types'
+import type { SidebarData } from '@/components/layout/types'
 import { ROLE } from '@/lib/roles'
 
 /**
@@ -125,6 +125,11 @@ export function useSidebarData(): SidebarData {
             url: '/profile',
             icon: User,
           },
+          {
+            title: t('OAuth 2.0 Apps'),
+            url: '/oauth2-clients',
+            icon: KeyRound,
+          },
         ],
       },
       {
@@ -150,11 +155,6 @@ export function useSidebarData(): SidebarData {
             title: t('Redemption Codes'),
             url: '/redemption-codes',
             icon: Ticket,
-          },
-          {
-            title: t('OAuth 2.0 Clients'),
-            url: '/oauth2-clients',
-            icon: KeyRound,
           },
           {
             title: t('Subscriptions'),

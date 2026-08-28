@@ -16,13 +16,26 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useState } from 'react'
+import { Check, Copy, KeyRound, Pencil, Plus, Trash2 } from 'lucide-react'
+import { useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { copyToClipboard } from '@/lib/copy-to-clipboard'
 
 import {
   createOAuthClient,
@@ -32,32 +45,75 @@ import {
   type OAuthClient,
   type OAuthClientForm,
 } from './api'
+import { OAuth2Docs } from './oauth2-docs'
 
-function OAuthClientFormDialog({
-  client,
-  onClose,
-}: {
+function CopyField(props: { label: string; value: string }) {
+  const { t } = useTranslation()
+  const [copied, setCopied] = useState(false)
+
+  const handleCopy = async () => {
+    const ok = await copyToClipboard(props.value)
+    if (ok) {
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1500)
+    }
+  }
+
+  return (
+    <div className='space-y-1'>
+      <Label className='text-muted-foreground text-xs'>{props.label}</Label>
+      <div className='flex items-center gap-1.5'>
+        <code className='bg-muted/50 min-w-0 flex-1 truncate rounded-md border px-2 py-1.5 font-mono text-xs'>
+          {props.value}
+        </code>
+        <Button
+          variant='ghost'
+          size='icon-sm'
+          onClick={handleCopy}
+          aria-label={t('Copy')}
+        >
+          {copied ? (
+            <Check className='size-3.5 text-emerald-500' />
+          ) : (
+            <Copy className='size-3.5' />
+          )}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+function ClientFormDialog(props: {
   client: OAuthClient | null
+  open: boolean
   onClose: () => void
 }) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const [form, setForm] = useState<OAuthClientForm>({
-    name: client?.name ?? '',
-    redirect_uris: client?.redirect_uris ?? '',
-    scopes: client?.scopes ?? '',
+    name: props.client?.name ?? '',
+    redirect_uris: props.client?.redirect_uris ?? '',
+    scopes: props.client?.scopes ?? '',
   })
-  const [secret, setSecret] = useState<string | null>(null)
+  const [created, setCreated] = useState<{
+    client_id: string
+    client_secret: string
+  } | null>(null)
 
   const mutation = useMutation({
     mutationFn: (data: OAuthClientForm) =>
-      client
-        ? updateOAuthClient(client.id, data)
+      props.client
+        ? updateOAuthClient(props.client.id, data)
         : createOAuthClient(data),
     onSuccess: (res) => {
       if (res.success) {
-        if (!client && res.data?.client_secret) {
-          setSecret(res.data.client_secret)
+        if (!props.client && res.data?.client_secret && res.data?.client_id) {
+          setCreated({
+            client_id: res.data.client_id,
+            client_secret: res.data.client_secret,
+          })
+        } else {
+          props.onClose()
         }
         toast.success(t('Saved'))
         queryClient.invalidateQueries({ queryKey: ['oauth2-clients'] })
@@ -70,77 +126,183 @@ function OAuthClientFormDialog({
     },
   })
 
+  const handleClose = () => {
+    setCreated(null)
+    props.onClose()
+  }
+
   return (
-    <div className='space-y-4 rounded-lg border p-4'>
-      <div className='space-y-1'>
-        <label className='text-sm font-medium'>{t('Client Name')}</label>
-        <Input
-          value={form.name}
-          onChange={(e) => setForm({ ...form, name: e.target.value })}
-          placeholder='My App'
-        />
-      </div>
-      <div className='space-y-1'>
-        <label className='text-sm font-medium'>{t('Redirect URIs')}</label>
-        <textarea
-          className='w-full rounded-md border p-2 text-sm'
-          rows={3}
-          value={form.redirect_uris}
-          onChange={(e) =>
-            setForm({ ...form, redirect_uris: e.target.value })
+    <Dialog open={props.open} onOpenChange={(open) => !open && handleClose()}>
+      <DialogContent className='sm:max-w-md'>
+        <DialogHeader>
+          <DialogTitle>
+            {props.client ? t('Edit App') : t('Create App')}
+          </DialogTitle>
+          <DialogDescription>
+            {t(
+              'Register an OAuth 2.0 application to obtain access tokens on behalf of users.'
+            )}
+          </DialogDescription>
+        </DialogHeader>
+
+        {created ? (
+          <div className='space-y-3'>
+            <CopyField label={t('Client ID')} value={created.client_id} />
+            <div className='space-y-1'>
+              <Label className='text-muted-foreground text-xs'>
+                {t('Client Secret')}
+              </Label>
+              <code className='bg-muted/50 block break-all rounded-md border px-2 py-1.5 font-mono text-xs'>
+                {created.client_secret}
+              </code>
+              <p className='text-destructive text-xs'>
+                {t('The client secret is shown only once. Store it securely.')}
+              </p>
+            </div>
+            <DialogFooter>
+              <Button onClick={handleClose}>{t('Done')}</Button>
+            </DialogFooter>
+          </div>
+        ) : (
+          <>
+            <div className='space-y-4'>
+              <div className='space-y-1.5'>
+                <Label>{t('App Name')}</Label>
+                <Input
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  placeholder={t('My App')}
+                />
+              </div>
+              <div className='space-y-1.5'>
+                <Label>{t('Redirect URIs')}</Label>
+                <textarea
+                  className='border-input focus-visible:border-ring focus-visible:ring-ring/50 flex min-h-16 w-full rounded-md border bg-transparent p-2 text-sm shadow-xs transition-colors focus-visible:ring-[3px] focus-visible:outline-1 disabled:cursor-not-allowed disabled:opacity-50'
+                  rows={3}
+                  value={form.redirect_uris}
+                  onChange={(e) =>
+                    setForm({ ...form, redirect_uris: e.target.value })
+                  }
+                  placeholder='https://app.example.com/callback'
+                />
+                <p className='text-muted-foreground text-xs'>
+                  {t('One or more redirect URIs, separated by newlines.')}
+                </p>
+              </div>
+              <div className='space-y-1.5'>
+                <Label>{t('Scopes')}</Label>
+                <Input
+                  value={form.scopes}
+                  onChange={(e) => setForm({ ...form, scopes: e.target.value })}
+                  placeholder='profile'
+                />
+                <p className='text-muted-foreground text-xs'>
+                  {t(
+                    'Space-separated list of allowed scopes. Leave empty to allow any scope.'
+                  )}
+                </p>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant='outline' onClick={handleClose}>
+                {t('Cancel')}
+              </Button>
+              <Button
+                disabled={mutation.isPending || !form.name.trim()}
+                onClick={() => mutation.mutate(form)}
+              >
+                {t('Save Client')}
+              </Button>
+            </DialogFooter>
+          </>
+        )}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// The create response returns client_id/client_secret once; the dialog shows
+// both via the `created` state until the user closes it.
+
+function ClientCard(props: {
+  client: OAuthClient
+  onEdit: () => void
+  onDelete: () => void
+}) {
+  const { t } = useTranslation()
+  const [copied, setCopied] = useState(false)
+
+  const handleCopyId = async () => {
+    const ok = await copyToClipboard(props.client.client_id)
+    if (ok) {
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1500)
+    }
+  }
+
+  return (
+    <div className='group hover:border-border hover:bg-muted/20 flex flex-col gap-3 rounded-xl border p-4 transition-colors'>
+      <div className='flex items-start justify-between gap-2'>
+        <div className='flex min-w-0 items-center gap-2.5'>
+          <div className='bg-primary/10 text-primary flex size-9 shrink-0 items-center justify-center rounded-lg'>
+            <KeyRound className='size-4' />
+          </div>
+          <div className='min-w-0'>
+            <p className='truncate text-sm font-medium'>{props.client.name}</p>
+            <p className='text-muted-foreground text-xs'>
+              {new Date(props.client.created_at).toLocaleDateString()}
+            </p>
+          </div>
+        </div>
+        <Badge
+          variant='outline'
+          className={
+            props.client.enabled
+              ? 'border-emerald-500/30 text-emerald-600 dark:text-emerald-400'
+              : 'text-muted-foreground'
           }
-          placeholder={'https://app.example.com/callback'}
-        />
-        <p className='text-muted-foreground text-xs'>
-          {t(
-            'One or more redirect URIs, separated by newlines.'
-          )}
-        </p>
-      </div>
-      <div className='space-y-1'>
-        <label className='text-sm font-medium'>{t('Scopes')}</label>
-        <Input
-          value={form.scopes}
-          onChange={(e) => setForm({ ...form, scopes: e.target.value })}
-          placeholder=''
-        />
-        <p className='text-muted-foreground text-xs'>
-          {t(
-            'Space-separated list of allowed scopes. Leave empty to allow any scope.'
-          )}
-        </p>
-      </div>
-
-      {secret ? (
-        <div className='space-y-1'>
-          <label className='text-sm font-medium'>{t('Client Secret')}</label>
-          <code className='block break-all rounded bg-muted p-2 text-xs'>
-            {secret}
-          </code>
-          <p className='text-destructive text-xs'>
-            {t('The client secret is shown only once. Store it securely.')}
-          </p>
-        </div>
-      ) : null}
-
-      {client ? (
-        <div className='space-y-1'>
-          <label className='text-sm font-medium'>{t('Client ID')}</label>
-          <code className='block break-all rounded bg-muted p-2 text-xs'>
-            {client.client_id}
-          </code>
-        </div>
-      ) : null}
-
-      <div className='flex justify-end gap-2'>
-        <Button variant='outline' onClick={onClose}>
-          {t('Cancel')}
-        </Button>
-        <Button
-          disabled={mutation.isPending || !form.name}
-          onClick={() => mutation.mutate(form)}
         >
-          {t('Save Client')}
+          {props.client.enabled ? t('Enabled') : t('Disabled')}
+        </Badge>
+      </div>
+
+      <button
+        type='button'
+        onClick={handleCopyId}
+        className='bg-muted/40 hover:bg-muted flex items-center gap-1.5 rounded-md border px-2 py-1.5 text-left transition-colors'
+        aria-label={t('Copy')}
+      >
+        <span className='text-muted-foreground shrink-0 text-[11px]'>
+          {t('Client ID')}
+        </span>
+        <code className='min-w-0 flex-1 truncate font-mono text-xs'>
+          {props.client.client_id}
+        </code>
+        {copied ? (
+          <Check className='text-emerald-500 size-3.5 shrink-0' />
+        ) : (
+          <Copy className='text-muted-foreground size-3.5 shrink-0' />
+        )}
+      </button>
+
+      {props.client.scopes ? (
+        <div className='flex flex-wrap gap-1'>
+          {props.client.scopes.split(/\s+/).filter(Boolean).map((scope) => (
+            <Badge key={scope} variant='secondary' className='text-[11px]'>
+              {scope}
+            </Badge>
+          ))}
+        </div>
+      ) : null}
+
+      <div className='mt-auto flex items-center justify-end gap-1.5 border-t pt-3'>
+        <Button variant='ghost' size='sm' onClick={props.onEdit}>
+          <Pencil className='size-3.5' />
+          {t('Edit')}
+        </Button>
+        <Button variant='ghost' size='sm' onClick={props.onDelete}>
+          <Trash2 className='size-3.5' />
+          {t('Delete')}
         </Button>
       </div>
     </div>
@@ -150,7 +312,8 @@ function OAuthClientFormDialog({
 export function OAuthClientsPage() {
   const { t } = useTranslation()
   const [editing, setEditing] = useState<OAuthClient | null>(null)
-  const [creating, setCreating] = useState(false)
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<OAuthClient | null>(null)
 
   const { data, isLoading } = useQuery({
     queryKey: ['oauth2-clients'],
@@ -170,6 +333,7 @@ export function OAuthClientsPage() {
       } else if (res.message) {
         toast.error(res.message)
       }
+      setDeleteTarget(null)
     },
     onError: (err: unknown) => {
       toast.error(err instanceof Error ? err.message : String(err))
@@ -178,90 +342,134 @@ export function OAuthClientsPage() {
 
   const clients = data ?? []
 
+  const openCreate = () => {
+    setEditing(null)
+    setDialogOpen(true)
+  }
+  const openEdit = (client: OAuthClient) => {
+    setEditing(client)
+    setDialogOpen(true)
+  }
+
+  let appsContent: ReactNode
+  if (isLoading) {
+    appsContent = (
+      <div className='text-muted-foreground py-12 text-center text-sm'>
+        {t('Loading...')}
+      </div>
+    )
+  } else if (clients.length === 0) {
+    appsContent = (
+      <div className='flex flex-col items-center gap-3 rounded-xl border border-dashed py-16'>
+        <div className='bg-muted/50 flex size-12 items-center justify-center rounded-xl'>
+          <KeyRound className='text-muted-foreground size-5' />
+        </div>
+        <div className='text-center'>
+          <p className='text-sm font-medium'>{t('No apps yet')}</p>
+          <p className='text-muted-foreground mt-1 text-xs'>
+            {t('Create your first OAuth 2.0 app to start integrating.')}
+          </p>
+        </div>
+        <Button variant='outline' size='sm' onClick={openCreate}>
+          <Plus className='size-3.5' />
+          {t('Create App')}
+        </Button>
+      </div>
+    )
+  } else {
+    appsContent = (
+      <div className='grid gap-3 sm:grid-cols-2'>
+        {clients.map((client) => (
+          <ClientCard
+            key={client.id}
+            client={client}
+            onEdit={() => openEdit(client)}
+            onDelete={() => setDeleteTarget(client)}
+          />
+        ))}
+      </div>
+    )
+  }
+
   return (
-    <div className='space-y-4'>
-      <div className='flex items-center justify-between'>
+    <div className='mx-auto w-full max-w-5xl space-y-6'>
+      {/* Header */}
+      <div className='flex flex-wrap items-start justify-between gap-3'>
         <div>
-          <h2 className='text-lg font-semibold'>{t('OAuth 2.0 Clients')}</h2>
-          <p className='text-muted-foreground text-sm'>
+          <h1 className='text-xl font-semibold'>{t('OAuth 2.0 Apps')}</h1>
+          <p className='text-muted-foreground mt-1 text-sm'>
             {t(
-              'Register a new OAuth 2.0 client application that can obtain access tokens on behalf of users.'
+              'Connect third-party applications via the standard OAuth 2.0 protocol. First 50 API calls per day are free.'
             )}
           </p>
         </div>
-        <Button onClick={() => { setEditing(null); setCreating(true) }}>
-          {t('Add Client')}
+        <Button onClick={openCreate}>
+          <Plus className='size-4' />
+          {t('Create App')}
         </Button>
       </div>
 
-      {(creating || editing) ? (
-        <OAuthClientFormDialog
-          client={editing}
-          onClose={() => { setCreating(false); setEditing(null) }}
-        />
-      ) : null}
+      <Tabs defaultValue='apps'>
+        <TabsList>
+          <TabsTrigger value='apps'>{t('My Apps')}</TabsTrigger>
+          <TabsTrigger value='docs'>{t('API Docs')}</TabsTrigger>
+        </TabsList>
 
-      {isLoading ? (
-        <p className='text-muted-foreground text-sm'>{t('Loading...')}</p>
-      ) : (
-        <div className='overflow-x-auto rounded-lg border'>
-          <table className='w-full text-sm'>
-            <thead className='bg-muted'>
-              <tr>
-                <th className='p-2 text-left'>{t('Client Name')}</th>
-                <th className='p-2 text-left'>{t('Client ID')}</th>
-                <th className='p-2 text-left'>{t('Scopes')}</th>
-                <th className='p-2 text-left'>{t('Enabled')}</th>
-                <th className='p-2 text-right'>{t('Actions')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {clients.length === 0 ? (
-                <tr>
-                  <td className='p-4 text-center text-muted-foreground' colSpan={5}>
-                    {t('No data')}
-                  </td>
-                </tr>
-              ) : (
-                clients.map((client) => (
-                  <tr key={client.id} className='border-t'>
-                    <td className='p-2'>{client.name}</td>
-                    <td className='p-2'>
-                      <code className='text-xs'>{client.client_id}</code>
-                    </td>
-                    <td className='p-2'>{client.scopes || '—'}</td>
-                    <td className='p-2'>
-                      {client.enabled ? t('Enabled') : t('Disabled')}
-                    </td>
-                    <td className='p-2 text-right'>
-                      <Button
-                        variant='outline'
-                        size='sm'
-                        className='mr-2'
-                        onClick={() => { setCreating(false); setEditing(client) }}
-                      >
-                        {t('Edit')}
-                      </Button>
-                      <Button
-                        variant='destructive'
-                        size='sm'
-                        disabled={deleteMutation.isPending}
-                        onClick={() => {
-                          if (window.confirm(t('Delete Client') + '?')) {
-                            deleteMutation.mutate(client.id)
-                          }
-                        }}
-                      >
-                        {t('Delete')}
-                      </Button>
-                    </td>
-                  </tr>
-                ))
+        <TabsContent value='apps' className='mt-4 space-y-4'>
+          {appsContent}
+        </TabsContent>
+
+        <TabsContent value='docs' className='mt-4'>
+          <div className='rounded-xl border p-5'>
+            <OAuth2Docs />
+          </div>
+        </TabsContent>
+      </Tabs>
+
+      <ClientFormDialog
+        key={editing?.id ?? 'new'}
+        client={editing}
+        open={dialogOpen}
+        onClose={() => {
+          setDialogOpen(false)
+          setEditing(null)
+        }}
+      />
+
+      {/* Delete confirmation */}
+      <Dialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+      >
+        <DialogContent className='sm:max-w-sm'>
+          <DialogHeader>
+            <DialogTitle>{t('Delete App')}</DialogTitle>
+            <DialogDescription>
+              {t(
+                'This will permanently delete the app. Applications using its credentials will stop working.'
               )}
-            </tbody>
-          </table>
-        </div>
-      )}
+            </DialogDescription>
+          </DialogHeader>
+          {deleteTarget ? (
+            <p className='text-sm'>
+              {t('App')}:{' '}
+              <span className='font-medium'>{deleteTarget.name}</span>
+            </p>
+          ) : null}
+          <DialogFooter>
+            <Button variant='outline' onClick={() => setDeleteTarget(null)}>
+              {t('Cancel')}
+            </Button>
+            <Button
+              variant='destructive'
+              disabled={deleteMutation.isPending}
+              onClick={() => deleteTarget && deleteMutation.mutate(deleteTarget.id)}
+            >
+              {t('Delete')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
