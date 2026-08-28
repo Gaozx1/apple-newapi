@@ -102,17 +102,25 @@ export function Hero(props: HeroProps) {
       <div className='mx-auto grid max-w-6xl grid-cols-1 items-start gap-12 lg:grid-cols-12 lg:gap-8'>
         {/* Left Column: Title, description, action buttons and application support */}
         <div className='flex flex-col items-start text-left lg:col-span-6'>
-          {/* Top Pill Badge */}
-          <div
-            className='landing-animate-fade-up mb-5 inline-flex items-center gap-1.5 rounded-full border border-blue-500/20 bg-blue-500/5 px-3 py-1.5 text-[11px] font-medium text-blue-600 opacity-0 shadow-xs dark:border-blue-400/20 dark:bg-blue-400/5 dark:text-blue-400'
+          {/* Top Pill Badge — links to the OAuth 2.0 open platform */}
+          <Link
+            to={props.isAuthenticated ? '/oauth2-clients' : '/sign-up'}
+            className='landing-animate-fade-up group mb-5 inline-flex items-center gap-1.5 rounded-full border border-blue-500/20 bg-blue-500/5 px-3 py-1.5 text-[11px] font-medium text-blue-600 opacity-0 shadow-xs transition-colors hover:border-blue-500/40 hover:bg-blue-500/10 dark:border-blue-400/20 dark:bg-blue-400/5 dark:text-blue-400'
             style={{ animationDelay: '0ms' }}
           >
             <span className='relative flex size-1.5'>
               <span className='absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-400 opacity-75' />
               <span className='relative inline-flex size-1.5 rounded-full bg-blue-500 dark:bg-blue-400' />
             </span>
-            <span>{t('AI Application Infrastructure Foundation')}</span>
-          </div>
+            <span>
+              {t('OAuth 2.0 Open Platform is live')}
+              <span className='text-blue-500/70 dark:text-blue-400/70'>
+                {' '}
+                · {t('First 50 API calls free every day')}
+              </span>
+            </span>
+            <ArrowRight className='size-3 transition-transform duration-200 group-hover:translate-x-0.5' />
+          </Link>
 
           <h1
             className='landing-animate-fade-up text-[clamp(2.25rem,4.5vw,3.25rem)] leading-[1.15] font-bold tracking-tight'
