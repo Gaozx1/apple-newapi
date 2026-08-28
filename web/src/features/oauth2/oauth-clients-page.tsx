@@ -22,6 +22,7 @@ import { useTranslation } from 'react-i18next'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
+import { SectionPageLayout } from '@/components/layout'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -45,7 +46,7 @@ import {
   type OAuthClient,
   type OAuthClientForm,
 } from './api'
-import { OAuth2Docs } from './oauth2-docs'
+import { OAuth2Docs, PricingTiers } from './oauth2-docs'
 
 function CopyField(props: { label: string; value: string }) {
   const { t } = useTranslation()
@@ -392,84 +393,94 @@ export function OAuthClientsPage() {
   }
 
   return (
-    <div className='mx-auto w-full max-w-5xl space-y-6'>
-      {/* Header */}
-      <div className='flex flex-wrap items-start justify-between gap-3'>
-        <div>
-          <h1 className='text-xl font-semibold'>{t('OAuth 2.0 Apps')}</h1>
-          <p className='text-muted-foreground mt-1 text-sm'>
-            {t(
-              'Connect third-party applications via the standard OAuth 2.0 protocol. First 50 API calls per day are free.'
-            )}
-          </p>
-        </div>
-        <Button onClick={openCreate}>
-          <Plus className='size-4' />
+    <SectionPageLayout>
+      <SectionPageLayout.Title>
+        {t('OAuth 2.0 Apps')}
+      </SectionPageLayout.Title>
+      <SectionPageLayout.Actions>
+        <Button size='sm' onClick={openCreate}>
+          <Plus className='size-3.5' />
           {t('Create App')}
         </Button>
-      </div>
-
-      <Tabs defaultValue='apps'>
-        <TabsList>
-          <TabsTrigger value='apps'>{t('My Apps')}</TabsTrigger>
-          <TabsTrigger value='docs'>{t('API Docs')}</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value='apps' className='mt-4 space-y-4'>
-          {appsContent}
-        </TabsContent>
-
-        <TabsContent value='docs' className='mt-4'>
-          <div className='rounded-xl border p-5'>
-            <OAuth2Docs />
+      </SectionPageLayout.Actions>
+      <SectionPageLayout.Content>
+        <div className='mx-auto w-full max-w-5xl space-y-4'>
+          {/* Pricing — always visible at the top of the page */}
+          <div className='space-y-2 rounded-xl border p-4'>
+            <div className='flex flex-wrap items-center justify-between gap-2'>
+              <p className='text-sm font-medium'>{t('Billing')}</p>
+              <p className='text-muted-foreground text-xs'>
+                {t('Per user, resets daily')}
+              </p>
+            </div>
+            <PricingTiers />
           </div>
-        </TabsContent>
-      </Tabs>
 
-      <ClientFormDialog
-        key={editing?.id ?? 'new'}
-        client={editing}
-        open={dialogOpen}
-        onClose={() => {
-          setDialogOpen(false)
-          setEditing(null)
-        }}
-      />
+          <Tabs defaultValue='apps'>
+            <TabsList>
+              <TabsTrigger value='apps'>{t('My Apps')}</TabsTrigger>
+              <TabsTrigger value='docs'>{t('API Docs')}</TabsTrigger>
+            </TabsList>
 
-      {/* Delete confirmation */}
-      <Dialog
-        open={deleteTarget !== null}
-        onOpenChange={(open) => !open && setDeleteTarget(null)}
-      >
-        <DialogContent className='sm:max-w-sm'>
-          <DialogHeader>
-            <DialogTitle>{t('Delete App')}</DialogTitle>
-            <DialogDescription>
-              {t(
-                'This will permanently delete the app. Applications using its credentials will stop working.'
-              )}
-            </DialogDescription>
-          </DialogHeader>
-          {deleteTarget ? (
-            <p className='text-sm'>
-              {t('App')}:{' '}
-              <span className='font-medium'>{deleteTarget.name}</span>
-            </p>
-          ) : null}
-          <DialogFooter>
-            <Button variant='outline' onClick={() => setDeleteTarget(null)}>
-              {t('Cancel')}
-            </Button>
-            <Button
-              variant='destructive'
-              disabled={deleteMutation.isPending}
-              onClick={() => deleteTarget && deleteMutation.mutate(deleteTarget.id)}
-            >
-              {t('Delete')}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
+            <TabsContent value='apps' className='mt-4 space-y-4'>
+              {appsContent}
+            </TabsContent>
+
+            <TabsContent value='docs' className='mt-4'>
+              <div className='rounded-xl border p-5'>
+                <OAuth2Docs />
+              </div>
+            </TabsContent>
+          </Tabs>
+
+          <ClientFormDialog
+            key={editing?.id ?? 'new'}
+            client={editing}
+            open={dialogOpen}
+            onClose={() => {
+              setDialogOpen(false)
+              setEditing(null)
+            }}
+          />
+
+          {/* Delete confirmation */}
+          <Dialog
+            open={deleteTarget !== null}
+            onOpenChange={(open) => !open && setDeleteTarget(null)}
+          >
+            <DialogContent className='sm:max-w-sm'>
+              <DialogHeader>
+                <DialogTitle>{t('Delete App')}</DialogTitle>
+                <DialogDescription>
+                  {t(
+                    'This will permanently delete the app. Applications using its credentials will stop working.'
+                  )}
+                </DialogDescription>
+              </DialogHeader>
+              {deleteTarget ? (
+                <p className='text-sm'>
+                  {t('App')}:{' '}
+                  <span className='font-medium'>{deleteTarget.name}</span>
+                </p>
+              ) : null}
+              <DialogFooter>
+                <Button variant='outline' onClick={() => setDeleteTarget(null)}>
+                  {t('Cancel')}
+                </Button>
+                <Button
+                  variant='destructive'
+                  disabled={deleteMutation.isPending}
+                  onClick={() =>
+                    deleteTarget && deleteMutation.mutate(deleteTarget.id)
+                  }
+                >
+                  {t('Delete')}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </div>
+      </SectionPageLayout.Content>
+    </SectionPageLayout>
   )
 }

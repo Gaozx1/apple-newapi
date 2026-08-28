@@ -26,6 +26,7 @@
     "No apps yet": "还没有应用",
     "Notes": "注意事项",
     "OAuth 2.0 Apps": "OAuth 2.0 应用",
+    "Per user, resets daily": "按用户独立计数，每日重置",
     "Price per call": "单次价格",
     "Redirect the user to the authorization page": "引导用户跳转到授权页面",
     "Register an OAuth 2.0 application to obtain access tokens on behalf of users.": "注册 OAuth 2.0 应用，以代表用户获取访问令牌。",

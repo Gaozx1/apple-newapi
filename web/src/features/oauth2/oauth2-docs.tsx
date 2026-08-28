@@ -68,11 +68,67 @@ const BILLING_TIERS = [
   { range: '201+', price: '$0.003' },
 ]
 
+/**
+ * Compact pricing tier strip, reusable on the apps tab and inside the docs.
+ */
+export function PricingTiers() {
+  const { t } = useTranslation()
+
+  return (
+    <div className='grid grid-cols-2 gap-2 sm:grid-cols-4'>
+      {BILLING_TIERS.map((tier) => (
+        <div
+          key={tier.range}
+          className={`rounded-lg border px-3 py-2 transition-colors ${
+            tier.free
+              ? 'border-emerald-500/30 bg-emerald-500/5'
+              : 'border-border/40 bg-muted/20'
+          }`}
+        >
+          <p className='text-muted-foreground text-[10px] tracking-wider uppercase'>
+            {t('Calls / day')}
+          </p>
+          <p className='mt-0.5 font-mono text-xs font-semibold'>
+            {tier.range}
+          </p>
+          <p
+            className={`mt-0.5 text-xs font-medium ${
+              tier.free
+                ? 'text-emerald-600 dark:text-emerald-400'
+                : 'text-foreground'
+            }`}
+          >
+            {tier.free ? t('Free of charge') : tier.price}
+          </p>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export function OAuth2Docs() {
   const { t } = useTranslation()
 
   return (
     <div className='space-y-8'>
+      {/* Billing — placed first so pricing is visible without scrolling far */}
+      <section className='space-y-3'>
+        <div>
+          <h3 className='text-base font-semibold'>{t('Billing')}</h3>
+          <p className='text-muted-foreground mt-1 text-sm'>
+            {t(
+              'Calls are counted per user per day (reset daily). The first 50 calls are free; beyond that each call is charged to the user wallet by tier.'
+            )}
+          </p>
+        </div>
+        <PricingTiers />
+        <p className='text-muted-foreground text-xs'>
+          {t(
+            'When the wallet balance is insufficient, the API returns HTTP 402 with error "insufficient_quota".'
+          )}
+        </p>
+      </section>
+
       {/* Integration flow */}
       <section className='space-y-4'>
         <div>
@@ -177,56 +233,6 @@ export function OAuth2Docs() {
             />
           </div>
         </div>
-      </section>
-
-      {/* Billing */}
-      <section className='space-y-4'>
-        <div>
-          <h3 className='text-base font-semibold'>{t('Billing')}</h3>
-          <p className='text-muted-foreground mt-1 text-sm'>
-            {t(
-              'Calls are counted per user per day (reset daily). The first 50 calls are free; beyond that each call is charged to the user wallet by tier.'
-            )}
-          </p>
-        </div>
-        <div className='overflow-hidden rounded-lg border'>
-          <table className='w-full text-sm'>
-            <thead className='bg-muted/50'>
-              <tr>
-                <th className='text-muted-foreground p-2.5 text-left text-xs font-medium'>
-                  {t('Daily calls')}
-                </th>
-                <th className='text-muted-foreground p-2.5 text-left text-xs font-medium'>
-                  {t('Price per call')}
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {BILLING_TIERS.map((tier) => (
-                <tr key={tier.range} className='border-t'>
-                  <td className='p-2.5 font-mono text-xs'>{tier.range}</td>
-                  <td className='p-2.5'>
-                    {tier.free ? (
-                      <Badge
-                        variant='outline'
-                        className='border-emerald-500/30 text-emerald-600 dark:text-emerald-400'
-                      >
-                        {t('Free of charge')}
-                      </Badge>
-                    ) : (
-                      <span className='font-medium'>{tier.price}</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <p className='text-muted-foreground text-xs'>
-          {t(
-            'When the wallet balance is insufficient, the API returns HTTP 402 with error "insufficient_quota".'
-          )}
-        </p>
       </section>
 
       {/* Notes */}
