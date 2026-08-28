@@ -136,6 +136,13 @@ func GetAllOAuthClients() ([]*OAuthClient, error) {
 	return clients, err
 }
 
+// GetOAuthClientsByUserId returns all OAuth clients owned by the given user.
+func GetOAuthClientsByUserId(userId int) ([]*OAuthClient, error) {
+	var clients []*OAuthClient
+	err := DB.Where("user_id = ?", userId).Order("id DESC").Find(&clients).Error
+	return clients, err
+}
+
 // UpdateOAuthClient updates a client's mutable fields.
 func UpdateOAuthClient(client *OAuthClient) error {
 	return DB.Save(client).Error
@@ -230,6 +237,52 @@ func GetOAuthAccessTokenByToken(accessToken string) (*OAuthAccessToken, error) {
 // a user's credentials rotate so issued tokens can no longer be used.
 func DeleteOAuthAccessTokensByUser(userId int) error {
 	return DB.Where("user_id = ?", userId).Delete(&OAuthAccessToken{}).Error
+}
+
+// OAuthDailyUsage tracks the number of OAuth2.0 userinfo calls made by a user
+// on a given day. It drives the tiered billing: first 50 calls/day free, then
+// $0.001/call up to 100, $0.002 up to 200, $0.003 beyond.
+type OAuthDailyUsage struct {
+	Id        int64  `json:"id" gorm:"primaryKey"`
+	UserId    int    `json:"user_id" gorm:"index:idx_oauth_usage_user_date,unique;not null"`
+	Date      string `json:"date" gorm:"type:varchar(10);index:idx_oauth_usage_user_date,unique;not null"` // YYYY-MM-DD
+	CallCount int    `json:"call_count" gorm:"default:0"`
+	CreatedAt int64  `json:"created_at" gorm:"autoCreateTime"`
+	UpdatedAt int64  `json:"updated_at" gorm:"autoUpdateTime"`
+}
+
+// GetOAuthDailyUsage returns the usage row for the given user and date,
+// creating one if it does not exist yet.
+func GetOAuthDailyUsage(userId int, date string) (*OAuthDailyUsage, error) {
+	var usage OAuthDailyUsage
+	err := DB.Where("user_id = ? AND date = ?", userId, date).First(&usage).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			usage = OAuthDailyUsage{UserId: userId, Date: date, CallCount: 0}
+			if createErr := DB.Create(&usage).Error; createErr != nil {
+				return nil, createErr
+			}
+			return &usage, nil
+		}
+		return nil, err
+	}
+	return &usage, nil
+}
+
+// IncrementOAuthDailyUsage atomically increments the call count for the given
+// user/date and returns the new count.
+func IncrementOAuthDailyUsage(userId int, date string) (int, error) {
+	usage, err := GetOAuthDailyUsage(userId, date)
+	if err != nil {
+		return 0, err
+	}
+	result := DB.Model(&OAuthDailyUsage{}).
+		Where("id = ?", usage.Id).
+		Update("call_count", gorm.Expr("call_count + ?", 1))
+	if result.Error != nil {
+		return 0, result.Error
+	}
+	return usage.CallCount + 1, nil
 }
 
 // var holding the not-found sentinel for access tokens.

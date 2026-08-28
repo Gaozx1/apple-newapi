@@ -2,6 +2,7 @@ package controller
 
 import (
 	"encoding/base64"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/i18n"
+	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 
 	"github.com/gin-gonic/gin"
@@ -198,6 +200,10 @@ func issueAccessToken(c *gin.Context, client *model.OAuthClient, userId int, sco
 
 // OAuthUserInfo returns the profile of the user that owns a bearer access
 // token. Mirrors the OpenID Connect userinfo contract.
+//
+// Tiered billing: the first 50 calls per day are free; calls 51-100 cost
+// $0.001, 101-200 cost $0.002, and 201+ cost $0.003. Quota is deducted from
+// the user's wallet each call according to the tier.
 func OAuthUserInfo(c *gin.Context) {
 	token := bearerToken(c)
 	if token == "" {
@@ -218,12 +224,66 @@ func OAuthUserInfo(c *gin.Context) {
 		oauthTokenError(c, http.StatusUnauthorized, "invalid_token", "用户不可用")
 		return
 	}
+
+	// Tiered billing — compute price for this call, deduct quota, then count.
+	today := time.Now().Format("2006-01-02")
+	usage, err := model.GetOAuthDailyUsage(user.Id, today)
+	if err != nil {
+		oauthTokenError(c, http.StatusInternalServerError, "server_error", "获取用量失败")
+		return
+	}
+	price := oauthTierPrice(usage.CallCount) // price in USD for the NEXT call
+	if price > 0 {
+		quota := common.QuotaFromFloat(price * common.QuotaPerUnit)
+		if quota <= 0 {
+			quota = 1
+		}
+		// Check balance first
+		balance, quotaErr := model.GetUserQuota(user.Id, false)
+		if quotaErr != nil {
+			oauthTokenError(c, http.StatusInternalServerError, "server_error", "获取额度失败")
+			return
+		}
+		if balance < quota {
+			oauthTokenError(c, http.StatusPaymentRequired, "insufficient_quota", "额度不足，请充值")
+			return
+		}
+		if err := model.DecreaseUserQuota(user.Id, quota, true); err != nil {
+			logger.LogError(c.Request.Context(), fmt.Sprintf("OAuth2 userinfo 扣费失败 user_id=%d quota=%d error=%q", user.Id, quota, err.Error()))
+			oauthTokenError(c, http.StatusInternalServerError, "server_error", "扣费失败")
+			return
+		}
+	}
+	// Increment the daily counter after billing so the tier is correct.
+	if _, err := model.IncrementOAuthDailyUsage(user.Id, today); err != nil {
+		logger.LogError(c.Request.Context(), fmt.Sprintf("OAuth2 userinfo 用量计数失败 user_id=%d error=%q", user.Id, err.Error()))
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"sub":      user.Id,
 		"username": user.Username,
 		"email":    user.Email,
 		"role":     user.Role,
 	})
+}
+
+// oauthTierPrice returns the USD price for the call at the given 0-indexed
+// call count (i.e. the count BEFORE this call). Tier boundaries:
+//   0-49  → free ($0)
+//  50-99  → $0.001
+// 100-199 → $0.002
+// 200+    → $0.003
+func oauthTierPrice(callCount int) float64 {
+	switch {
+	case callCount < 50:
+		return 0
+	case callCount < 100:
+		return 0.001
+	case callCount < 200:
+		return 0.002
+	default:
+		return 0.003
+	}
 }
 
 // ----------------------------------------------------------------------------
@@ -408,4 +468,115 @@ button{padding:8px 18px;border:0;border-radius:8px;cursor:pointer}
 func htmlEscape(s string) string {
 	r := strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;", `"`, "&quot;", "'", "&#39;")
 	return r.Replace(s)
+}
+
+// ----------------------------------------------------------------------------
+// User-level OAuth2.0 client management
+// ----------------------------------------------------------------------------
+
+// UserOAuthClientList returns the OAuth clients owned by the current user.
+func UserOAuthClientList(c *gin.Context) {
+	userId := c.GetInt("id")
+	clients, err := model.GetOAuthClientsByUserId(userId)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, clients)
+}
+
+// UserOAuthClientCreate registers a new OAuth client for the current user.
+// The client_secret is returned in the response body only once.
+func UserOAuthClientCreate(c *gin.Context) {
+	var req OAuthClientCreateRequest
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	if strings.TrimSpace(req.Name) == "" {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	userId := c.GetInt("id")
+	client := &model.OAuthClient{
+		ClientId:     common.GetRandomString(16),
+		ClientSecret: model.GenerateOAuthClientSecret(),
+		Name:         req.Name,
+		RedirectURIs: req.RedirectURIs,
+		Scopes:       req.Scopes,
+		Enabled:      true,
+		UserId:       userId,
+	}
+	if err := model.CreateOAuthClient(client); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	// Return the client with its secret visible (only time the secret is shown)
+	common.ApiSuccess(c, gin.H{
+		"id":             client.Id,
+		"client_id":      client.ClientId,
+		"client_secret":  client.ClientSecret,
+		"name":           client.Name,
+		"redirect_uris":  client.RedirectURIs,
+		"scopes":         client.Scopes,
+		"enabled":         client.Enabled,
+		"user_id":         client.UserId,
+		"created_at":      client.CreatedAt,
+	})
+}
+
+// UserOAuthClientUpdate updates a client owned by the current user.
+func UserOAuthClientUpdate(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	userId := c.GetInt("id")
+	client, err := model.GetOAuthClientById(id)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if client.UserId != userId {
+		common.ApiErrorMsg(c, "无权修改此客户端")
+		return
+	}
+	var req OAuthClientCreateRequest
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	client.Name = req.Name
+	client.RedirectURIs = req.RedirectURIs
+	client.Scopes = req.Scopes
+	if err := model.UpdateOAuthClient(client); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, client)
+}
+
+// UserOAuthClientDelete removes a client owned by the current user.
+func UserOAuthClientDelete(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	userId := c.GetInt("id")
+	client, err := model.GetOAuthClientById(id)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if client.UserId != userId {
+		common.ApiErrorMsg(c, "无权删除此客户端")
+		return
+	}
+	if err := model.DeleteOAuthClient(id); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, nil)
 }

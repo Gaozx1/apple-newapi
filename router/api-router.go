@@ -136,6 +136,12 @@ func SetApiRouter(router *gin.Engine) {
 				// Custom OAuth bindings
 				selfRoute.GET("/oauth/bindings", controller.GetUserOAuthBindings)
 				selfRoute.DELETE("/oauth/bindings/:provider_id", controller.UnbindCustomOAuth)
+
+				// OAuth 2.0 client management (user-level)
+				selfRoute.GET("/oauth2/clients", controller.UserOAuthClientList)
+				selfRoute.POST("/oauth2/clients", controller.UserOAuthClientCreate)
+				selfRoute.PUT("/oauth2/clients/:id", controller.UserOAuthClientUpdate)
+				selfRoute.DELETE("/oauth2/clients/:id", controller.UserOAuthClientDelete)
 			}
 
 			adminRoute := userRoute.Group("/")
