@@ -26,6 +26,7 @@ import {
   Key,
   KeyRound,
   LayoutDashboard,
+  LifeBuoy,
   ListTodo,
   MessageSquare,
   Radio,
@@ -150,6 +151,11 @@ export function useSidebarData(): SidebarData {
             title: t('Users'),
             url: '/users',
             icon: Users,
+          },
+          {
+            title: t('Ticket Management'),
+            url: '/admin-tickets',
+            icon: LifeBuoy,
           },
           {
             title: t('Redemption Codes'),

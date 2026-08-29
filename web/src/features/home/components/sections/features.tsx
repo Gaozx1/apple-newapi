@@ -160,17 +160,17 @@ export function Features(_props: FeaturesProps) {
       num: '05',
       title: t('OAuth 2.0 Open Platform'),
       desc: t(
-        'Connect third-party apps with the standard OAuth 2.0 flow. Every user gets 50 free API calls per day.'
+        'Connect third-party apps with the standard OAuth 2.0 flow. Every user gets 150 free API calls per day.'
       ),
       span: 'md:col-span-3',
       icon: <KeyRound className='size-4 text-sky-400' />,
       visual: (
         <div className='mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4'>
           {[
-            { range: '1 - 50', price: t('Free of charge'), free: true },
-            { range: '51 - 100', price: '$0.001', free: false },
-            { range: '101 - 200', price: '$0.002', free: false },
-            { range: '201+', price: '$0.003', free: false },
+            { range: '1 - 150', price: t('Free of charge'), free: true },
+            { range: '151 - 200', price: '$0.001', free: false },
+            { range: '201 - 300', price: '$0.002', free: false },
+            { range: '301+', price: '$0.003', free: false },
           ].map((tier) => (
             <div
               key={tier.range}

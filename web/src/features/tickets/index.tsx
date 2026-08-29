@@ -1,3 +1,4 @@
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 /*
 Copyright (C) 2023-2026 QuantumNous
 
@@ -17,7 +18,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useState } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
@@ -30,6 +30,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
 
 import {
+  closeTicket,
   createTicket,
   getMyTickets,
   getTicket,
@@ -42,7 +43,7 @@ function formatTime(ts: number): string {
   return new Date(ts * 1000).toLocaleString()
 }
 
-function StatusBadge({ status }: { status: Ticket['status'] }) {
+export function StatusBadge({ status }: { status: Ticket['status'] }) {
   const { t } = useTranslation()
   const isOpen = status === 'open'
   return (
@@ -52,33 +53,41 @@ function StatusBadge({ status }: { status: Ticket['status'] }) {
   )
 }
 
-function TicketReplyItem({ reply }: { reply: TicketReply }) {
+function TicketReplyItem({
+  reply,
+  userLabel,
+}: {
+  reply: TicketReply
+  userLabel?: string
+}) {
   const { t } = useTranslation()
   return (
     <div
       className={
         reply.is_admin
-          ? 'bg-primary/5 rounded-lg border border-primary/20 p-3'
+          ? 'bg-primary/5 border-primary/20 rounded-lg border p-3'
           : 'bg-muted/40 rounded-lg p-3'
       }
     >
       <div className='text-muted-foreground mb-1 flex items-center justify-between text-xs'>
         <span className='font-medium'>
-          {reply.is_admin ? t('Support') : t('You')}
+          {reply.is_admin ? t('Support') : userLabel || t('You')}
         </span>
         <span>{formatTime(reply.created_at)}</span>
       </div>
-      <p className='whitespace-pre-wrap break-words text-sm'>{reply.content}</p>
+      <p className='text-sm break-words whitespace-pre-wrap'>{reply.content}</p>
     </div>
   )
 }
 
-function TicketDetail({
+export function TicketDetail({
   ticketId,
   onBack,
+  adminView = false,
 }: {
   ticketId: number
   onBack: () => void
+  adminView?: boolean
 }) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
@@ -107,6 +116,25 @@ function TicketDetail({
     },
   })
 
+  const closeMutation = useMutation({
+    mutationFn: () => closeTicket(ticketId),
+    onSuccess: (res) => {
+      if (res.success) {
+        queryClient.invalidateQueries({ queryKey: ['ticket-detail', ticketId] })
+        queryClient.invalidateQueries({ queryKey: ['admin-tickets'] })
+        queryClient.invalidateQueries({ queryKey: ['my-tickets'] })
+        toast.success(t('Ticket closed'))
+      } else {
+        toast.error(res.message || t('Failed to close ticket'))
+      }
+    },
+    onError: (err: unknown) => {
+      const msg =
+        err instanceof Error ? err.message : t('Failed to close ticket')
+      toast.error(msg)
+    },
+  })
+
   if (isLoading) {
     return (
       <div className='space-y-3'>
@@ -125,7 +153,7 @@ function TicketDetail({
           {t('Back')}
         </Button>
         <Card data-card-hover='false'>
-          <CardContent className='p-6 text-center text-muted-foreground'>
+          <CardContent className='text-muted-foreground p-6 text-center'>
             {t('Ticket not found')}
           </CardContent>
         </Card>
@@ -142,7 +170,19 @@ function TicketDetail({
         <Button variant='ghost' onClick={onBack}>
           {t('Back')}
         </Button>
-        <StatusBadge status={ticket.status} />
+        <div className='flex items-center gap-2'>
+          {adminView && !isClosed && (
+            <Button
+              variant='outline'
+              size='sm'
+              onClick={() => closeMutation.mutate()}
+              disabled={closeMutation.isPending}
+            >
+              {t('Close Ticket')}
+            </Button>
+          )}
+          <StatusBadge status={ticket.status} />
+        </div>
       </div>
 
       <Card data-card-hover='false'>
@@ -157,17 +197,19 @@ function TicketDetail({
             <p className='text-muted-foreground mb-1 text-xs'>
               {t('Original message')}
             </p>
-            <p className='whitespace-pre-wrap break-words text-sm'>
+            <p className='text-sm break-words whitespace-pre-wrap'>
               {ticket.content}
             </p>
           </div>
 
           <div className='space-y-2'>
-            {replies
-              .slice(1)
-              .map((reply) => (
-                <TicketReplyItem key={reply.id} reply={reply} />
-              ))}
+            {replies.slice(1).map((reply) => (
+              <TicketReplyItem
+                key={reply.id}
+                reply={reply}
+                userLabel={adminView ? ticket.username : undefined}
+              />
+            ))}
           </div>
 
           {isClosed ? (
@@ -184,7 +226,8 @@ function TicketDetail({
               />
               <Button
                 onClick={() => {
-                  if (replyContent.trim()) replyMutation.mutate(replyContent.trim())
+                  if (replyContent.trim())
+                    replyMutation.mutate(replyContent.trim())
                 }}
                 disabled={replyMutation.isPending || !replyContent.trim()}
                 className='w-full sm:w-auto'
@@ -217,7 +260,8 @@ function NewTicketForm({ onCreated }: { onCreated: (id: number) => void }) {
       }
     },
     onError: (err: unknown) => {
-      const msg = err instanceof Error ? err.message : t('Failed to submit ticket')
+      const msg =
+        err instanceof Error ? err.message : t('Failed to submit ticket')
       toast.error(msg)
     },
   })
@@ -254,7 +298,9 @@ function NewTicketForm({ onCreated }: { onCreated: (id: number) => void }) {
         </div>
         <Button
           onClick={() => createMutation.mutate()}
-          disabled={createMutation.isPending || !subject.trim() || !content.trim()}
+          disabled={
+            createMutation.isPending || !subject.trim() || !content.trim()
+          }
           className='w-full sm:w-auto'
         >
           {createMutation.isPending ? t('Submitting...') : t('Submit ticket')}
@@ -280,7 +326,7 @@ function TicketList({
   if (tickets.length === 0) {
     return (
       <Card data-card-hover='false'>
-        <CardContent className='p-6 text-center text-muted-foreground'>
+        <CardContent className='text-muted-foreground p-6 text-center'>
           {t('No tickets yet')}
         </CardContent>
       </Card>
@@ -323,7 +369,9 @@ export function Tickets() {
   if (selectedId != null) {
     return (
       <SectionPageLayout>
-        <SectionPageLayout.Title>{t('Support Tickets')}</SectionPageLayout.Title>
+        <SectionPageLayout.Title>
+          {t('Support Tickets')}
+        </SectionPageLayout.Title>
         <SectionPageLayout.Content>
           <TicketDetail
             ticketId={selectedId}

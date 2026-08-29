@@ -27,15 +27,15 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { formatQuota } from '@/lib/format'
 
 import { drawLottery, getLotteryStatus } from './api'
-import type { LotteryPrizeType, LotteryRecord } from './types'
+import type { LotteryPrizeType, LotteryRecord, LotteryTier } from './types'
 
-function LotteryPrizeCard({ label, weight }: { label: string; weight: number }) {
+function LotteryPrizeCard({ prize }: { prize: LotteryTier }) {
   const { t } = useTranslation()
   return (
     <div className='bg-muted/40 flex items-center justify-between gap-2 rounded-lg px-3 py-2'>
-      <span className='text-sm font-medium'>{t(label)}</span>
+      <span className='text-sm font-medium'>{t(prize.label)}</span>
       <span className='text-muted-foreground text-sm tabular-nums'>
-        {weight}%
+        {prize.weight}%
       </span>
     </div>
   )
@@ -49,6 +49,7 @@ function LotteryResultBanner({
     prize_label: string
     prize_value: number
     rebate_rate: number
+    prize_plan_id?: number
     cost_quota: number
     free_draw: boolean
   } | null
@@ -81,6 +82,11 @@ function LotteryResultBanner({
         {result.prize_type === 'coupon' && (
           <p className='text-muted-foreground mt-1 text-sm'>
             {t('Recharge rebate coupon')} {result.rebate_rate}%
+          </p>
+        )}
+        {result.prize_type === 'subscription' && (
+          <p className='text-muted-foreground mt-1 text-sm'>
+            {t('You won a subscription')}
           </p>
         )}
         {result.free_draw && (
@@ -135,7 +141,7 @@ export function Lottery() {
         <SectionPageLayout.Title>{t('Lottery')}</SectionPageLayout.Title>
         <SectionPageLayout.Content>
           <Card data-card-hover='false'>
-            <CardContent className='p-6 text-center text-muted-foreground'>
+            <CardContent className='text-muted-foreground p-6 text-center'>
               {t('Lottery is not enabled')}
             </CardContent>
           </Card>
@@ -153,86 +159,91 @@ export function Lottery() {
       <SectionPageLayout.Title>{t('Lottery')}</SectionPageLayout.Title>
       <SectionPageLayout.Content>
         <div className='space-y-4'>
-        <Card data-card-hover='false'>
-          <CardHeader>
-            <CardTitle>{t('Lottery Draw')}</CardTitle>
-          </CardHeader>
-          <CardContent className='space-y-4'>
-            <div className='text-muted-foreground flex flex-wrap gap-x-6 gap-y-1 text-sm'>
-              <span>
-                {t('Free draw chances')}:{' '}
-                <span className='font-semibold text-foreground'>{chances}</span>
-              </span>
-              <span>
-                {t('Draw cost')}:{' '}
-                <span className='font-semibold text-foreground'>
-                  {formatQuota(costQuota)}
+          <Card data-card-hover='false'>
+            <CardHeader>
+              <CardTitle>{t('Lottery Draw')}</CardTitle>
+            </CardHeader>
+            <CardContent className='space-y-4'>
+              <div className='text-muted-foreground flex flex-wrap gap-x-6 gap-y-1 text-sm'>
+                <span>
+                  {t('Free draw chances')}:{' '}
+                  <span className='text-foreground font-semibold'>
+                    {chances}
+                  </span>
                 </span>
-              </span>
-              <span>
-                {t('Unused coupons')}:{' '}
-                <span className='font-semibold text-foreground'>
-                  {status.coupon_count || 0}
+                <span>
+                  {t('Draw cost')}:{' '}
+                  <span className='text-foreground font-semibold'>
+                    {formatQuota(costQuota)}
+                  </span>
                 </span>
-              </span>
-            </div>
-
-            <LotteryResultBanner result={drawMutation.data?.data ?? null} />
-
-            <Button
-              onClick={() => drawMutation.mutate()}
-              disabled={!canDraw || drawMutation.isPending}
-              className='w-full sm:w-auto'
-            >
-              {drawMutation.isPending ? t('Drawing...') : t('Draw')}
-            </Button>
-          </CardContent>
-        </Card>
-
-        <Card data-card-hover='false'>
-          <CardHeader>
-            <CardTitle>{t('Prize Table')}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className='grid grid-cols-1 gap-2 sm:grid-cols-2'>
-              <LotteryPrizeCard label='$10 Balance' weight={0.1} />
-              <LotteryPrizeCard label='$7 Balance' weight={3} />
-              <LotteryPrizeCard label='$5 Balance' weight={5.5} />
-              <LotteryPrizeCard label='$3 Balance' weight={6} />
-              <LotteryPrizeCard label='$1 Balance' weight={6.5} />
-              <LotteryPrizeCard label='5% Recharge Coupon' weight={7} />
-              <LotteryPrizeCard label='3% Recharge Coupon' weight={9.4} />
-              <LotteryPrizeCard label='2% Recharge Coupon' weight={13} />
-              <LotteryPrizeCard label='1% Recharge Coupon' weight={16.5} />
-              <LotteryPrizeCard label='Thanks for participating' weight={33} />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card data-card-hover='false'>
-          <CardHeader>
-            <CardTitle>{t('Recent Draws')}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {status.records.length === 0 ? (
-              <p className='text-muted-foreground text-sm'>{t('No records yet')}</p>
-            ) : (
-              <div className='divide-y'>
-                {status.records.map((record: LotteryRecord) => (
-                  <div
-                    key={record.id}
-                    className='flex items-center justify-between py-2 text-sm'
-                  >
-                    <span className='font-medium'>{t(record.prize_label)}</span>
-                    <span className='text-muted-foreground tabular-nums'>
-                      {new Date(record.created_at * 1000).toLocaleString()}
-                    </span>
-                  </div>
-                ))}
+                <span>
+                  {t('Unused coupons')}:{' '}
+                  <span className='text-foreground font-semibold'>
+                    {status.coupon_count || 0}
+                  </span>
+                </span>
               </div>
-            )}
-          </CardContent>
-        </Card>
+
+              <LotteryResultBanner result={drawMutation.data?.data ?? null} />
+
+              <Button
+                onClick={() => drawMutation.mutate()}
+                disabled={!canDraw || drawMutation.isPending}
+                className='w-full sm:w-auto'
+              >
+                {drawMutation.isPending ? t('Drawing...') : t('Draw')}
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Card data-card-hover='false'>
+            <CardHeader>
+              <CardTitle>{t('Prize Table')}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {(status.prizes || []).length === 0 ? (
+                <p className='text-muted-foreground text-sm'>
+                  {t('No prizes configured')}
+                </p>
+              ) : (
+                <div className='grid grid-cols-1 gap-2 sm:grid-cols-2'>
+                  {status.prizes.map((prize) => (
+                    <LotteryPrizeCard key={prize.label} prize={prize} />
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card data-card-hover='false'>
+            <CardHeader>
+              <CardTitle>{t('Recent Draws')}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {status.records.length === 0 ? (
+                <p className='text-muted-foreground text-sm'>
+                  {t('No records yet')}
+                </p>
+              ) : (
+                <div className='divide-y'>
+                  {status.records.map((record: LotteryRecord) => (
+                    <div
+                      key={record.id}
+                      className='flex items-center justify-between py-2 text-sm'
+                    >
+                      <span className='font-medium'>
+                        {t(record.prize_label)}
+                      </span>
+                      <span className='text-muted-foreground tabular-nums'>
+                        {new Date(record.created_at * 1000).toLocaleString()}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </div>
       </SectionPageLayout.Content>
     </SectionPageLayout>

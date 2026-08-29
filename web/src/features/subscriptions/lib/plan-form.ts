@@ -45,6 +45,13 @@ export function getPlanFormSchema(t: TFunction) {
     allow_wallet_overflow: z.boolean(),
     max_purchase_per_user: z.coerce.number().min(0),
     total_amount: z.coerce.number().min(0),
+    model_quotas: z.array(
+      z.object({
+        model: z.string().min(1, t('Please enter the model name')),
+        quota: z.coerce.number().min(0),
+      })
+    ),
+    usable_groups: z.array(z.string()),
     upgrade_group: z.string().optional(),
     downgrade_group: z.string().optional(),
     stripe_price_id: z.string().optional(),
@@ -70,11 +77,48 @@ export const PLAN_FORM_DEFAULTS: PlanFormValues = {
   allow_wallet_overflow: true,
   max_purchase_per_user: 0,
   total_amount: 0,
+  model_quotas: [],
+  usable_groups: [],
   upgrade_group: '',
   downgrade_group: '',
   stripe_price_id: '',
   creem_product_id: '',
   waffo_pancake_product_id: '',
+}
+
+// parseModelQuotasJson converts the plan's model_quotas JSON string into
+// editable form rows. Entries are returned in the JSON's own order.
+export function parseModelQuotasJson(
+  raw: string | undefined
+): { model: string; quota: number }[] {
+  if (!raw || raw.trim() === '') return []
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>
+    return Object.entries(parsed)
+      .filter(([model, quota]) => model && Number(quota) > 0)
+      .map(([model, quota]) => ({
+        model,
+        quota: quotaUnitsToDollars(Number(quota)),
+      }))
+  } catch {
+    return []
+  }
+}
+
+// serializeModelQuotas converts form rows back into the plan's JSON string.
+// Rows with an empty model name or non-positive quota are dropped; an empty
+// result serializes to '' (single shared pool).
+export function serializeModelQuotas(
+  rows: { model: string; quota: number }[] | undefined
+): string {
+  const quotas: Record<string, number> = {}
+  for (const row of rows || []) {
+    const model = (row.model || '').trim()
+    const quota = parseQuotaFromDollars(Number(row.quota || 0))
+    if (model && quota > 0) quotas[model] = quota
+  }
+  if (Object.keys(quotas).length === 0) return ''
+  return JSON.stringify(quotas)
 }
 
 export function planToFormValues(plan: SubscriptionPlan): PlanFormValues {
@@ -93,6 +137,11 @@ export function planToFormValues(plan: SubscriptionPlan): PlanFormValues {
     allow_wallet_overflow: plan.allow_wallet_overflow !== false,
     max_purchase_per_user: Number(plan.max_purchase_per_user || 0),
     total_amount: quotaUnitsToDollars(Number(plan.total_amount || 0)),
+    model_quotas: parseModelQuotasJson(plan.model_quotas),
+    usable_groups: (plan.usable_groups || '')
+      .split(',')
+      .map((g) => g.trim())
+      .filter(Boolean),
     upgrade_group: plan.upgrade_group || '',
     downgrade_group: plan.downgrade_group || '',
     stripe_price_id: plan.stripe_price_id || '',
@@ -117,6 +166,8 @@ export function formValuesToPlanPayload(values: PlanFormValues): PlanPayload {
       sort_order: Number(values.sort_order || 0),
       max_purchase_per_user: Number(values.max_purchase_per_user || 0),
       total_amount: parseQuotaFromDollars(Number(values.total_amount || 0)),
+      model_quotas: serializeModelQuotas(values.model_quotas),
+      usable_groups: (values.usable_groups || []).join(','),
       upgrade_group: values.upgrade_group || '',
       downgrade_group: values.downgrade_group || '',
     },

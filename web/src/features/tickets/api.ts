@@ -94,6 +94,6 @@ export async function replyTicket(
  * Admin: close a ticket.
  */
 export async function closeTicket(id: number): Promise<ApiResponse> {
-  const res = await api.post(`/api/user/tickets/${id}/close`)
+  const res = await api.post(`/api/user/admin-tickets/${id}/close`)
   return res.data
 }

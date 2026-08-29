@@ -142,6 +142,8 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.POST("/oauth2/clients", controller.UserOAuthClientCreate)
 				selfRoute.PUT("/oauth2/clients/:id", controller.UserOAuthClientUpdate)
 				selfRoute.DELETE("/oauth2/clients/:id", controller.UserOAuthClientDelete)
+				selfRoute.GET("/oauth2/call-plans", controller.UserOAuthCallPlans)
+				selfRoute.POST("/oauth2/call-plans/purchase", controller.UserPurchaseOAuthCallPlan)
 			}
 
 			adminRoute := userRoute.Group("/")
@@ -161,6 +163,15 @@ func SetApiRouter(router *gin.Engine) {
 				adminRoute.DELETE("/:id", controller.DeleteUser)
 				adminRoute.DELETE("/:id/reset_passkey", controller.AdminResetPasskey)
 				adminRoute.POST("/lottery/grant", controller.AdminGrantLotteryChances)
+
+				// Lottery prize table (admin-configurable prizes + probabilities)
+				lotteryPrizeRoute := adminRoute.Group("/lottery/prizes")
+				{
+					lotteryPrizeRoute.GET("", controller.AdminListLotteryPrizes)
+					lotteryPrizeRoute.POST("", controller.AdminCreateLotteryPrize)
+					lotteryPrizeRoute.PUT("/:id", controller.AdminUpdateLotteryPrize)
+					lotteryPrizeRoute.DELETE("/:id", controller.AdminDeleteLotteryPrize)
+				}
 
 				// Ticket (工单) routes — admin (under /admin-tickets to avoid path
 				// conflict with self ticket routes on the same /api/user group)
@@ -421,6 +432,16 @@ func SetApiRouter(router *gin.Engine) {
 			oauthClientRoute.POST("/", controller.OAuthClientCreate)
 			oauthClientRoute.PUT("/:id", controller.OAuthClientUpdate)
 			oauthClientRoute.DELETE("/:id", controller.OAuthClientDelete)
+		}
+
+		// OAuth 2.0 call package plans (admin only)
+		oauthCallPlanRoute := apiRouter.Group("/oauth2/call-plan")
+		oauthCallPlanRoute.Use(middleware.AdminAuth())
+		{
+			oauthCallPlanRoute.GET("/", controller.AdminOAuthCallPlanList)
+			oauthCallPlanRoute.POST("/", controller.AdminOAuthCallPlanCreate)
+			oauthCallPlanRoute.PUT("/:id", controller.AdminOAuthCallPlanUpdate)
+			oauthCallPlanRoute.DELETE("/:id", controller.AdminOAuthCallPlanDelete)
 		}
 	}
 }

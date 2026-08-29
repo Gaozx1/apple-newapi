@@ -81,9 +81,13 @@ type SubscriptionFunding struct {
 	requestId      string
 	userId         int
 	modelName      string
-	amount         int64 // 预扣的订阅额度（subConsume）
+	groupName      string // billing group of the request (for plan usable_groups checks)
+	amount         int64  // 预扣的订阅额度（subConsume）
 	subscriptionId int
 	preConsumed    int64
+	// fundedModel is non-empty when the pre-consume drew from a per-model
+	// quota bucket; settle/refund deltas must then target that bucket.
+	fundedModel string
 	// 以下字段在 PreConsume 成功后填充，供 RelayInfo 同步使用
 	AmountTotal     int64
 	AmountUsedAfter int64
@@ -95,12 +99,13 @@ func (s *SubscriptionFunding) Source() string { return BillingSourceSubscription
 
 func (s *SubscriptionFunding) PreConsume(_ int) error {
 	// amount 参数被忽略，使用内部 s.amount（已在构造时根据 preConsumedQuota 计算）
-	res, err := model.PreConsumeUserSubscription(s.requestId, s.userId, s.modelName, 0, s.amount)
+	res, err := model.PreConsumeUserSubscription(s.requestId, s.userId, s.modelName, 0, s.amount, s.groupName)
 	if err != nil {
 		return err
 	}
 	s.subscriptionId = res.UserSubscriptionId
 	s.preConsumed = res.PreConsumed
+	s.fundedModel = res.ModelName
 	s.AmountTotal = res.AmountTotal
 	s.AmountUsedAfter = res.AmountUsedAfter
 	// 获取订阅计划信息
@@ -111,11 +116,21 @@ func (s *SubscriptionFunding) PreConsume(_ int) error {
 	return nil
 }
 
+// applyDelta routes a settle/refund delta to the funding target chosen at
+// pre-consume time: the per-model bucket when the plan uses model quotas, the
+// shared pool otherwise.
+func (s *SubscriptionFunding) applyDelta(delta int64) error {
+	if s.fundedModel != "" {
+		return model.PostConsumeUserSubscriptionModelDelta(s.subscriptionId, s.fundedModel, delta)
+	}
+	return model.PostConsumeUserSubscriptionDelta(s.subscriptionId, delta)
+}
+
 func (s *SubscriptionFunding) Settle(delta int) error {
 	if delta == 0 {
 		return nil
 	}
-	return model.PostConsumeUserSubscriptionDelta(s.subscriptionId, int64(delta))
+	return s.applyDelta(int64(delta))
 }
 
 func (s *SubscriptionFunding) Refund() error {

@@ -37,7 +37,7 @@ function CodeBlock(props: { code: string }) {
   }
 
   return (
-    <div className='group relative overflow-x-auto rounded-lg border bg-muted/40'>
+    <div className='group bg-muted/40 relative overflow-x-auto rounded-lg border'>
       <Button
         variant='ghost'
         size='icon-sm'
@@ -58,14 +58,14 @@ function CodeBlock(props: { code: string }) {
   )
 }
 
-// Billing tiers: first 50 calls/day free, 51-100 $0.001/call, 101-200
-// $0.002/call, 201+ $0.003/call. Must stay in sync with the backend
+// Billing tiers: first 150 calls/day free, 151-200 $0.001/call, 201-300
+// $0.002/call, 301+ $0.003/call. Must stay in sync with the backend
 // `oauthTierPrice` in controller/oauth2.go.
 const BILLING_TIERS = [
-  { range: '1 - 50', price: '$0', free: true },
-  { range: '51 - 100', price: '$0.001' },
-  { range: '101 - 200', price: '$0.002' },
-  { range: '201+', price: '$0.003' },
+  { range: '1 - 150', price: '$0', free: true },
+  { range: '151 - 200', price: '$0.001' },
+  { range: '201 - 300', price: '$0.002' },
+  { range: '301+', price: '$0.003' },
 ]
 
 /**
@@ -88,9 +88,7 @@ export function PricingTiers() {
           <p className='text-muted-foreground text-[10px] tracking-wider uppercase'>
             {t('Calls / day')}
           </p>
-          <p className='mt-0.5 font-mono text-xs font-semibold'>
-            {tier.range}
-          </p>
+          <p className='mt-0.5 font-mono text-xs font-semibold'>{tier.range}</p>
           <p
             className={`mt-0.5 text-xs font-medium ${
               tier.free
@@ -117,7 +115,7 @@ export function OAuth2Docs() {
           <h3 className='text-base font-semibold'>{t('Billing')}</h3>
           <p className='text-muted-foreground mt-1 text-sm'>
             {t(
-              'Calls are counted per user per day (reset daily). The first 50 calls are free; beyond that each call is charged to the user wallet by tier.'
+              'Calls are counted per user per day (reset daily). The first 150 calls are free; beyond that, prepaid call packages are consumed first, then each call is charged to the user wallet by tier.'
             )}
           </p>
         </div>

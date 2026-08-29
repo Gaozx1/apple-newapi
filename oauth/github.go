@@ -7,7 +7,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -19,6 +22,29 @@ import (
 
 func init() {
 	Register("github", &GitHubProvider{})
+}
+
+// githubHTTPClient returns the HTTP client for GitHub OAuth calls. When the
+// GITHUB_PROXY env is set (e.g. socks5://127.0.0.1:1080), GitHub traffic is
+// routed through it so logins keep working on hosts where github.com is
+// unreachable directly. Other outbound traffic (e.g. AI channel relays) is
+// unaffected because only this client uses the proxy.
+func githubHTTPClient() *http.Client {
+	proxyURL := strings.TrimSpace(os.Getenv("GITHUB_PROXY"))
+	if proxyURL == "" {
+		return &http.Client{Timeout: 20 * time.Second}
+	}
+	pu, err := url.Parse(proxyURL)
+	if err != nil || pu.Scheme == "" || pu.Host == "" {
+		logger.LogWarn(nil, "[OAuth-GitHub] invalid GITHUB_PROXY value, falling back to direct connection")
+		return &http.Client{Timeout: 20 * time.Second}
+	}
+	return &http.Client{
+		Timeout: 20 * time.Second,
+		Transport: &http.Transport{
+			Proxy: http.ProxyURL(pu),
+		},
+	}
 }
 
 // GitHubProvider implements OAuth for GitHub
@@ -70,9 +96,7 @@ func (p *GitHubProvider) ExchangeToken(ctx context.Context, code string, c *gin.
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 
-	client := http.Client{
-		Timeout: 20 * time.Second,
-	}
+	client := githubHTTPClient()
 	res, err := client.Do(req)
 	if err != nil {
 		logger.LogError(ctx, fmt.Sprintf("[OAuth-GitHub] ExchangeToken error: %s", err.Error()))
@@ -112,9 +136,7 @@ func (p *GitHubProvider) GetUserInfo(ctx context.Context, token *OAuthToken) (*O
 	}
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token.AccessToken))
 
-	client := http.Client{
-		Timeout: 20 * time.Second,
-	}
+	client := githubHTTPClient()
 	res, err := client.Do(req)
 	if err != nil {
 		logger.LogError(ctx, fmt.Sprintf("[OAuth-GitHub] GetUserInfo error: %s", err.Error()))

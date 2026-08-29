@@ -39,6 +39,10 @@ export const subscriptionPlanSchema = z.object({
   allow_wallet_overflow: z.boolean().optional().default(true),
   max_purchase_per_user: z.number(),
   total_amount: z.number(),
+  // JSON string {"model": quota} — per-model buckets (empty = shared pool).
+  model_quotas: z.string().optional(),
+  // Comma-separated billing groups where the quota may be used (empty = all).
+  usable_groups: z.string().optional(),
   upgrade_group: z.string().optional(),
   downgrade_group: z.string().optional(),
   stripe_price_id: z.string().optional(),
@@ -73,6 +77,9 @@ export type UserSubscription = z.infer<typeof userSubscriptionSchema>
 
 export interface UserSubscriptionRecord {
   subscription: UserSubscription
+  // Present when the plan defines per-model buckets (keys match model names).
+  model_quotas?: Record<string, number>
+  model_used?: Record<string, number>
 }
 
 // ============================================================================

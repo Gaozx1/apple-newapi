@@ -131,7 +131,7 @@ export function SidebarModulesSection({
       oauth2: {
         title: t('OAuth 2.0 Apps'),
         description: t(
-          'Connect third-party applications via the standard OAuth 2.0 protocol. First 50 API calls per day are free.'
+          'Connect third-party applications via the standard OAuth 2.0 protocol. First 150 API calls per day are free.'
         ),
       },
     },
@@ -151,6 +151,10 @@ export function SidebarModulesSection({
       user: {
         title: t('Users'),
         description: t('Administer user accounts and roles.'),
+      },
+      admin_tickets: {
+        title: t('Ticket Management'),
+        description: t('Review and reply to user support tickets.'),
       },
       setting: {
         title: t('System settings'),

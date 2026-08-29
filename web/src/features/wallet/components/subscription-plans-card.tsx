@@ -235,6 +235,18 @@ export function SubscriptionPlansCard({
     return Math.round((used / total) * 100)
   }
 
+  const getPlanModelBuckets = (raw?: string): [string, number][] => {
+    if (!raw || !raw.trim()) return []
+    try {
+      const parsed = JSON.parse(raw) as Record<string, unknown>
+      return Object.entries(parsed)
+        .filter(([modelName, quota]) => modelName && Number(quota) > 0)
+        .map(([modelName, quota]) => [modelName, Number(quota)])
+    } catch {
+      return []
+    }
+  }
+
   if (loading) {
     return (
       <Card data-card-hover='false' className='gap-0 overflow-hidden py-0'>
@@ -403,6 +415,11 @@ export function SubscriptionPlansCard({
                   const usedAmount = Number(subscription?.amount_used || 0)
                   const remainAmount =
                     totalAmount > 0 ? Math.max(0, totalAmount - usedAmount) : 0
+                  const modelQuotas =
+                    sub.model_quotas && Object.keys(sub.model_quotas).length > 0
+                      ? sub.model_quotas
+                      : null
+                  const modelUsed = sub.model_used || {}
                   const planTitle =
                     planTitleMap.get(subscription?.plan_id) || ''
                   const remainDays = getRemainingDays(sub)
@@ -507,6 +524,49 @@ export function SubscriptionPlansCard({
                       {totalAmount > 0 && isActive && (
                         <Progress value={usagePercent} className='mt-2 h-1.5' />
                       )}
+                      {modelQuotas && Object.keys(modelQuotas).length > 0 && (
+                        <div className='mt-2 space-y-1'>
+                          <div className='text-muted-foreground font-medium'>
+                            {t('Per-model quota buckets')}
+                          </div>
+                          {Object.entries(modelQuotas).map(
+                            ([modelName, quota]) => {
+                              const quotaUsed = Number(
+                                modelUsed?.[modelName] || 0
+                              )
+                              const bucketRemain = Math.max(
+                                0,
+                                quota - quotaUsed
+                              )
+                              const bucketPercent =
+                                quota > 0
+                                  ? Math.min(
+                                      100,
+                                      Math.round((quotaUsed / quota) * 100)
+                                    )
+                                  : 0
+                              return (
+                                <div
+                                  key={modelName}
+                                  className='flex items-center justify-between gap-2'
+                                >
+                                  <span className='min-w-0 truncate font-medium'>
+                                    {modelName}
+                                  </span>
+                                  <span className='text-muted-foreground shrink-0'>
+                                    {formatQuota(quotaUsed)}/
+                                    {formatQuota(quota)} · {t('Remaining')}{' '}
+                                    {formatQuota(bucketRemain)}
+                                    {bucketPercent > 0
+                                      ? ` · ${t('Used')} ${bucketPercent}%`
+                                      : ''}
+                                  </span>
+                                </div>
+                              )
+                            }
+                          )}
+                        </div>
+                      )}
                     </div>
                   )
                 })}
@@ -533,15 +593,36 @@ export function SubscriptionPlansCard({
               const limit = Number(plan.max_purchase_per_user || 0)
               const count = planPurchaseCountMap.get(plan.id) || 0
               const reached = limit > 0 && count >= limit
+              const planBuckets = getPlanModelBuckets(plan.model_quotas)
+              const planGroups = (plan.usable_groups || '')
+                .split(',')
+                .map((g) => g.trim())
+                .filter(Boolean)
+
+              let quotaLine: string
+              if (planBuckets.length > 0) {
+                // With per-model buckets the shared pool is not used for
+                // funding, so show the buckets instead of the total quota.
+                quotaLine = `${t('Per-model quota buckets')}: ${planBuckets
+                  .map(
+                    ([modelName, quota]) => `${modelName} ${formatQuota(quota)}`
+                  )
+                  .join(' / ')}`
+              } else if (totalAmount > 0) {
+                quotaLine = `${t('Total Quota')}: ${formatQuota(totalAmount)}`
+              } else {
+                quotaLine = `${t('Total Quota')}: ${t('Unlimited')}`
+              }
 
               const benefits = [
                 `${t('Validity Period')}: ${formatDuration(plan, t)}`,
                 formatResetPeriod(plan, t) !== t('No Reset')
                   ? `${t('Quota Reset')}: ${formatResetPeriod(plan, t)}`
                   : null,
-                totalAmount > 0
-                  ? `${t('Total Quota')}: ${formatQuota(totalAmount)}`
-                  : `${t('Total Quota')}: ${t('Unlimited')}`,
+                quotaLine,
+                planGroups.length > 0
+                  ? `${t('Usable Groups')}: ${planGroups.join(', ')}`
+                  : null,
                 limit > 0 ? `${t('Purchase Limit')}: ${limit}` : null,
                 plan.upgrade_group
                   ? `${t('Upgrade Group')}: ${plan.upgrade_group}`

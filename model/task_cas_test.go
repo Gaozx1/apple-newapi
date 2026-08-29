@@ -52,7 +52,17 @@ func TestMain(m *testing.M) {
 		&SubscriptionPlan{},
 		&SubscriptionOrder{},
 		&UserSubscription{},
+		&OAuthCallPlan{},
+		&OAuthCallGrant{},
+		&SubscriptionPreConsumeRecord{},
+		&LotteryPrize{},
+		&LotteryRecord{},
+		&LotteryCoupon{},
 		&UserOAuthBinding{},
+		&OAuthClient{},
+		&OAuthAuthorizationCode{},
+		&OAuthAccessToken{},
+		&OAuthDailyUsage{},
 		&PerfMetric{},
 		&SystemInstance{},
 		&SystemTask{},
@@ -85,6 +95,10 @@ func truncateTables(t *testing.T) {
 		DB.Exec("DELETE FROM subscription_orders")
 		DB.Exec("DELETE FROM subscription_plans")
 		DB.Exec("DELETE FROM user_subscriptions")
+		DB.Exec("DELETE FROM subscription_pre_consume_records")
+		DB.Exec("DELETE FROM lottery_prizes")
+		DB.Exec("DELETE FROM lottery_records")
+		DB.Exec("DELETE FROM lottery_coupons")
 		DB.Exec("DELETE FROM perf_metrics")
 		DB.Exec("DELETE FROM system_instances")
 		DB.Exec("DELETE FROM system_task_locks")

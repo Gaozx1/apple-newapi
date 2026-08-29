@@ -148,9 +148,23 @@ func UpdateOAuthClient(client *OAuthClient) error {
 	return DB.Save(client).Error
 }
 
-// DeleteOAuthClient removes a client by id.
+// DeleteOAuthClient removes a client by id and revokes everything it can use:
+// its authorization codes and any access tokens issued through it. Without
+// this cleanup, a deleted client would keep working until its tokens expired.
 func DeleteOAuthClient(id int) error {
-	return DB.Delete(&OAuthClient{}, id).Error
+	return DB.Transaction(func(tx *gorm.DB) error {
+		var client OAuthClient
+		if err := tx.First(&client, id).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("client_id = ?", client.ClientId).Delete(&OAuthAccessToken{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("client_id = ?", client.ClientId).Delete(&OAuthAuthorizationCode{}).Error; err != nil {
+			return err
+		}
+		return tx.Delete(&OAuthClient{}, id).Error
+	})
 }
 
 // CreateOAuthAuthorizationCode creates a one-time authorization code.
@@ -240,8 +254,8 @@ func DeleteOAuthAccessTokensByUser(userId int) error {
 }
 
 // OAuthDailyUsage tracks the number of OAuth2.0 userinfo calls made by a user
-// on a given day. It drives the tiered billing: first 50 calls/day free, then
-// $0.001/call up to 100, $0.002 up to 200, $0.003 beyond.
+// on a given day. It drives the tiered billing: first 150 calls/day free, then
+// $0.001/call up to 200, $0.002 up to 300, $0.003 beyond.
 type OAuthDailyUsage struct {
 	Id        int64  `json:"id" gorm:"primaryKey"`
 	UserId    int    `json:"user_id" gorm:"index:idx_oauth_usage_user_date,unique;not null"`
@@ -251,38 +265,93 @@ type OAuthDailyUsage struct {
 	UpdatedAt int64  `json:"updated_at" gorm:"autoUpdateTime"`
 }
 
-// GetOAuthDailyUsage returns the usage row for the given user and date,
-// creating one if it does not exist yet.
-func GetOAuthDailyUsage(userId int, date string) (*OAuthDailyUsage, error) {
+// lockOrCreateOAuthDailyUsage locks (or creates) the daily usage row so the
+// count/charge critical section is serialized per user per day. Concurrent
+// first-call creations race on the unique index; the loser retries the read.
+func lockOrCreateOAuthDailyUsage(tx *gorm.DB, userId int, date string) (*OAuthDailyUsage, error) {
 	var usage OAuthDailyUsage
-	err := DB.Where("user_id = ? AND date = ?", userId, date).First(&usage).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			usage = OAuthDailyUsage{UserId: userId, Date: date, CallCount: 0}
-			if createErr := DB.Create(&usage).Error; createErr != nil {
-				return nil, createErr
-			}
-			return &usage, nil
-		}
+	err := lockForUpdate(tx).
+		Where("user_id = ? AND date = ?", userId, date).
+		First(&usage).Error
+	if err == nil {
+		return &usage, nil
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, err
+	}
+	usage = OAuthDailyUsage{UserId: userId, Date: date, CallCount: 0}
+	if createErr := tx.Create(&usage).Error; createErr != nil {
+		// Lost the creation race: another transaction inserted the row first.
+		if lockErr := lockForUpdate(tx).
+			Where("user_id = ? AND date = ?", userId, date).
+			First(&usage).Error; lockErr != nil {
+			return nil, createErr
+		}
 	}
 	return &usage, nil
 }
 
-// IncrementOAuthDailyUsage atomically increments the call count for the given
-// user/date and returns the new count.
-func IncrementOAuthDailyUsage(userId int, date string) (int, error) {
-	usage, err := GetOAuthDailyUsage(userId, date)
+// ErrOAuthInsufficientQuota is returned by ChargeOAuthDailyCall when a paid
+// call cannot be funded by prepaid grants or the wallet balance.
+var ErrOAuthInsufficientQuota = errors.New("oauth insufficient quota")
+
+// ChargeOAuthDailyCall atomically counts one userinfo call and charges it.
+//
+// The daily counter row is locked for the whole critical section, so
+// concurrent calls can no longer read the same CallCount and under-pay, and
+// the counter never advances without the charge committing. Payment order:
+// prepaid call packages first, then the wallet via a balance-bounded
+// compare-and-set decrease (the wallet can never go negative). When the
+// wallet cannot cover the tier price, nothing is written and
+// ErrOAuthInsufficientQuota is returned.
+//
+// priceForCall maps the pre-increment call count to the wallet charge in
+// quota units; 0 means the call is free.
+func ChargeOAuthDailyCall(userId int, date string, priceForCall func(callCount int) int) (callCount int, consumedGrant bool, chargedQuota int, err error) {
+	if userId <= 0 {
+		return 0, false, 0, errors.New("invalid userId")
+	}
+	if priceForCall == nil {
+		return 0, false, 0, errors.New("priceForCall is nil")
+	}
+	err = DB.Transaction(func(tx *gorm.DB) error {
+		usage, txErr := lockOrCreateOAuthDailyUsage(tx, userId, date)
+		if txErr != nil {
+			return txErr
+		}
+		callCount = usage.CallCount
+		quota := priceForCall(callCount)
+		if quota > 0 {
+			var grantErr error
+			consumedGrant, grantErr = consumeOAuthCallGrantTx(tx, userId)
+			if grantErr != nil {
+				return grantErr
+			}
+			if !consumedGrant {
+				// Balance-bounded decrease: RowsAffected == 0 means the balance
+				// is below the price — refuse instead of driving it negative.
+				result := tx.Model(&User{}).
+					Where("id = ? AND quota >= ?", userId, quota).
+					Update("quota", gorm.Expr("quota - ?", quota))
+				if result.Error != nil {
+					return result.Error
+				}
+				if result.RowsAffected == 0 {
+					return ErrOAuthInsufficientQuota
+				}
+				chargedQuota = quota
+			}
+		}
+		usage.CallCount = callCount + 1
+		return tx.Save(usage).Error
+	})
 	if err != nil {
-		return 0, err
+		return 0, false, 0, err
 	}
-	result := DB.Model(&OAuthDailyUsage{}).
-		Where("id = ?", usage.Id).
-		Update("call_count", gorm.Expr("call_count + ?", 1))
-	if result.Error != nil {
-		return 0, result.Error
+	if chargedQuota > 0 {
+		go func() { _ = cacheDecrUserQuota(userId, int64(chargedQuota)) }()
 	}
-	return usage.CallCount + 1, nil
+	return callCount, consumedGrant, chargedQuota, nil
 }
 
 // var holding the not-found sentinel for access tokens.

@@ -116,7 +116,7 @@ export function Hero(props: HeroProps) {
               {t('OAuth 2.0 Open Platform is live')}
               <span className='text-blue-500/70 dark:text-blue-400/70'>
                 {' '}
-                · {t('First 50 API calls free every day')}
+                · {t('First 150 API calls free every day')}
               </span>
             </span>
             <ArrowRight className='size-3 transition-transform duration-200 group-hover:translate-x-0.5' />

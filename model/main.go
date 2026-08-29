@@ -290,6 +290,8 @@ func migrateDB() error {
 		&OAuthAuthorizationCode{},
 		&OAuthAccessToken{},
 		&OAuthDailyUsage{},
+		&OAuthCallPlan{},
+		&OAuthCallGrant{},
 		&PerfMetric{},
 		&SystemInstance{},
 		&SystemTask{},
@@ -298,6 +300,7 @@ func migrateDB() error {
 		&AuthzRole{},
 		&LotteryCoupon{},
 		&LotteryRecord{},
+		&LotteryPrize{},
 		&Ticket{},
 		&TicketReply{},
 	)
@@ -318,6 +321,12 @@ func migrateDB() error {
 		if err := DB.AutoMigrate(&SubscriptionPlan{}); err != nil {
 			return err
 		}
+	}
+	if err := seedLotteryPrizes(); err != nil {
+		return err
+	}
+	if err := SeedOAuthCallPlan(); err != nil {
+		return err
 	}
 	return nil
 }
@@ -361,12 +370,15 @@ func migrateDBFast() error {
 		{&OAuthAuthorizationCode{}, "OAuthAuthorizationCode"},
 		{&OAuthAccessToken{}, "OAuthAccessToken"},
 		{&OAuthDailyUsage{}, "OAuthDailyUsage"},
+		{&OAuthCallPlan{}, "OAuthCallPlan"},
+		{&OAuthCallGrant{}, "OAuthCallGrant"},
 		{&PerfMetric{}, "PerfMetric"},
 		{&SystemInstance{}, "SystemInstance"},
 		{&SystemTask{}, "SystemTask"},
 		{&SystemTaskLock{}, "SystemTaskLock"},
 		{&LotteryCoupon{}, "LotteryCoupon"},
 		{&LotteryRecord{}, "LotteryRecord"},
+		{&LotteryPrize{}, "LotteryPrize"},
 		{&Ticket{}, "Ticket"},
 		{&TicketReply{}, "TicketReply"},
 	}

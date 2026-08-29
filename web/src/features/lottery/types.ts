@@ -32,7 +32,7 @@ export interface ApiResponse<T = unknown> {
 /**
  * Lottery prize type returned by the backend.
  */
-export type LotteryPrizeType = 'balance' | 'coupon' | 'thanks'
+export type LotteryPrizeType = 'balance' | 'coupon' | 'subscription' | 'thanks'
 
 /**
  * A single prize tier as presented to the user.
@@ -48,6 +48,23 @@ export interface LotteryTier {
   quota?: number
   /** Coupon rebate percentage (0 for non-coupon) */
   rebate_rate?: number
+  /** Subscription plan id for subscription prizes */
+  plan_id?: number
+}
+
+/**
+ * Admin-editable lottery prize row.
+ */
+export interface LotteryPrize {
+  id: number
+  type: LotteryPrizeType
+  label: string
+  weight: number
+  quota: number
+  rebate_rate: number
+  plan_id: number
+  enabled: boolean
+  sort_order: number
 }
 
 /**
@@ -60,6 +77,7 @@ export interface LotteryRecord {
   prize_label: string
   prize_value: number
   rebate_rate: number
+  prize_plan_id?: number
   cost_quota: number
   created_at: number
 }
@@ -78,6 +96,8 @@ export interface LotteryStatusResponse {
   coupon_count: number
   /** Recent draw history */
   records: LotteryRecord[]
+  /** Active prize table */
+  prizes: LotteryTier[]
 }
 
 /**
@@ -88,6 +108,7 @@ export interface LotteryDrawResult {
   prize_label: string
   prize_value: number
   rebate_rate: number
+  prize_plan_id?: number
   cost_quota: number
   free_draw: boolean
 }

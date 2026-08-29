@@ -24,7 +24,9 @@ import { ChatSettingsSection } from './chat-settings-section'
 import { DashboardSection } from './dashboard-section'
 import { DrawingSettingsSection } from './drawing-settings-section'
 import { FAQSection } from './faq-section'
+import { LotteryPrizesSection } from './lottery-prizes-section'
 import { LotterySettingsSection } from './lottery-settings-section'
+import { OAuth2CallPlansSection } from './oauth2-call-plans-section'
 import { UptimeKumaSection } from './uptime-kuma-section'
 
 /**
@@ -121,12 +123,20 @@ const CONTENT_SECTIONS = [
     id: 'lottery',
     titleKey: 'Lottery',
     build: (settings: ContentSettings) => (
-      <LotterySettingsSection
-        defaultValues={{
-          LotteryEnabled: settings.LotteryEnabled,
-        }}
-      />
+      <>
+        <LotterySettingsSection
+          defaultValues={{
+            LotteryEnabled: settings.LotteryEnabled,
+          }}
+        />
+        <LotteryPrizesSection />
+      </>
     ),
+  },
+  {
+    id: 'oauth2',
+    titleKey: 'OAuth 2.0',
+    build: () => <OAuth2CallPlansSection />,
   },
 ] as const
 

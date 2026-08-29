@@ -717,6 +717,13 @@ func RevokeOtherUserSessions(userID int, currentSID, reason string) (int64, erro
 }
 
 func RevokeAllUserSessions(userID int, reason string) (int64, error) {
+	// Session revocation accompanies every credential-rotation flow (password
+	// change/reset, 2FA changes, passkey reset, demotion, deletion). OAuth 2.0
+	// access tokens are bearer credentials just like sessions, so they must die
+	// with the sessions — otherwise a stolen token outlives the password change.
+	if err := DeleteOAuthAccessTokensByUser(userID); err != nil {
+		return 0, err
+	}
 	return revokeUserSessions(userID, "", reason)
 }
 

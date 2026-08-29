@@ -29,17 +29,17 @@ interface OpenPlatformProps {
 }
 
 // Billing tiers mirror the backend `oauthTierPrice` in controller/oauth2.go:
-// first 50 calls/day free, 51-100 $0.001/call, 101-200 $0.002/call, 201+ $0.003.
+// first 150 calls/day free, 151-200 $0.001/call, 201-300 $0.002/call, 301+ $0.003.
 const TIERS = [
   {
-    range: '1 - 50',
+    range: '1 - 150',
     price: '$0',
     free: true,
     labelKey: 'Free of charge',
   },
-  { range: '51 - 100', price: '$0.001', free: false, labelKey: 'per call' },
-  { range: '101 - 200', price: '$0.002', free: false, labelKey: 'per call' },
-  { range: '201+', price: '$0.003', free: false, labelKey: 'per call' },
+  { range: '151 - 200', price: '$0.001', free: false, labelKey: 'per call' },
+  { range: '201 - 300', price: '$0.002', free: false, labelKey: 'per call' },
+  { range: '301+', price: '$0.003', free: false, labelKey: 'per call' },
 ]
 
 export function OpenPlatform(props: OpenPlatformProps) {

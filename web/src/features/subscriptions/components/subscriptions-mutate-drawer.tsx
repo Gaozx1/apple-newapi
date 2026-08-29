@@ -17,9 +17,17 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
-import { CalendarClock, CreditCard, RefreshCw, Settings2 } from 'lucide-react'
+import {
+  CalendarClock,
+  CreditCard,
+  RefreshCw,
+  Settings2,
+  Boxes,
+  Plus,
+  Trash2,
+} from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { useForm, type Resolver } from 'react-hook-form'
+import { useForm, useFieldArray, type Resolver } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
@@ -62,6 +70,7 @@ import {
 } from '@/components/ui/sheet'
 import { Switch } from '@/components/ui/switch'
 import { getCurrencyDisplay, getCurrencyLabel } from '@/lib/currency'
+import { cn } from '@/lib/utils'
 
 import {
   createPlan,
@@ -110,6 +119,18 @@ export function SubscriptionsMutateDrawer({
     resolver: zodResolver(schema) as unknown as Resolver<PlanFormValues>,
     defaultValues: PLAN_FORM_DEFAULTS,
   })
+  const modelQuotasArray = useFieldArray({
+    control: form.control,
+    name: 'model_quotas',
+  })
+
+  const toggleUsableGroup = (group: string) => {
+    const current = form.getValues('usable_groups') || []
+    const next = current.includes(group)
+      ? current.filter((g) => g !== group)
+      : [...current, group]
+    form.setValue('usable_groups', next, { shouldDirty: true })
+  }
 
   useEffect(() => {
     if (open) {
@@ -579,6 +600,144 @@ export function SubscriptionsMutateDrawer({
                   )}
                 />
               </div>
+            </SideDrawerSection>
+
+            {/* Quota Buckets & Groups */}
+            <SideDrawerSection>
+              <h3 className='flex items-center gap-2 text-sm font-medium'>
+                <IconBadge tone='chart-2' size='xs'>
+                  <Boxes />
+                </IconBadge>
+                {t('Model Quotas & Usable Groups')}
+              </h3>
+
+              <div>
+                <FormLabel>{t('Per-model Quota Buckets')}</FormLabel>
+                <FormDescription>
+                  {t(
+                    'Each model can only consume from its own bucket and buckets are not fungible. When set, the total quota above is not used for funding. Leave empty to use a single shared pool.'
+                  )}
+                </FormDescription>
+                <div className='mt-2 space-y-2'>
+                  {modelQuotasArray.fields.length === 0 && (
+                    <p className='text-muted-foreground text-xs'>
+                      {t('No model buckets configured')}
+                    </p>
+                  )}
+                  {modelQuotasArray.fields.map((field, index) => (
+                    <div key={field.id} className='flex items-center gap-2'>
+                      <FormField
+                        control={form.control}
+                        name={`model_quotas.${index}.model`}
+                        render={({ field: modelField }) => (
+                          <FormItem className='flex-1'>
+                            <FormControl>
+                              <Input
+                                {...modelField}
+                                placeholder={t('Model name, e.g. gpt-4o')}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name={`model_quotas.${index}.quota`}
+                        render={({ field: quotaField }) => (
+                          <FormItem className='flex-1'>
+                            <FormControl>
+                              <Input
+                                {...quotaField}
+                                type='number'
+                                min={0}
+                                step={tokensOnly ? 1 : 0.01}
+                                placeholder={
+                                  tokensOnly
+                                    ? t('Enter quota in tokens')
+                                    : t('Enter quota in {{currency}}', {
+                                        currency: currencyLabel,
+                                      })
+                                }
+                                onChange={(e) =>
+                                  quotaField.onChange(
+                                    Number.parseFloat(e.target.value) || 0
+                                  )
+                                }
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <Button
+                        type='button'
+                        variant='ghost'
+                        size='icon'
+                        className='h-9 w-9 shrink-0'
+                        aria-label={t('Remove')}
+                        onClick={() => modelQuotasArray.remove(index)}
+                      >
+                        <Trash2 className='h-4 w-4' />
+                      </Button>
+                    </div>
+                  ))}
+                  <Button
+                    type='button'
+                    variant='outline'
+                    size='sm'
+                    onClick={() =>
+                      modelQuotasArray.append({ model: '', quota: 0 })
+                    }
+                  >
+                    <Plus className='mr-1 h-3.5 w-3.5' />
+                    {t('Add Model Bucket')}
+                  </Button>
+                </div>
+              </div>
+
+              <FormField
+                control={form.control}
+                name='usable_groups'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Usable Groups')}</FormLabel>
+                    <FormDescription>
+                      {t(
+                        'The subscription quota can only fund requests billed in the selected groups. Leave all unselected to allow every group.'
+                      )}
+                    </FormDescription>
+                    <FormControl>
+                      <div className='flex flex-wrap gap-1.5'>
+                        {groupOptions.length === 0 && (
+                          <p className='text-muted-foreground text-xs'>
+                            {t('No groups available')}
+                          </p>
+                        )}
+                        {groupOptions.map((group) => {
+                          const active = (field.value || []).includes(group)
+                          return (
+                            <button
+                              key={group}
+                              type='button'
+                              onClick={() => toggleUsableGroup(group)}
+                              className={cn(
+                                'rounded-full border px-2.5 py-0.5 text-xs transition-colors',
+                                active
+                                  ? 'bg-primary text-primary-foreground border-primary'
+                                  : 'text-muted-foreground hover:bg-muted/60'
+                              )}
+                            >
+                              {group}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
             </SideDrawerSection>
 
             {/* Duration Settings */}

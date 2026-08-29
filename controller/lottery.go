@@ -2,6 +2,7 @@ package controller
 
 import (
 	"net/http"
+	"strconv"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
@@ -10,11 +11,20 @@ import (
 
 // GetLotteryStatus returns the current user's lottery state: whether the
 // feature is enabled, how many free chances they hold, how many unused coupons
-// they have, and their recent draw history.
+// they have, their recent draw history, and the active prize table.
 func GetLotteryStatus(c *gin.Context) {
 	userId := c.GetInt("id")
 
 	chances, couponCount, records, err := model.GetUserLotteryStatus(userId, 20)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	prizes, err := model.GetEnabledLotteryPrizes()
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
@@ -31,6 +41,7 @@ func GetLotteryStatus(c *gin.Context) {
 			"chances":      chances,
 			"coupon_count": couponCount,
 			"records":      records,
+			"prizes":       prizes,
 		},
 	})
 }
@@ -60,6 +71,7 @@ func DrawLottery(c *gin.Context) {
 			"prize_label":  result.PrizeLabel,
 			"prize_value":  result.PrizeValue,
 			"rebate_rate":  result.RebateRate,
+			"prize_plan_id": result.PrizePlanId,
 			"cost_quota":   result.CostQuota,
 			"free_draw":    result.FreeDraw,
 		},
@@ -100,4 +112,66 @@ func AdminGrantLotteryChances(c *gin.Context) {
 		"success": true,
 		"message": "已发放抽奖次数",
 	})
+}
+
+// AdminListLotteryPrizes returns every lottery prize row for the editor.
+func AdminListLotteryPrizes(c *gin.Context) {
+	prizes, err := model.GetAllLotteryPrizes()
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, prizes)
+}
+
+type AdminUpsertLotteryPrizeRequest struct {
+	Prize model.LotteryPrize `json:"prize"`
+}
+
+// AdminCreateLotteryPrize adds a prize row. Probabilities are relative weights
+// across all enabled prizes.
+func AdminCreateLotteryPrize(c *gin.Context) {
+	var req AdminUpsertLotteryPrizeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiErrorMsg(c, "参数错误")
+		return
+	}
+	req.Prize.Id = 0
+	if err := model.AdminCreateLotteryPrize(&req.Prize); err != nil {
+		common.ApiErrorMsg(c, err.Error())
+		return
+	}
+	common.ApiSuccess(c, req.Prize)
+}
+
+func AdminUpdateLotteryPrize(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	if id <= 0 {
+		common.ApiErrorMsg(c, "无效的ID")
+		return
+	}
+	var req AdminUpsertLotteryPrizeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiErrorMsg(c, "参数错误")
+		return
+	}
+	req.Prize.Id = id
+	if err := model.AdminUpdateLotteryPrize(&req.Prize); err != nil {
+		common.ApiErrorMsg(c, err.Error())
+		return
+	}
+	common.ApiSuccess(c, nil)
+}
+
+func AdminDeleteLotteryPrize(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	if id <= 0 {
+		common.ApiErrorMsg(c, "无效的ID")
+		return
+	}
+	if err := model.AdminDeleteLotteryPrize(id); err != nil {
+		common.ApiErrorMsg(c, err.Error())
+		return
+	}
+	common.ApiSuccess(c, nil)
 }

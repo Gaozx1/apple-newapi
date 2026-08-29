@@ -181,6 +181,17 @@ type SubscriptionPlan struct {
 	// Total quota (amount in quota units, 0 = unlimited)
 	TotalAmount int64 `json:"total_amount" gorm:"type:bigint;not null;default:0"`
 
+	// Per-model quota buckets as JSON {"model": quota}. When non-empty, each
+	// model can only consume from its own bucket (buckets are not fungible) and
+	// TotalAmount is not used for funding. Empty = single shared pool.
+	// NOTE: no SQL default — MySQL 5.7 rejects TEXT defaults; empty string and
+	// NULL both parse as "no buckets".
+	ModelQuotas string `json:"model_quotas" gorm:"type:text"`
+
+	// Comma-separated billing groups where the subscription quota may be used
+	// (empty = all groups allowed).
+	UsableGroups string `json:"usable_groups" gorm:"type:varchar(512);default:''"`
+
 	// Quota reset period for plan
 	QuotaResetPeriod        string `json:"quota_reset_period" gorm:"type:varchar(16);default:'never'"`
 	QuotaResetCustomSeconds int64  `json:"quota_reset_custom_seconds" gorm:"type:bigint;default:0"`
@@ -208,6 +219,56 @@ func (p *SubscriptionPlan) NormalizeDefaults() {
 	if p.AllowWalletOverflow == nil {
 		p.AllowWalletOverflow = common.GetPointer(true)
 	}
+}
+
+// ParseModelQuotas returns the plan's per-model quota buckets. Malformed or
+// negative entries are ignored; an empty map means the plan uses a single
+// shared quota pool.
+func (p *SubscriptionPlan) ParseModelQuotas() map[string]int64 {
+	quotas := make(map[string]int64)
+	if strings.TrimSpace(p.ModelQuotas) == "" {
+		return quotas
+	}
+	var raw map[string]int64
+	if err := common.UnmarshalJsonStr(p.ModelQuotas, &raw); err != nil {
+		return quotas
+	}
+	for modelName, quota := range raw {
+		modelName = strings.TrimSpace(modelName)
+		if modelName == "" || quota <= 0 {
+			continue
+		}
+		quotas[modelName] = quota
+	}
+	return quotas
+}
+
+// ParseUsableGroups returns the plan's allowed billing groups. An empty result
+// means the quota may be used from any group.
+func (p *SubscriptionPlan) ParseUsableGroups() []string {
+	return parseCommaSeparatedGroups(p.UsableGroups)
+}
+
+// parseCommaSeparatedGroups splits a comma-separated group list, trims each
+// entry, drops empties, and deduplicates while keeping order.
+func parseCommaSeparatedGroups(raw string) []string {
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	seen := make(map[string]struct{})
+	groups := make([]string, 0)
+	for _, part := range strings.Split(raw, ",") {
+		group := strings.TrimSpace(part)
+		if group == "" {
+			continue
+		}
+		if _, ok := seen[group]; ok {
+			continue
+		}
+		seen[group] = struct{}{}
+		groups = append(groups, group)
+	}
+	return groups
 }
 
 // Subscription order (payment -> webhook -> create UserSubscription)
@@ -258,6 +319,11 @@ type UserSubscription struct {
 	AmountTotal int64 `json:"amount_total" gorm:"type:bigint;not null;default:0"`
 	AmountUsed  int64 `json:"amount_used" gorm:"type:bigint;not null;default:0"`
 
+	// Per-model used amounts as JSON {"model": used}, only maintained when the
+	// plan defines model_quotas. Empty string and NULL both parse as no usage.
+	// NOTE: no SQL default — MySQL 5.7 rejects TEXT defaults.
+	ModelUsed string `json:"model_used" gorm:"type:text"`
+
 	StartTime int64  `json:"start_time" gorm:"bigint"`
 	EndTime   int64  `json:"end_time" gorm:"bigint;index;index:idx_user_sub_active,priority:3"`
 	Status    string `json:"status" gorm:"type:varchar(32);index;index:idx_user_sub_active,priority:2"` // active/expired/cancelled
@@ -280,6 +346,25 @@ type UserSubscription struct {
 	UpdatedAt int64 `json:"updated_at" gorm:"bigint"`
 }
 
+// ParseModelUsed returns the subscription's per-model used amounts.
+func (s *UserSubscription) ParseModelUsed() map[string]int64 {
+	used := make(map[string]int64)
+	if strings.TrimSpace(s.ModelUsed) == "" {
+		return used
+	}
+	var raw map[string]int64
+	if err := common.UnmarshalJsonStr(s.ModelUsed, &raw); err != nil {
+		return used
+	}
+	for modelName, amount := range raw {
+		if modelName == "" {
+			continue
+		}
+		used[modelName] = amount
+	}
+	return used
+}
+
 func (s *UserSubscription) BeforeCreate(tx *gorm.DB) error {
 	now := common.GetTimestamp()
 	s.CreatedAt = now
@@ -294,6 +379,10 @@ func (s *UserSubscription) BeforeUpdate(tx *gorm.DB) error {
 
 type SubscriptionSummary struct {
 	Subscription *UserSubscription `json:"subscription"`
+	// ModelQuotas mirrors the plan's per-model buckets (empty when the plan
+	// uses a single shared pool); ModelUsed is the matching per-model usage.
+	ModelQuotas map[string]int64 `json:"model_quotas,omitempty"`
+	ModelUsed   map[string]int64 `json:"model_used,omitempty"`
 }
 
 type SubscriptionResetResult struct {
@@ -538,6 +627,7 @@ func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *Subscriptio
 		PlanId:              plan.Id,
 		AmountTotal:         plan.TotalAmount,
 		AmountUsed:          0,
+		ModelUsed:           "{}",
 		StartTime:           now.Unix(),
 		EndTime:             endUnix,
 		Status:              "active",
@@ -916,9 +1006,16 @@ func buildSubscriptionSummaries(subs []UserSubscription) []SubscriptionSummary {
 	result := make([]SubscriptionSummary, 0, len(subs))
 	for _, sub := range subs {
 		subCopy := sub
-		result = append(result, SubscriptionSummary{
+		summary := SubscriptionSummary{
 			Subscription: &subCopy,
-		})
+		}
+		if plan, err := getSubscriptionPlanByIdTx(nil, sub.PlanId); err == nil && plan != nil {
+			if quotas := plan.ParseModelQuotas(); len(quotas) > 0 {
+				summary.ModelQuotas = quotas
+				summary.ModelUsed = subCopy.ParseModelUsed()
+			}
+		}
+		result = append(result, summary)
 	}
 	return result
 }
@@ -1014,6 +1111,7 @@ func resetUserSubscriptionTx(tx *gorm.DB, sub *UserSubscription, plan *Subscript
 		return errors.New("invalid reset args")
 	}
 	sub.AmountUsed = 0
+	sub.ModelUsed = "{}"
 	if advanceResetTime {
 		nextReset := calcNextResetTime(time.Unix(now, 0), plan, sub.EndTime)
 		sub.NextResetTime = nextReset
@@ -1134,6 +1232,9 @@ type SubscriptionPreConsumeResult struct {
 	AmountTotal        int64
 	AmountUsedBefore   int64
 	AmountUsedAfter    int64
+	// ModelName is non-empty when the consume drew from a per-model bucket
+	// (plan has model_quotas); settle/refund must then target that bucket.
+	ModelName string
 }
 
 // ExpireDueSubscriptions marks expired subscriptions and handles group downgrade.
@@ -1242,8 +1343,10 @@ type SubscriptionPreConsumeRecord struct {
 	UserSubscriptionId int    `json:"user_subscription_id" gorm:"index"`
 	PreConsumed        int64  `json:"pre_consumed" gorm:"type:bigint;not null;default:0"`
 	Status             string `json:"status" gorm:"type:varchar(32);index"` // consumed/refunded
-	CreatedAt          int64  `json:"created_at" gorm:"bigint"`
-	UpdatedAt          int64  `json:"updated_at" gorm:"bigint;index"`
+	// ModelName is set when the pre-consume drew from a per-model quota bucket.
+	ModelName string `json:"model_name" gorm:"type:varchar(255);default:''"`
+	CreatedAt int64  `json:"created_at" gorm:"bigint"`
+	UpdatedAt int64  `json:"updated_at" gorm:"bigint;index"`
 }
 
 func (r *SubscriptionPreConsumeRecord) BeforeCreate(tx *gorm.DB) error {
@@ -1289,13 +1392,14 @@ func maybeResetUserSubscriptionWithPlanTx(tx *gorm.DB, sub *UserSubscription, pl
 		return nil
 	}
 	sub.AmountUsed = 0
+	sub.ModelUsed = "{}"
 	sub.LastResetTime = base.Unix()
 	sub.NextResetTime = next
 	return tx.Save(sub).Error
 }
 
 // PreConsumeUserSubscription pre-consumes from any active subscription total quota.
-func PreConsumeUserSubscription(requestId string, userId int, modelName string, quotaType int, amount int64) (*SubscriptionPreConsumeResult, error) {
+func PreConsumeUserSubscription(requestId string, userId int, modelName string, quotaType int, amount int64, groupName string) (*SubscriptionPreConsumeResult, error) {
 	if userId <= 0 {
 		return nil, errors.New("invalid userId")
 	}
@@ -1328,6 +1432,7 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 			returnValue.AmountTotal = sub.AmountTotal
 			returnValue.AmountUsedBefore = sub.AmountUsed
 			returnValue.AmountUsedAfter = sub.AmountUsed
+			returnValue.ModelName = existing.ModelName
 			return nil
 		}
 
@@ -1350,7 +1455,74 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 			if err := maybeResetUserSubscriptionWithPlanTx(tx, &sub, plan, now); err != nil {
 				return err
 			}
+			// Plans may restrict the billing groups where their quota applies.
+			if usableGroups := plan.ParseUsableGroups(); len(usableGroups) > 0 && groupName != "" {
+				allowed := false
+				for _, group := range usableGroups {
+					if group == groupName {
+						allowed = true
+						break
+					}
+				}
+				if !allowed {
+					continue
+				}
+			}
+			modelQuotas := plan.ParseModelQuotas()
 			usedBefore := sub.AmountUsed
+			if len(modelQuotas) > 0 {
+				// Per-model buckets: the model must have its own bucket and the
+				// draw comes out of that bucket only (buckets are not fungible).
+				bucketQuota, ok := modelQuotas[modelName]
+				if !ok || bucketQuota <= 0 {
+					continue
+				}
+				modelUsed := sub.ParseModelUsed()
+				remain := bucketQuota - modelUsed[modelName]
+				if remain < amount {
+					continue
+				}
+				record := &SubscriptionPreConsumeRecord{
+					RequestId:          requestId,
+					UserId:             userId,
+					UserSubscriptionId: sub.Id,
+					PreConsumed:        amount,
+					Status:             "consumed",
+					ModelName:          modelName,
+				}
+				if err := tx.Create(record).Error; err != nil {
+					var dup SubscriptionPreConsumeRecord
+					if err2 := tx.Where("request_id = ?", requestId).First(&dup).Error; err2 == nil {
+						if dup.Status == "refunded" {
+							return errors.New("subscription pre-consume already refunded")
+						}
+						returnValue.UserSubscriptionId = sub.Id
+						returnValue.PreConsumed = dup.PreConsumed
+						returnValue.AmountTotal = sub.AmountTotal
+						returnValue.AmountUsedBefore = sub.AmountUsed
+						returnValue.AmountUsedAfter = sub.AmountUsed
+						returnValue.ModelName = dup.ModelName
+						return nil
+					}
+					return err
+				}
+				modelUsed[modelName] += amount
+				modelUsedJson, err := common.Marshal(modelUsed)
+				if err != nil {
+					return err
+				}
+				sub.ModelUsed = string(modelUsedJson)
+				if err := tx.Save(&sub).Error; err != nil {
+					return err
+				}
+				returnValue.UserSubscriptionId = sub.Id
+				returnValue.PreConsumed = amount
+				returnValue.AmountTotal = sub.AmountTotal
+				returnValue.AmountUsedBefore = usedBefore
+				returnValue.AmountUsedAfter = sub.AmountUsed
+				returnValue.ModelName = modelName
+				return nil
+			}
 			if sub.AmountTotal > 0 {
 				remain := sub.AmountTotal - usedBefore
 				if remain < amount {
@@ -1375,6 +1547,7 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 					returnValue.AmountTotal = sub.AmountTotal
 					returnValue.AmountUsedBefore = sub.AmountUsed
 					returnValue.AmountUsedAfter = sub.AmountUsed
+					returnValue.ModelName = dup.ModelName
 					return nil
 				}
 				return err
@@ -1416,7 +1589,11 @@ func RefundSubscriptionPreConsume(requestId string) error {
 			record.Status = "refunded"
 			return tx.Save(&record).Error
 		}
-		if err := PostConsumeUserSubscriptionDelta(record.UserSubscriptionId, -record.PreConsumed); err != nil {
+		if record.ModelName != "" {
+			if err := postConsumeUserSubscriptionModelDeltaTx(tx, record.UserSubscriptionId, record.ModelName, -record.PreConsumed); err != nil {
+				return err
+			}
+		} else if err := postConsumeUserSubscriptionDeltaTx(tx, record.UserSubscriptionId, -record.PreConsumed); err != nil {
 			return err
 		}
 		record.Status = "refunded"
@@ -1515,20 +1692,80 @@ func PostConsumeUserSubscriptionDelta(userSubscriptionId int, delta int64) error
 		return nil
 	}
 	return DB.Transaction(func(tx *gorm.DB) error {
-		var sub UserSubscription
-		if err := lockForUpdate(tx).
-			Where("id = ?", userSubscriptionId).
-			First(&sub).Error; err != nil {
-			return err
-		}
-		newUsed := sub.AmountUsed + delta
-		if newUsed < 0 {
-			newUsed = 0
-		}
-		if sub.AmountTotal > 0 && newUsed > sub.AmountTotal {
-			return fmt.Errorf("subscription used exceeds total, used=%d total=%d", newUsed, sub.AmountTotal)
-		}
-		sub.AmountUsed = newUsed
-		return tx.Save(&sub).Error
+		return postConsumeUserSubscriptionDeltaTx(tx, userSubscriptionId, delta)
 	})
+}
+
+// postConsumeUserSubscriptionDeltaTx is the transactional core of
+// PostConsumeUserSubscriptionDelta; reuse it inside an existing transaction
+// instead of nesting DB.Transaction calls.
+func postConsumeUserSubscriptionDeltaTx(tx *gorm.DB, userSubscriptionId int, delta int64) error {
+	var sub UserSubscription
+	if err := lockForUpdate(tx).
+		Where("id = ?", userSubscriptionId).
+		First(&sub).Error; err != nil {
+		return err
+	}
+	newUsed := sub.AmountUsed + delta
+	if newUsed < 0 {
+		newUsed = 0
+	}
+	if sub.AmountTotal > 0 && newUsed > sub.AmountTotal {
+		return fmt.Errorf("subscription used exceeds total, used=%d total=%d", newUsed, sub.AmountTotal)
+	}
+	sub.AmountUsed = newUsed
+	return tx.Save(&sub).Error
+}
+
+// PostConsumeUserSubscriptionModelDelta updates a per-model bucket on a
+// subscription (positive consume more, negative refund). The plan must define
+// a bucket for the model; the delta is applied only to that bucket.
+func PostConsumeUserSubscriptionModelDelta(userSubscriptionId int, modelName string, delta int64) error {
+	if userSubscriptionId <= 0 {
+		return errors.New("invalid userSubscriptionId")
+	}
+	if strings.TrimSpace(modelName) == "" {
+		return errors.New("invalid modelName")
+	}
+	if delta == 0 {
+		return nil
+	}
+	return DB.Transaction(func(tx *gorm.DB) error {
+		return postConsumeUserSubscriptionModelDeltaTx(tx, userSubscriptionId, modelName, delta)
+	})
+}
+
+// postConsumeUserSubscriptionModelDeltaTx is the transactional core of
+// PostConsumeUserSubscriptionModelDelta; reuse it inside an existing
+// transaction instead of nesting DB.Transaction calls.
+func postConsumeUserSubscriptionModelDeltaTx(tx *gorm.DB, userSubscriptionId int, modelName string, delta int64) error {
+	var sub UserSubscription
+	if err := lockForUpdate(tx).
+		Where("id = ?", userSubscriptionId).
+		First(&sub).Error; err != nil {
+		return err
+	}
+	plan, err := getSubscriptionPlanByIdTx(tx, sub.PlanId)
+	if err != nil {
+		return err
+	}
+	bucketQuota, ok := plan.ParseModelQuotas()[modelName]
+	if !ok || bucketQuota <= 0 {
+		return fmt.Errorf("subscription plan has no quota bucket for model %s", modelName)
+	}
+	modelUsed := sub.ParseModelUsed()
+	newUsed := modelUsed[modelName] + delta
+	if newUsed < 0 {
+		newUsed = 0
+	}
+	if newUsed > bucketQuota {
+		return fmt.Errorf("subscription model bucket exceeded, model=%s used=%d quota=%d", modelName, newUsed, bucketQuota)
+	}
+	modelUsed[modelName] = newUsed
+	modelUsedJson, err := common.Marshal(modelUsed)
+	if err != nil {
+		return err
+	}
+	sub.ModelUsed = string(modelUsedJson)
+	return tx.Save(&sub).Error
 }

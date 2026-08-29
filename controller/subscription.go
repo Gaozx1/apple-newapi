@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -199,6 +200,10 @@ func AdminCreateSubscriptionPlan(c *gin.Context) {
 			return
 		}
 	}
+	if err := normalizePlanQuotaConfig(&req.Plan); err != nil {
+		common.ApiErrorMsg(c, err.Error())
+		return
+	}
 	req.Plan.QuotaResetPeriod = model.NormalizeResetPeriod(req.Plan.QuotaResetPeriod)
 	if req.Plan.QuotaResetPeriod == model.SubscriptionResetCustom && req.Plan.QuotaResetCustomSeconds <= 0 {
 		common.ApiErrorMsg(c, "自定义重置周期需大于0秒")
@@ -273,6 +278,10 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 			return
 		}
 	}
+	if err := normalizePlanQuotaConfig(&req.Plan); err != nil {
+		common.ApiErrorMsg(c, err.Error())
+		return
+	}
 	req.Plan.QuotaResetPeriod = model.NormalizeResetPeriod(req.Plan.QuotaResetPeriod)
 	if req.Plan.QuotaResetPeriod == model.SubscriptionResetCustom && req.Plan.QuotaResetCustomSeconds <= 0 {
 		common.ApiErrorMsg(c, "自定义重置周期需大于0秒")
@@ -296,6 +305,8 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 			"waffo_pancake_product_id":   req.Plan.WaffoPancakeProductId,
 			"max_purchase_per_user":      req.Plan.MaxPurchasePerUser,
 			"total_amount":               req.Plan.TotalAmount,
+			"model_quotas":               req.Plan.ModelQuotas,
+			"usable_groups":              req.Plan.UsableGroups,
 			"upgrade_group":              req.Plan.UpgradeGroup,
 			"downgrade_group":            req.Plan.DowngradeGroup,
 			"quota_reset_period":         req.Plan.QuotaResetPeriod,
@@ -544,4 +555,50 @@ func AdminDeleteUserSubscription(c *gin.Context) {
 		return
 	}
 	common.ApiSuccess(c, nil)
+}
+
+// normalizePlanQuotaConfig validates and normalizes the plan's per-model quota
+// buckets (model_quotas) and its usable billing groups (usable_groups).
+// model_quotas must be a JSON object of model name -> positive quota; entries
+// with non-positive or overflowing values are rejected. usable_groups is a
+// comma-separated list; every group must exist in the group ratio settings.
+func normalizePlanQuotaConfig(plan *model.SubscriptionPlan) error {
+	trimmed := strings.TrimSpace(plan.ModelQuotas)
+	if trimmed == "" {
+		plan.ModelQuotas = ""
+	} else {
+		var quotas map[string]int64
+		if err := common.UnmarshalJsonStr(trimmed, &quotas); err != nil {
+			return errors.New("模型额度配置必须是 {\"模型名\": 额度} 形式的JSON对象")
+		}
+		normalized := make(map[string]int64)
+		for modelName, quota := range quotas {
+			modelName = strings.TrimSpace(modelName)
+			if modelName == "" {
+				continue
+			}
+			if quota <= 0 {
+				return fmt.Errorf("模型 %s 的额度必须大于0", modelName)
+			}
+			normalized[modelName] = quota
+		}
+		if len(normalized) == 0 {
+			plan.ModelQuotas = ""
+		} else {
+			encoded, err := common.Marshal(normalized)
+			if err != nil {
+				return errors.New("模型额度配置序列化失败")
+			}
+			plan.ModelQuotas = string(encoded)
+		}
+	}
+	groups := plan.ParseUsableGroups()
+	groupRatios := ratio_setting.GetGroupRatioCopy()
+	for _, group := range groups {
+		if _, ok := groupRatios[group]; !ok {
+			return fmt.Errorf("可用分组 %s 不存在", group)
+		}
+	}
+	plan.UsableGroups = strings.Join(groups, ",")
+	return nil
 }

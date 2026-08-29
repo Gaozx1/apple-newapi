@@ -2,7 +2,7 @@ package controller
 
 import (
 	"encoding/base64"
-	"fmt"
+	"errors"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -11,7 +11,6 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/i18n"
-	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 
 	"github.com/gin-gonic/gin"
@@ -202,9 +201,10 @@ func issueAccessToken(c *gin.Context, client *model.OAuthClient, userId int, sco
 // OAuthUserInfo returns the profile of the user that owns a bearer access
 // token. Mirrors the OpenID Connect userinfo contract.
 //
-// Tiered billing: the first 50 calls per day are free; calls 51-100 cost
-// $0.001, 101-200 cost $0.002, and 201+ cost $0.003. Quota is deducted from
-// the user's wallet each call according to the tier.
+// Tiered billing: the first 150 calls per day are free; calls 151-200 cost
+// $0.001, 201-300 cost $0.002, and 301+ cost $0.003. Paid calls first consume
+// prepaid OAuth 2.0 call packages; the wallet is charged per tier only when
+// no prepaid calls remain.
 func OAuthUserInfo(c *gin.Context) {
 	token := bearerToken(c)
 	if token == "" {
@@ -226,39 +226,30 @@ func OAuthUserInfo(c *gin.Context) {
 		return
 	}
 
-	// Tiered billing — compute price for this call, deduct quota, then count.
+	// Tiered billing — the counter and the charge commit in one transaction so
+	// concurrent calls cannot read the same count and under-pay, and the wallet
+	// can never be driven below zero.
 	today := time.Now().Format("2006-01-02")
-	usage, err := model.GetOAuthDailyUsage(user.Id, today)
-	if err != nil {
-		oauthTokenError(c, http.StatusInternalServerError, "server_error", "获取用量失败")
-		return
-	}
-	price := oauthTierPrice(usage.CallCount) // price in USD for the NEXT call
-	if price > 0 {
+	callCount, _, _, err := model.ChargeOAuthDailyCall(user.Id, today, func(n int) int {
+		price := oauthTierPrice(n) // price in USD for the NEXT call
+		if price <= 0 {
+			return 0
+		}
 		quota := common.QuotaFromFloat(price * common.QuotaPerUnit)
 		if quota <= 0 {
 			quota = 1
 		}
-		// Check balance first
-		balance, quotaErr := model.GetUserQuota(user.Id, false)
-		if quotaErr != nil {
-			oauthTokenError(c, http.StatusInternalServerError, "server_error", "获取额度失败")
-			return
-		}
-		if balance < quota {
-			oauthTokenError(c, http.StatusPaymentRequired, "insufficient_quota", "额度不足，请充值")
-			return
-		}
-		if err := model.DecreaseUserQuota(user.Id, quota, true); err != nil {
-			logger.LogError(c.Request.Context(), fmt.Sprintf("OAuth2 userinfo 扣费失败 user_id=%d quota=%d error=%q", user.Id, quota, err.Error()))
-			oauthTokenError(c, http.StatusInternalServerError, "server_error", "扣费失败")
-			return
-		}
+		return quota
+	})
+	if errors.Is(err, model.ErrOAuthInsufficientQuota) {
+		oauthTokenError(c, http.StatusPaymentRequired, "insufficient_quota", "额度不足，请充值")
+		return
 	}
-	// Increment the daily counter after billing so the tier is correct.
-	if _, err := model.IncrementOAuthDailyUsage(user.Id, today); err != nil {
-		logger.LogError(c.Request.Context(), fmt.Sprintf("OAuth2 userinfo 用量计数失败 user_id=%d error=%q", user.Id, err.Error()))
+	if err != nil {
+		oauthTokenError(c, http.StatusInternalServerError, "server_error", "扣费失败")
+		return
 	}
+	_ = callCount
 
 	c.JSON(http.StatusOK, gin.H{
 		"sub":      user.Id,
@@ -270,17 +261,17 @@ func OAuthUserInfo(c *gin.Context) {
 
 // oauthTierPrice returns the USD price for the call at the given 0-indexed
 // call count (i.e. the count BEFORE this call). Tier boundaries:
-//   0-49  → free ($0)
-//  50-99  → $0.001
-// 100-199 → $0.002
-// 200+    → $0.003
+//     0-149 → free ($0)
+//   150-199 → $0.001
+//   200-299 → $0.002
+//     300+  → $0.003
 func oauthTierPrice(callCount int) float64 {
 	switch {
-	case callCount < 50:
+	case callCount < 150:
 		return 0
-	case callCount < 100:
-		return 0.001
 	case callCount < 200:
+		return 0.001
+	case callCount < 300:
 		return 0.002
 	default:
 		return 0.003

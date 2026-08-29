@@ -1,3 +1,4 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 /*
 Copyright (C) 2023-2026 QuantumNous
 
@@ -19,7 +20,6 @@ For commercial licensing, please contact support@quantumnous.com
 import { Check, Copy, KeyRound, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
 import { SectionPageLayout } from '@/components/layout'
@@ -46,6 +46,7 @@ import {
   type OAuthClient,
   type OAuthClientForm,
 } from './api'
+import { CallPackagesCard } from './call-packages-card'
 import { OAuth2Docs, PricingTiers } from './oauth2-docs'
 
 function CopyField(props: { label: string; value: string }) {
@@ -153,7 +154,7 @@ function ClientFormDialog(props: {
               <Label className='text-muted-foreground text-xs'>
                 {t('Client Secret')}
               </Label>
-              <code className='bg-muted/50 block break-all rounded-md border px-2 py-1.5 font-mono text-xs'>
+              <code className='bg-muted/50 block rounded-md border px-2 py-1.5 font-mono text-xs break-all'>
                 {created.client_secret}
               </code>
               <p className='text-destructive text-xs'>
@@ -280,7 +281,7 @@ function ClientCard(props: {
           {props.client.client_id}
         </code>
         {copied ? (
-          <Check className='text-emerald-500 size-3.5 shrink-0' />
+          <Check className='size-3.5 shrink-0 text-emerald-500' />
         ) : (
           <Copy className='text-muted-foreground size-3.5 shrink-0' />
         )}
@@ -288,11 +289,14 @@ function ClientCard(props: {
 
       {props.client.scopes ? (
         <div className='flex flex-wrap gap-1'>
-          {props.client.scopes.split(/\s+/).filter(Boolean).map((scope) => (
-            <Badge key={scope} variant='secondary' className='text-[11px]'>
-              {scope}
-            </Badge>
-          ))}
+          {props.client.scopes
+            .split(/\s+/)
+            .filter(Boolean)
+            .map((scope) => (
+              <Badge key={scope} variant='secondary' className='text-[11px]'>
+                {scope}
+              </Badge>
+            ))}
         </div>
       ) : null}
 
@@ -394,9 +398,7 @@ export function OAuthClientsPage() {
 
   return (
     <SectionPageLayout>
-      <SectionPageLayout.Title>
-        {t('OAuth 2.0 Apps')}
-      </SectionPageLayout.Title>
+      <SectionPageLayout.Title>{t('OAuth 2.0 Apps')}</SectionPageLayout.Title>
       <SectionPageLayout.Actions>
         <Button size='sm' onClick={openCreate}>
           <Plus className='size-3.5' />
@@ -415,6 +417,8 @@ export function OAuthClientsPage() {
             </div>
             <PricingTiers />
           </div>
+
+          <CallPackagesCard />
 
           <Tabs defaultValue='apps'>
             <TabsList>

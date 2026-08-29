@@ -51,3 +51,7 @@ query_redemption.sh
 deploy_rc*.tar.gz
 deploy_rc*.sh
 *.tar.gz
+
+# local deploy artifacts (server credentials / big tarballs)
+deploy_v*.tar.gz
+deploy_remote.py
