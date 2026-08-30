@@ -80,6 +80,7 @@ export const SIDEBAR_MODULES_DEFAULT: SidebarModulesAdminConfig = {
     redemption: true,
     user: true,
     admin_tickets: true,
+    admin_oauth2: true,
     setting: true,
     subscription: true,
   },

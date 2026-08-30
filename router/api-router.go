@@ -422,6 +422,8 @@ func SetApiRouter(router *gin.Engine) {
 		// site root (SetOAuthRouter) because browser navigation carries only
 		// the session cookie. The token/userinfo endpoints stay on /api.
 		apiRouter.POST("/oauth2/token", anonymousRequestBodyLimit, controller.OAuthToken)
+		apiRouter.POST("/oauth2/api-key", anonymousRequestBodyLimit, controller.OAuthApiKey)
+		apiRouter.GET("/oauth2/pricing", controller.OAuthPricing)
 		apiRouter.GET("/oauth2/userinfo", controller.OAuthUserInfo)
 
 		// OAuth 2.0 client management (admin only)
@@ -432,6 +434,7 @@ func SetApiRouter(router *gin.Engine) {
 			oauthClientRoute.POST("/", controller.OAuthClientCreate)
 			oauthClientRoute.PUT("/:id", controller.OAuthClientUpdate)
 			oauthClientRoute.DELETE("/:id", controller.OAuthClientDelete)
+			oauthClientRoute.POST("/:id/review", controller.OAuthClientReview)
 		}
 
 		// OAuth 2.0 call package plans (admin only)

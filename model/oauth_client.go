@@ -16,11 +16,32 @@ type OAuthClient struct {
 	ClientId     string    `json:"client_id" gorm:"type:varchar(64);uniqueIndex;not null"`
 	ClientSecret string    `json:"-" gorm:"type:varchar(128);not null"` // never serialized to JSON
 	Name         string    `json:"name" gorm:"type:varchar(128);not null"`
-	RedirectURIs string    `json:"redirect_uris" gorm:"type:text"`    // newline-separated
-	Scopes       string    `json:"scopes" gorm:"type:varchar(512)"`    // space-separated
-	Enabled      bool      `json:"enabled" gorm:"default:false"`      // set in code, not gorm tag
-	UserId       int       `json:"user_id" gorm:"index"`              // owner (admin who created)
-	CreatedAt    time.Time `json:"created_at" gorm:"autoCreateTime"`
+	RedirectURIs string    `json:"redirect_uris" gorm:"type:text"` // newline-separated
+	Scopes       string    `json:"scopes" gorm:"type:varchar(512)"` // space-separated
+	Enabled      bool      `json:"enabled" gorm:"default:false"`    // set in code, not gorm tag
+	// ReviewStatus gates user-registered clients: pending clients cannot be
+	// authorized until an admin approves them. Rows created before the review
+	// flow (and admin-created clients) default to approved. Changing the
+	// redirect URIs or scopes puts a client back into pending.
+	Status    string    `json:"status" gorm:"type:varchar(16);default:'approved'"`
+	UserId    int       `json:"user_id" gorm:"index"` // owner (admin who created)
+	CreatedAt time.Time `json:"created_at" gorm:"autoCreateTime"`
+}
+
+// OAuth client review statuses.
+const (
+	OAuthClientStatusApproved = "approved"
+	OAuthClientStatusPending  = "pending"
+	OAuthClientStatusRejected = "rejected"
+)
+
+// IsUsable reports whether the client may start authorization flows: an admin
+// has not disabled it AND the review flow has approved it.
+func (c *OAuthClient) IsUsable() bool {
+	if !c.Enabled {
+		return false
+	}
+	return c.Status == "" || c.Status == OAuthClientStatusApproved
 }
 
 // OAuthAuthorizationCode is a short-lived one-time code exchanged for an
@@ -356,3 +377,87 @@ func ChargeOAuthDailyCall(userId int, date string, priceForCall func(callCount i
 
 // var holding the not-found sentinel for access tokens.
 var ErrOAuthAccessTokenNotFound = errors.New("oauth access token not found")
+
+// ErrOAuthApiTokenDisabled is returned by GetOrCreateOAuthApiToken when a
+// matching API token exists but the user disabled it. The user's revocation
+// wins: the caller must not silently issue a fresh token.
+var ErrOAuthApiTokenDisabled = errors.New("oauth api token disabled by user")
+
+// GetOrCreateOAuthApiToken returns an API token (sk-) owned by userId and
+// named `name`, creating it on first use. Tokens issued through this helper
+// never expire and carry no per-token quota limit, so billing falls through
+// to the user's wallet exactly like a dashboard-created unlimited token.
+// group binds the token to one of the user's usable groups ("" keeps the
+// user's own group); when reusing an existing token with a different group
+// it is updated in place so clients can switch groups without deleting.
+// A token the user explicitly disabled is reported as ErrOAuthApiTokenDisabled
+// instead of being silently replaced, so disabling revokes client access.
+func GetOrCreateOAuthApiToken(userId int, name, group string) (*Token, bool, error) {
+	var existing Token
+	err := DB.Where("user_id = ? AND name = ?", userId, name).
+		Order("id DESC").First(&existing).Error
+	if err == nil {
+		if existing.Status == common.TokenStatusEnabled &&
+			(existing.ExpiredTime == -1 || existing.ExpiredTime > time.Now().Unix()) {
+			if group != "" && existing.Group != group {
+				existing.Group = group
+				if err := existing.Update(); err != nil {
+					return nil, false, err
+				}
+			}
+			return &existing, false, nil
+		}
+		return nil, false, ErrOAuthApiTokenDisabled
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, false, err
+	}
+	key, err := common.GenerateKey()
+	if err != nil {
+		return nil, false, err
+	}
+	now := time.Now().Unix()
+	token := &Token{
+		UserId:         userId,
+		Key:            key,
+		Status:         common.TokenStatusEnabled,
+		Name:           name,
+		Group:          group,
+		CreatedTime:    now,
+		AccessedTime:   now,
+		ExpiredTime:    -1,
+		UnlimitedQuota: true,
+	}
+	if err := token.Insert(); err != nil {
+		return nil, false, err
+	}
+	return token, true, nil
+}
+
+// ReviewOAuthClient sets a client's review status (admin action). Rejecting a
+// client also revokes its authorization codes and access tokens, mirroring
+// deletion, so a rejected client stops working immediately.
+func ReviewOAuthClient(id int, status string) error {
+	if status != OAuthClientStatusApproved && status != OAuthClientStatusRejected {
+		return errors.New("无效的审核结果")
+	}
+	return DB.Transaction(func(tx *gorm.DB) error {
+		var client OAuthClient
+		if err := tx.First(&client, id).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&OAuthClient{}).Where("id = ?", id).
+			Update("status", status).Error; err != nil {
+			return err
+		}
+		if status == OAuthClientStatusRejected {
+			if err := tx.Where("client_id = ?", client.ClientId).Delete(&OAuthAccessToken{}).Error; err != nil {
+				return err
+			}
+			if err := tx.Where("client_id = ?", client.ClientId).Delete(&OAuthAuthorizationCode{}).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}

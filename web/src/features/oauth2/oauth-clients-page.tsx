@@ -242,6 +242,18 @@ function ClientCard(props: {
     }
   }
 
+  let statusLabel = props.client.enabled ? t('Enabled') : t('Disabled')
+  let statusClass = props.client.enabled
+    ? 'border-emerald-500/30 text-emerald-600 dark:text-emerald-400'
+    : 'text-muted-foreground'
+  if (props.client.status === 'pending') {
+    statusLabel = t('Pending review')
+    statusClass = 'border-amber-500/40 text-amber-600 dark:text-amber-400'
+  } else if (props.client.status === 'rejected') {
+    statusLabel = t('Rejected')
+    statusClass = 'border-destructive/40 text-destructive'
+  }
+
   return (
     <div className='group hover:border-border hover:bg-muted/20 flex flex-col gap-3 rounded-xl border p-4 transition-colors'>
       <div className='flex items-start justify-between gap-2'>
@@ -256,15 +268,8 @@ function ClientCard(props: {
             </p>
           </div>
         </div>
-        <Badge
-          variant='outline'
-          className={
-            props.client.enabled
-              ? 'border-emerald-500/30 text-emerald-600 dark:text-emerald-400'
-              : 'text-muted-foreground'
-          }
-        >
-          {props.client.enabled ? t('Enabled') : t('Disabled')}
+        <Badge variant='outline' className={statusClass}>
+          {statusLabel}
         </Badge>
       </div>
 

@@ -32,6 +32,7 @@ import {
   Radio,
   ServerCog,
   Settings,
+  ShieldCheck,
   Ticket,
   User,
   Users,
@@ -156,6 +157,11 @@ export function useSidebarData(): SidebarData {
             title: t('Ticket Management'),
             url: '/admin-tickets',
             icon: LifeBuoy,
+          },
+          {
+            title: t('OAuth 2.0 Client Review'),
+            url: '/admin-oauth2',
+            icon: ShieldCheck,
           },
           {
             title: t('Redemption Codes'),

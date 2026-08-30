@@ -27,6 +27,8 @@ export interface OAuthClient {
   redirect_uris: string
   scopes: string
   enabled: boolean
+  /** Review status: approved | pending | rejected (user-registered clients) */
+  status?: string
   user_id: number
   created_at: string
 }
@@ -141,5 +143,31 @@ export async function adminDeleteOAuthCallPlan(
   id: number
 ): Promise<ApiResponse> {
   const res = await api.delete(`/api/oauth2/call-plan/${id}`)
+  return res.data
+}
+
+// ============================================================================
+// Admin: OAuth client review (user-registered clients need approval)
+// ============================================================================
+
+/**
+ * Admin: list every registered OAuth client (all owners).
+ */
+export async function adminListAllOAuthClients(): Promise<
+  ApiResponse<OAuthClient[]>
+> {
+  const res = await api.get('/api/oauth2/client/')
+  return res.data
+}
+
+/**
+ * Admin: approve or reject a client (status: 'approved' | 'rejected').
+ * Rejecting also revokes the client's codes and access tokens.
+ */
+export async function adminReviewOAuthClient(
+  id: number,
+  status: 'approved' | 'rejected'
+): Promise<ApiResponse> {
+  const res = await api.post(`/api/oauth2/client/${id}/review`, { status })
   return res.data
 }

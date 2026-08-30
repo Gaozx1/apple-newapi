@@ -156,6 +156,10 @@ export function SidebarModulesSection({
         title: t('Ticket Management'),
         description: t('Review and reply to user support tickets.'),
       },
+      admin_oauth2: {
+        title: t('OAuth 2.0 Client Review'),
+        description: t('Review and approve user-registered OAuth 2.0 clients.'),
+      },
       setting: {
         title: t('System settings'),
         description: t('Advanced platform configuration.'),

@@ -12,6 +12,8 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 
 	"github.com/gin-gonic/gin"
 )
@@ -52,6 +54,15 @@ func OAuthAuthorize(c *gin.Context) {
 	}
 	if !client.Enabled {
 		common.ApiErrorMsg(c, "OAuth 客户端已被禁用")
+		return
+	}
+	if !client.IsUsable() {
+		// Enabled but not approved by the review flow.
+		if client.Status == model.OAuthClientStatusRejected {
+			common.ApiErrorMsg(c, "OAuth 客户端审核未通过")
+		} else {
+			common.ApiErrorMsg(c, "OAuth 客户端等待管理员审核")
+		}
 		return
 	}
 	if redirectURI == "" {
@@ -118,7 +129,7 @@ func OAuthToken(c *gin.Context) {
 	}
 
 	client, err := model.GetOAuthClientByClientId(clientId)
-	if err != nil || !client.Enabled {
+	if err != nil || !client.IsUsable() {
 		oauthTokenError(c, http.StatusUnauthorized, "invalid_client", "客户端验证失败")
 		return
 	}
@@ -497,6 +508,7 @@ func UserOAuthClientCreate(c *gin.Context) {
 		RedirectURIs: req.RedirectURIs,
 		Scopes:       req.Scopes,
 		Enabled:      true,
+		Status:       model.OAuthClientStatusPending,
 		UserId:       userId,
 	}
 	if err := model.CreateOAuthClient(client); err != nil {
@@ -540,8 +552,14 @@ func UserOAuthClientUpdate(c *gin.Context) {
 		return
 	}
 	client.Name = req.Name
+	// Security-relevant field changes (redirect URIs / scopes) put the client
+	// back into the review queue; the user cannot approve their own client.
+	reviewAgain := client.RedirectURIs != req.RedirectURIs || client.Scopes != req.Scopes
 	client.RedirectURIs = req.RedirectURIs
 	client.Scopes = req.Scopes
+	if reviewAgain {
+		client.Status = model.OAuthClientStatusPending
+	}
 	if err := model.UpdateOAuthClient(client); err != nil {
 		common.ApiError(c, err)
 		return
@@ -570,5 +588,153 @@ func UserOAuthClientDelete(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	common.ApiSuccess(c, nil)
+}
+
+// ----------------------------------------------------------------------------
+// OAuth2 → relay API key exchange + pricing for OAuth clients
+// ----------------------------------------------------------------------------
+
+// OAuthApiKey exchanges a valid OAuth2.0 access token for (or reuses) the
+// user's sk- API token, so OAuth clients can call the relay API without the
+// user manually creating a key. Idempotent: the same user+client always maps
+// to the same token named "oauth2-<client_id>".
+func OAuthApiKey(c *gin.Context) {
+	token := bearerToken(c)
+	if token == "" {
+		oauthTokenError(c, http.StatusUnauthorized, "invalid_token", "缺少访问令牌")
+		return
+	}
+	accessToken, err := model.GetOAuthAccessTokenByToken(token)
+	if err != nil {
+		oauthTokenError(c, http.StatusUnauthorized, "invalid_token", "访问令牌无效或已过期")
+		return
+	}
+	if accessToken.ExpiresAt < time.Now().Unix() {
+		oauthTokenError(c, http.StatusUnauthorized, "invalid_token", "访问令牌已过期")
+		return
+	}
+	// Scope contract: empty scopes means unrestricted (legacy clients); a
+	// non-empty grant must explicitly include "api" to obtain relay keys.
+	if accessToken.Scopes != "" {
+		granted := false
+		for _, s := range strings.Fields(accessToken.Scopes) {
+			if s == "api" {
+				granted = true
+				break
+			}
+		}
+		if !granted {
+			oauthTokenError(c, http.StatusForbidden, "insufficient_scope", "授权范围不含 api，请重新授权并请求 api 权限")
+			return
+		}
+	}
+	user, err := model.GetUserById(accessToken.UserId, false)
+	if err != nil || user.Status != common.UserStatusEnabled {
+		oauthTokenError(c, http.StatusUnauthorized, "invalid_token", "用户不可用")
+		return
+	}
+	// Optional group selection: the client lists the user's usable groups
+	// (from GET /api/oauth2/pricing) and sends the chosen one back here.
+	var body struct {
+		Group string `json:"group"`
+	}
+	_ = common.DecodeJson(c.Request.Body, &body) // empty body is fine
+	group := strings.TrimSpace(body.Group)
+	if group != "" && !service.GroupInUserUsableGroups(user.Group, group) {
+		oauthTokenError(c, http.StatusForbidden, "invalid_group", "分组不可用")
+		return
+	}
+	apiToken, created, err := model.GetOrCreateOAuthApiToken(user.Id, "oauth2-"+accessToken.ClientId, group)
+	if err != nil {
+		if errors.Is(err, model.ErrOAuthApiTokenDisabled) {
+			oauthTokenError(c, http.StatusForbidden, "api_key_disabled", "该客户端的 API 密钥已被用户禁用，请先在令牌面板重新启用或删除后重试")
+			return
+		}
+		oauthTokenError(c, http.StatusInternalServerError, "server_error", "签发 API 密钥失败")
+		return
+	}
+	common.ApiSuccess(c, gin.H{
+		"key":     "sk-" + apiToken.Key,
+		"name":    apiToken.Name,
+		"group":   apiToken.Group,
+		"created": created,
+	})
+}
+
+// OAuthPricing returns the pricing table filtered by the authorized user's
+// usable groups, so OAuth clients can always compute the cheapest model even
+// when the site's public pricing page module is disabled.
+func OAuthPricing(c *gin.Context) {
+	token := bearerToken(c)
+	if token == "" {
+		oauthTokenError(c, http.StatusUnauthorized, "invalid_token", "缺少访问令牌")
+		return
+	}
+	accessToken, err := model.GetOAuthAccessTokenByToken(token)
+	if err != nil {
+		oauthTokenError(c, http.StatusUnauthorized, "invalid_token", "访问令牌无效或已过期")
+		return
+	}
+	if accessToken.ExpiresAt < time.Now().Unix() {
+		oauthTokenError(c, http.StatusUnauthorized, "invalid_token", "访问令牌已过期")
+		return
+	}
+	user, err := model.GetUserById(accessToken.UserId, false)
+	if err != nil || user.Status != common.UserStatusEnabled {
+		oauthTokenError(c, http.StatusUnauthorized, "invalid_token", "用户不可用")
+		return
+	}
+
+	pricing := model.GetPricing()
+	usableGroup := service.GetUserUsableGroups(user.Group)
+	groupRatio := map[string]float64{}
+	for s, f := range ratio_setting.GetGroupRatioCopy() {
+		groupRatio[s] = f
+	}
+	for g := range groupRatio {
+		if ratio, ok := ratio_setting.GetGroupGroupRatio(user.Group, g); ok {
+			groupRatio[g] = ratio
+		}
+	}
+	pricing = filterPricingByUsableGroups(pricing, usableGroup)
+
+	c.JSON(http.StatusOK, gin.H{
+		"success":      true,
+		"data":         pricing,
+		"group_ratio":  groupRatio,
+		"usable_group": usableGroup,
+	})
+}
+
+// ----------------------------------------------------------------------------
+// Admin: client review flow (user-registered clients need approval)
+// ----------------------------------------------------------------------------
+
+type OAuthClientReviewRequest struct {
+	Status string `json:"status"` // approved | rejected
+}
+
+// OAuthClientReview approves or rejects a user-registered OAuth client.
+// Rejecting also revokes the client's codes and access tokens.
+func OAuthClientReview(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	var req OAuthClientReviewRequest
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		common.ApiErrorMsg(c, "参数错误")
+		return
+	}
+	if err := model.ReviewOAuthClient(id, req.Status); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	recordManageAudit(c, "oauth_client.review", map[string]interface{}{
+		"client_id_param": id,
+		"review_status":   req.Status,
+	})
 	common.ApiSuccess(c, nil)
 }

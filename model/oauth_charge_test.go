@@ -153,3 +153,114 @@ func TestRevokeAllUserSessionsDeletesOAuthAccessTokens(t *testing.T) {
 	assert.Zero(t, count)
 }
 
+
+func TestGetOrCreateOAuthApiTokenIdempotent(t *testing.T) {
+	truncateTables(t)
+
+	token, created, err := GetOrCreateOAuthApiToken(321, "oauth2-cid_1", "")
+	require.NoError(t, err)
+	assert.True(t, created)
+	assert.NotEmpty(t, token.Key)
+	assert.Equal(t, common.TokenStatusEnabled, token.Status)
+	assert.Equal(t, int64(-1), token.ExpiredTime)
+	assert.True(t, token.UnlimitedQuota)
+
+	// Second exchange must reuse the same token, not mint a new one.
+	again, created, err := GetOrCreateOAuthApiToken(321, "oauth2-cid_1", "")
+	require.NoError(t, err)
+	assert.False(t, created)
+	assert.Equal(t, token.Id, again.Id)
+	assert.Equal(t, token.Key, again.Key)
+}
+
+func TestGetOrCreateOAuthApiTokenDisabledStaysDisabled(t *testing.T) {
+	truncateTables(t)
+
+	token, created, err := GetOrCreateOAuthApiToken(322, "oauth2-cid_2", "")
+	require.NoError(t, err)
+	assert.True(t, created)
+
+	// The user disables the token (explicit revocation): further exchanges
+	// must refuse instead of silently issuing a fresh enabled token.
+	require.NoError(t, DB.Model(&Token{}).Where("id = ?", token.Id).
+		Update("status", common.TokenStatusDisabled).Error)
+	_, _, err = GetOrCreateOAuthApiToken(322, "oauth2-cid_2", "")
+	require.ErrorIs(t, err, ErrOAuthApiTokenDisabled)
+
+	// Deleting the token allows the next exchange to mint a fresh one.
+	require.NoError(t, DB.Where("id = ?", token.Id).Delete(&Token{}).Error)
+	fresh, created, err := GetOrCreateOAuthApiToken(322, "oauth2-cid_2", "")
+	require.NoError(t, err)
+	assert.True(t, created)
+	assert.NotEqual(t, token.Id, fresh.Id)
+}
+
+func TestGetOrCreateOAuthApiTokenGroupSwitchUpdatesInPlace(t *testing.T) {
+	truncateTables(t)
+
+	token, created, err := GetOrCreateOAuthApiToken(323, "oauth2-cid_3", "")
+	require.NoError(t, err)
+	assert.True(t, created)
+	assert.Empty(t, token.Group)
+
+	// Switching the group on reuse updates the same token in place.
+	switched, created, err := GetOrCreateOAuthApiToken(323, "oauth2-cid_3", "vip")
+	require.NoError(t, err)
+	assert.False(t, created)
+	assert.Equal(t, token.Id, switched.Id)
+	assert.Equal(t, token.Key, switched.Key)
+	assert.Equal(t, "vip", switched.Group)
+
+	var fresh Token
+	require.NoError(t, DB.Where("id = ?", token.Id).First(&fresh).Error)
+	assert.Equal(t, "vip", fresh.Group)
+	assert.Equal(t, common.TokenStatusEnabled, fresh.Status)
+
+	// Empty group leaves the bound group untouched.
+	keep, created, err := GetOrCreateOAuthApiToken(323, "oauth2-cid_3", "")
+	require.NoError(t, err)
+	assert.False(t, created)
+	assert.Equal(t, "vip", keep.Group)
+}
+
+func TestReviewOAuthClientGatesUsabilityAndRevokesOnReject(t *testing.T) {
+	truncateTables(t)
+
+	client := &OAuthClient{ClientId: "cid_review", ClientSecret: "s", Name: "app", Enabled: true, UserId: 1, Status: OAuthClientStatusPending}
+	require.NoError(t, DB.Create(client).Error)
+	require.NoError(t, DB.Create(&OAuthAccessToken{AccessToken: "rtok", ClientId: "cid_review", UserId: 1, ExpiresAt: 9999999999}).Error)
+	require.NoError(t, DB.Create(&OAuthAuthorizationCode{Code: "rcode", ClientId: "cid_review", UserId: 1, ExpiresAt: 9999999999}).Error)
+
+	// Pending + enabled must not be usable.
+	var loaded OAuthClient
+	require.NoError(t, DB.First(&loaded, client.Id).Error)
+	assert.False(t, loaded.IsUsable())
+
+	// Approve → usable, tokens kept.
+	require.NoError(t, ReviewOAuthClient(client.Id, OAuthClientStatusApproved))
+	require.NoError(t, DB.First(&loaded, client.Id).Error)
+	assert.True(t, loaded.IsUsable())
+	var toks int64
+	require.NoError(t, DB.Model(&OAuthAccessToken{}).Where("client_id = ?", "cid_review").Count(&toks).Error)
+	assert.Equal(t, int64(1), toks)
+
+	// Disabled + approved still not usable.
+	require.NoError(t, DB.Model(&OAuthClient{}).Where("id = ?", client.Id).Update("enabled", false).Error)
+	require.NoError(t, DB.First(&loaded, client.Id).Error)
+	assert.False(t, loaded.IsUsable())
+	require.NoError(t, DB.Model(&OAuthClient{}).Where("id = ?", client.Id).Update("enabled", true).Error)
+
+	// Reject → not usable and tokens/codes revoked.
+	require.NoError(t, ReviewOAuthClient(client.Id, OAuthClientStatusRejected))
+	require.NoError(t, DB.First(&loaded, client.Id).Error)
+	assert.False(t, loaded.IsUsable())
+	assert.Equal(t, OAuthClientStatusRejected, loaded.Status)
+	require.NoError(t, DB.Model(&OAuthAccessToken{}).Where("client_id = ?", "cid_review").Count(&toks).Error)
+	assert.Zero(t, toks)
+	var codes int64
+	require.NoError(t, DB.Model(&OAuthAuthorizationCode{}).Where("client_id = ?", "cid_review").Count(&codes).Error)
+	assert.Zero(t, codes)
+
+	// Invalid review status refused.
+	require.Error(t, ReviewOAuthClient(client.Id, "bogus"))
+}
