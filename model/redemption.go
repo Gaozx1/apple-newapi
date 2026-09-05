@@ -212,8 +212,8 @@ func Redeem(key string, userId int) (quota int, err error) {
 			}
 			return nil
 		default:
-			// 兑换额度（原有逻辑）
-			if err := tx.Model(&User{}).Where("id = ?", userId).Update("quota", gorm.Expr("quota + ?", redemption.Quota)).Error; err != nil {
+			// 兑换额度：走上游的余额上界校验入账，再叠加邀请返利
+			if err := creditTopUpQuota(tx, userId, redemption.Quota, nil); err != nil {
 				return err
 			}
 			// 邀请充值返利（兑换码充值同样适用）
@@ -240,6 +240,12 @@ func Redeem(key string, userId int) (quota int, err error) {
 }
 
 func (redemption *Redemption) Insert() error {
+	if redemption.Quota <= 0 {
+		return errors.New("redemption quota must be positive")
+	}
+	if err := common.ValidateWalletQuota(redemption.Quota); err != nil {
+		return err
+	}
 	var err error
 	err = DB.Create(redemption).Error
 	return err
@@ -252,6 +258,12 @@ func (redemption *Redemption) SelectUpdate() error {
 
 // Update Make sure your token's fields is completed, because this will update non-zero values
 func (redemption *Redemption) Update() error {
+	if redemption.Quota <= 0 {
+		return errors.New("redemption quota must be positive")
+	}
+	if err := common.ValidateWalletQuota(redemption.Quota); err != nil {
+		return err
+	}
 	var err error
 	err = DB.Model(redemption).Select("name", "status", "quota", "redeemed_time", "expired_time", "type", "value").Updates(redemption).Error
 	return err

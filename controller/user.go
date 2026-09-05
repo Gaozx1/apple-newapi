@@ -28,14 +28,33 @@ import (
 )
 
 type LoginRequest struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
+	Username          string `json:"username"`
+	Password          string `json:"password"`
+	PasswordEncrypted string `json:"password_encrypted"`
+	EncryptionKeyID   string `json:"encryption_key_id"`
 }
 
 var (
 	errUserPasswordUnset    = errors.New("user password is not set")
 	errOriginalPasswordFail = errors.New("original password is incorrect")
 )
+
+func GetPasswordEncryptionKey(c *gin.Context) {
+	if !common.PasswordLoginEncryptionEnabled {
+		common.ApiSuccess(c, gin.H{"enabled": false})
+		return
+	}
+	keyID, publicKey := common.PasswordEncryptionPublicKey()
+	if keyID == "" || publicKey == "" {
+		common.ApiErrorI18n(c, i18n.MsgDatabaseError)
+		return
+	}
+	common.ApiSuccess(c, gin.H{
+		"enabled":    true,
+		"kid":        keyID,
+		"public_key": publicKey,
+	})
+}
 
 func Login(c *gin.Context) {
 	if !common.PasswordLoginEnabled {
@@ -49,7 +68,25 @@ func Login(c *gin.Context) {
 		return
 	}
 	username := loginRequest.Username
+	// Two password-transport schemes coexist:
+	// 1) upstream opt-in envelope: {"password_encrypted", "encryption_key_id"}
+	//    used when PASSWORD_LOGIN_ENCRYPTION_ENABLED is on;
+	// 2) legacy RSA-OAEP sniffing via MaybeDecryptPassword (transparent for
+	//    plaintext clients). Envelope wins when both are supplied.
 	password := common.MaybeDecryptPassword(loginRequest.Password)
+	if common.PasswordLoginEncryptionEnabled {
+		if loginRequest.PasswordEncrypted != "" && loginRequest.EncryptionKeyID != "" {
+			decrypted, decryptErr := common.DecryptPassword(loginRequest.PasswordEncrypted, loginRequest.EncryptionKeyID)
+			if decryptErr != nil {
+				common.ApiErrorI18n(c, i18n.MsgUserUsernameOrPasswordError)
+				return
+			}
+			password = decrypted
+		} else if password == "" {
+			common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+			return
+		}
+	}
 	if username == "" || password == "" {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
@@ -1180,6 +1217,10 @@ func ManageUser(c *gin.Context) {
 				common.ApiErrorI18n(c, i18n.MsgUserQuotaChangeZero)
 				return
 			}
+			if err := common.ValidateWalletQuota(req.Value); err != nil {
+				common.ApiError(c, err)
+				return
+			}
 			if err := model.IncreaseUserQuota(user.Id, req.Value, true); err != nil {
 				common.ApiError(c, err)
 				return
@@ -1200,6 +1241,10 @@ func ManageUser(c *gin.Context) {
 				"quota": logger.LogQuota(req.Value),
 			})
 		case "override":
+			if err := common.ValidateWalletQuota(req.Value); err != nil {
+				common.ApiError(c, err)
+				return
+			}
 			oldQuota := user.Quota
 			if err := model.DB.Model(&model.User{}).Where("id = ?", user.Id).Update("quota", req.Value).Error; err != nil {
 				common.ApiError(c, err)
