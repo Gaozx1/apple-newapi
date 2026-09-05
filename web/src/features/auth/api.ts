@@ -24,7 +24,7 @@ import { useAuthStore } from '@/stores/auth-store'
 
 import {
   clearPasswordEncryptionCache,
-  encryptPassword,
+  encryptPassword as encryptPasswordEnvelope,
 } from './lib/password-encryption'
 import { getAffiliateCode } from './lib/storage'
 import type { TelegramAuthorization } from './lib/telegram-login'
@@ -79,7 +79,7 @@ export async function login(payload: LoginPayload): Promise<LoginResponse> {
       | { password: string }
       | { password_encrypted: string; encryption_key_id: string }
     if (payload.passwordEncryptionEnabled) {
-      const encryptedPassword = await encryptPassword(payload.password)
+      const encryptedPassword = await encryptPasswordEnvelope(payload.password)
       passwordFields = {
         password_encrypted: encryptedPassword.password_encrypted,
         encryption_key_id: encryptedPassword.encryption_key_id,
