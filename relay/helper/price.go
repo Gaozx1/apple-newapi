@@ -135,6 +135,15 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 		if meta.ImagePriceRatio != 0 {
 			modelPrice = modelPrice * meta.ImagePriceRatio
 		}
+		// Per-size per-call override: when the admin configured an
+		// ImageSizePrice table entry for this model and the request carries a
+		// matching size, the table's absolute USD price replaces the flat
+		// model price (and the legacy size/quality ratio no longer applies).
+		if meta.ImageSize != "" {
+			if sizePrice, ok := ratio_setting.GetImageSizePriceFormatted(billingModelName, meta.ImageSize); ok {
+				modelPrice = sizePrice
+			}
+		}
 	}
 
 	// check if free model pre-consume is disabled
