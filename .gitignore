@@ -58,3 +58,4 @@ deploy_rc*.sh
 # local deploy artifacts (server credentials / big tarballs)
 deploy_v*.tar.gz
 deploy_remote.py
+远程
