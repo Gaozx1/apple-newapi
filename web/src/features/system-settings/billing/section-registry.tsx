@@ -107,19 +107,22 @@ const BILLING_SECTIONS = [
     id: 'model-pricing',
     titleKey: 'Model Pricing',
     build: (settings: BillingSettings) => (
-      <RatioSettingsCard
-        titleKey='Model Pricing'
-        modelDefaults={getModelDefaults(settings)}
-        groupDefaults={getGroupDefaults(settings)}
-        toolPricesDefault={settings['tool_price_setting.prices']}
-        visibleTabs={['models', 'unset-models', 'tool-prices', 'upstream-sync']}
-      />
+      <>
+        <RatioSettingsCard
+          titleKey='Model Pricing'
+          modelDefaults={getModelDefaults(settings)}
+          groupDefaults={getGroupDefaults(settings)}
+          toolPricesDefault={settings['tool_price_setting.prices']}
+          visibleTabs={[
+            'models',
+            'unset-models',
+            'tool-prices',
+            'upstream-sync',
+          ]}
+        />
+        <ImageTierPricingSection />
+      </>
     ),
-  },
-  {
-    id: 'image-tier-pricing',
-    titleKey: 'Image Resolution Pricing',
-    build: () => <ImageTierPricingSection />,
   },
   {
     id: 'group-pricing',

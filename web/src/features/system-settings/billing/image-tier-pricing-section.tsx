@@ -17,13 +17,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { Plus, Trash2 } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
+import { api } from '@/lib/api'
 
 import { SettingsSection } from '../components/settings-section'
 import { useUpdateOption } from '../hooks/use-update-option'
@@ -67,31 +68,25 @@ export function ImageTierPricingSection() {
   const { t } = useTranslation()
   const updateOption = useUpdateOption()
   const [rows, setRows] = useState<ModelTierRow[]>([])
-  const [initial, setInitial] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
   // Lazy-load the current table from system options on first render.
-  const ensureLoaded = () => {
-    if (initial !== null) return
-    setInitial('')
-    fetch('/api/option/')
-      .then((res) => res.json())
-      .then((data) => {
-        const items = (data?.data ?? []) as Array<{
+  useEffect(() => {
+    api
+      .get('/api/option/')
+      .then((res) => {
+        const items = (res.data?.data ?? []) as Array<{
           key: string
           value: string
         }>
         const entry = items.find((item) => item.key === 'ImageTierPrice')
         const raw = entry?.value ?? '{}'
-        setInitial(raw)
         setRows(parseTierConfig(raw))
       })
       .catch(() => {
-        setInitial('{}')
         setRows([])
       })
-  }
-  ensureLoaded()
+  }, [])
 
   const handleSave = async () => {
     const table: Record<
@@ -115,7 +110,6 @@ export function ImageTierPricingSection() {
         value: JSON.stringify(table),
       })
       toast.success(t('保存成功'))
-      setInitial(JSON.stringify(table))
     } catch {
       toast.error(t('保存失败'))
     } finally {
