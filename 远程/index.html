@@ -1,0 +1,740 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>远程控制</title>
+<link rel="icon" href="data:,">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  background: #0e1320; color: #e8ecf4;
+  font-family: system-ui, "Microsoft YaHei", "PingFang SC", sans-serif;
+  -webkit-tap-highlight-color: transparent;
+}
+button, input, textarea, select { font-family: inherit; font-size: 16px; }
+.page { display: none; }
+.page.show { display: flex; flex-direction: column; min-height: 100vh; }
+
+/* ---------- 卡片页（连接 / 本机） ---------- */
+#page-connect, #page-local { align-items: center; justify-content: center; padding: 20px; }
+.card {
+  background: #161d30; border: 1px solid #263049; border-radius: 16px;
+  padding: 32px 28px; width: 100%; max-width: 430px; text-align: center;
+  box-shadow: 0 12px 40px rgba(0,0,0,.45);
+}
+.card.wide { max-width: 580px; }
+.logo { font-size: 44px; }
+h1 { font-size: 22px; margin: 10px 0 6px; }
+.sub { color: #93a0bd; font-size: 14px; margin: 6px 0; }
+.msg { color: #ff8a8a; font-size: 14px; min-height: 20px; margin-top: 12px; word-break: break-all; }
+.tip { color: #6b7897; font-size: 12.5px; margin-top: 14px; line-height: 1.7; }
+#code-input {
+  width: 100%; padding: 14px; margin: 18px 0 4px; text-align: center;
+  font-size: 26px; letter-spacing: 8px; font-weight: 700;
+  background: #0e1320; color: #fff; border: 1px solid #2c3a5e; border-radius: 10px; outline: none;
+}
+#code-input:focus { border-color: #4f8cff; }
+button {
+  background: #232d4a; color: #e8ecf4; border: 1px solid #33406b;
+  border-radius: 10px; padding: 10px 16px; cursor: pointer; min-height: 42px;
+}
+button:hover { background: #2b3760; }
+button.primary { background: #3568e0; border-color: #3568e0; font-weight: 600; }
+button.primary:hover { background: #4477ee; }
+button.danger { background: #8e2f3c; border-color: #a83d4c; }
+button.big { width: 100%; margin-top: 14px; font-size: 18px; }
+button.small { padding: 6px 12px; min-height: 32px; font-size: 13px; }
+#local-code {
+  font-family: Consolas, monospace; font-size: 52px; font-weight: 800; letter-spacing: 12px;
+  color: #6ea8ff; background: #0e1320; border-radius: 12px; padding: 14px 0 10px; margin: 16px 0;
+  border: 1px dashed #2c3a5e; user-select: all;
+}
+.iplist { list-style: none; margin: 8px 0; }
+.iplist a { color: #6ea8ff; text-decoration: none; font-family: Consolas, monospace; font-size: 16px; }
+.row { display: flex; gap: 10px; justify-content: center; margin-top: 16px; }
+.devices { display: flex; flex-direction: column; gap: 6px; margin: 8px 0 2px; }
+.device {
+  display: flex; align-items: center; gap: 8px; justify-content: space-between;
+  background: #0e1320; border: 1px solid #263049; border-radius: 10px;
+  padding: 8px 12px; font-size: 13.5px; color: #b9c4dd; text-align: left;
+}
+.device .dev-name { flex: 1; word-break: break-all; }
+.device button { min-height: 30px; padding: 4px 12px; font-size: 12.5px; }
+
+/* ---------- 控制台 ---------- */
+#page-remote header {
+  display: flex; align-items: center; gap: 12px; padding: 8px 12px;
+  background: #131a2c; border-bottom: 1px solid #263049; flex-wrap: wrap;
+}
+header b { font-size: 15px; }
+.dot { width: 10px; height: 10px; border-radius: 50%; background: #33d17a; box-shadow: 0 0 6px #33d17a; }
+.stat { color: #93a0bd; font-size: 13px; }
+.stat span { color: #e8ecf4; }
+#screen-wrap {
+  flex: 1; overflow: auto; display: flex; align-items: flex-start; justify-content: center;
+  background: #05070d; min-height: 40vh;
+}
+#screen { max-width: 100%; display: block; cursor: crosshair; touch-action: none; user-select: none; -webkit-user-drag: none; }
+#screen-wrap:fullscreen { align-items: center; }
+#screen-wrap:fullscreen #screen { max-height: 100vh; object-fit: contain; }
+#screen-tip { position: absolute; margin: 24px auto; color: #6b7897; font-size: 14px; }
+#toolbar { background: #131a2c; border-top: 1px solid #263049; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+.trow { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.trow.keys button { min-height: 38px; min-width: 46px; font-size: 13.5px; padding: 4px 10px; }
+.toggle { display: inline-flex; align-items: center; gap: 6px; color: #93a0bd; font-size: 13.5px; }
+.toggle select { background: #0e1320; color: #e8ecf4; border: 1px solid #2c3a5e; border-radius: 8px; padding: 6px 8px; }
+.toggle-btn { font-size: 13.5px; }
+.toggle-btn.on { background: #3568e0; border-color: #3568e0; font-weight: 600; }
+#text-input {
+  flex: 1; min-width: 200px; resize: vertical; background: #0e1320; color: #e8ecf4;
+  border: 1px solid #2c3a5e; border-radius: 10px; padding: 10px; outline: none;
+}
+#text-input:focus { border-color: #4f8cff; }
+.col { display: flex; flex-direction: column; gap: 6px; }
+.col .toggle { justify-content: center; font-size: 12.5px; }
+.col button { font-size: 13.5px; padding: 6px 12px; min-height: 36px; }
+.hint { color: #6ea8ff; font-size: 12.5px; }
+</style>
+</head>
+<body>
+
+<!-- 连接页 -->
+<div id="page-connect" class="page">
+  <div class="card">
+    <div class="logo">🖥️</div>
+    <h1>远程控制</h1>
+    <p class="sub">输入被控电脑上显示的控制码</p>
+    <input id="code-input" type="text" inputmode="numeric" pattern="[0-9]*"
+           maxlength="10" placeholder="控制码" autocomplete="off" autofocus>
+    <button id="btn-connect" class="primary big">连 接</button>
+    <p id="connect-msg" class="msg"></p>
+  </div>
+</div>
+
+<!-- 本机信息页（仅被控电脑自身可见） -->
+<div id="page-local" class="page">
+  <div class="card wide">
+    <div class="logo">🖥️</div>
+    <h1>本机已进入被控状态</h1>
+    <p class="sub">在控制端（手机 / 其他电脑）的浏览器中输入此控制码</p>
+    <div id="local-code">······</div>
+    <p class="sub">控制端请访问：</p>
+    <ul id="local-ips" class="iplist"></ul>
+    <p class="sub">当前已连接设备：<b id="local-clients">0</b> 台</p>
+    <div id="local-devices" class="devices"></div>
+    <div class="row">
+      <button id="btn-local-control" class="primary">在本机控制</button>
+      <button id="btn-regen">重新生成控制码</button>
+    </div>
+    <p class="tip">连不上？检查：① 控制端与本机在同一网络（或网络互通）<br>
+    ② Windows 防火墙已允许本程序（专用网络） ③ 端口 8888 未被占用</p>
+  </div>
+</div>
+
+<!-- 远程控制台 -->
+<div id="page-remote" class="page">
+  <header>
+    <span class="dot"></span>
+    <b>远程控制</b>
+    <span class="stat">延迟 <span id="latency">-</span></span>
+    <span class="stat">设备 <span id="clients">1</span></span>
+    <span style="flex:1"></span>
+    <button id="btn-kb" class="small">⌨️ 文字</button>
+    <button id="btn-fullscreen" class="small">全屏</button>
+    <button id="btn-disconnect" class="small danger">断开</button>
+  </header>
+  <div id="screen-wrap">
+    <div id="screen-tip">正在连接屏幕画面…</div>
+    <img id="screen" alt="被控屏幕" draggable="false">
+  </div>
+  <div id="toolbar">
+    <div class="trow">
+      <label class="toggle"><input type="radio" name="ptrmode" value="pad"> 触控板</label>
+      <label class="toggle"><input type="radio" name="ptrmode" value="direct"> 直接触控</label>
+      <button id="btn-drag" class="toggle-btn">拖动：关</button>
+      <span id="pad-hint" class="hint"></span>
+    </div>
+    <div class="trow">
+      <label class="toggle"><input type="checkbox" id="chk-hover"> 悬停移动指针</label>
+      <label class="toggle">画面
+        <select id="sel-mode">
+          <option value="mjpeg">流畅</option>
+          <option value="poll">兼容</option>
+        </select>
+      </label>
+      <label class="toggle">画质
+        <select id="sel-quality">
+          <option value="75">高</option>
+          <option value="62" selected>中</option>
+          <option value="45">低</option>
+        </select>
+      </label>
+      <button id="btn-capture" class="toggle-btn">⌨️ 捕获键盘：关</button>
+      <span id="capture-hint" class="hint"></span>
+    </div>
+    <div class="trow">
+      <textarea id="text-input" rows="3"
+        placeholder="点此输入文字（支持中文，可多行）"></textarea>
+      <div class="col">
+        <button id="btn-send-text" class="primary">发送</button>
+        <button id="btn-send-enter">发送+回车</button>
+        <button id="btn-paste">粘贴（快）</button>
+      </div>
+    </div>
+    <div class="trow keys">
+      <button data-key="esc">Esc</button>
+      <button data-key="tab">Tab</button>
+      <button data-key="enter">Enter</button>
+      <button data-key="backspace">⌫</button>
+      <button data-key="delete">Del</button>
+      <button data-key="up">↑</button>
+      <button data-key="down">↓</button>
+      <button data-key="left">←</button>
+      <button data-key="right">→</button>
+      <button data-key="home">Home</button>
+      <button data-key="end">End</button>
+      <button data-key="pageup">PgUp</button>
+      <button data-key="pagedown">PgDn</button>
+      <button data-key="f5">F5</button>
+      <button data-key="tab" data-mods="alt">Alt+Tab</button>
+      <button data-key="d" data-mods="win">Win+D</button>
+      <button data-key="space" data-mods="win">Win+空格</button>
+      <button data-key="c" data-mods="ctrl">复制</button>
+      <button data-key="v" data-mods="ctrl">粘贴</button>
+      <button data-key="x" data-mods="ctrl">剪切</button>
+      <button data-key="z" data-mods="ctrl">撤销</button>
+      <button data-key="a" data-mods="ctrl">全选</button>
+      <button data-key="s" data-mods="ctrl">保存</button>
+    </div>
+    <p class="tip">提示：中文请用上方文本框发送；「捕获键盘」开启后本页按键（英文/快捷键）直接发给被控电脑，再点一次关闭。</p>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
+let VW = 0, VH = 0;          // 被控端虚拟屏幕尺寸
+let authed = false;
+let streamMode = 'mjpeg';
+let captureKeys = false;
+let pollAbort = null;
+let pingTimer = null, localTimer = null, retryTimer = null, resizeTimer = null;
+
+function showPage(id) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('show'));
+  $(id).classList.add('show');
+}
+
+async function api(path, opts) {
+  const res = await fetch(path, opts);
+  let data = null;
+  try { data = await res.json(); } catch (e) {}
+  if (!res.ok) {
+    const msg = (data && data.error) || ('HTTP ' + res.status);
+    if (res.status === 401 && authed) sessionLost(msg);
+    throw new Error(msg);
+  }
+  return data;
+}
+function post(path, body) {
+  return api(path, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                     body: JSON.stringify(body || {}) });
+}
+function cmd(body) { return post('/api/cmd', body).catch(e => console.warn(e.message)); }
+
+/* ---------- 初始化 ---------- */
+async function init() {
+  try {
+    const info = await api('/api/info');
+    if (info.local && !info.authed) showLocal(info);
+    else if (info.authed) enterController(info);
+    else showPage('page-connect');
+  } catch (e) {
+    $('connect-msg').textContent = '无法连接服务器：' + e.message;
+    showPage('page-connect');
+  }
+}
+
+/* ---------- 连接 ---------- */
+async function connect(code) {
+  $('connect-msg').textContent = '正在连接…';
+  try {
+    await post('/api/connect', { code });
+    $('connect-msg').textContent = '';
+    $('code-input').value = '';
+    const info = await api('/api/info');
+    enterController(info);
+  } catch (e) {
+    $('connect-msg').textContent = e.message;
+  }
+}
+
+function enterController(info) {
+  authed = true;
+  VW = info.screenW; VH = info.screenH;
+  clearInterval(localTimer);
+  showPage('page-remote');
+  $('screen-tip').style.display = 'block';
+  startStream();
+  startPing();
+}
+
+function sessionLost(msg) {
+  if (!authed) { $('connect-msg').textContent = msg || ''; showPage('page-connect'); return; }
+  authed = false;
+  stopStream();
+  clearInterval(pingTimer);
+  if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+  $('connect-msg').textContent = msg || '连接已断开，请重新输入控制码';
+  showPage('page-connect');
+}
+
+/* ---------- 本机页 ---------- */
+function showLocal(info) {
+  showPage('page-local');
+  fillLocal(info);
+  clearInterval(localTimer);
+  localTimer = setInterval(async () => {
+    try { fillLocal(await api('/api/info')); } catch (e) {}
+  }, 3000);
+}
+function fillLocal(info) {
+  $('local-code').textContent = info.code || '······';
+  const list = $('local-ips');
+  list.innerHTML = '';
+  (info.ips && info.ips.length ? info.ips : []).forEach(ip => {
+    const li = document.createElement('li');
+    const a = document.createElement('a');
+    a.href = 'http://' + ip + ':' + info.port;
+    a.textContent = 'http://' + ip + ':' + info.port;
+    a.target = '_blank';
+    li.appendChild(a);
+    list.appendChild(li);
+  });
+  if (!list.children.length) list.innerHTML = '<li class="sub">未检测到局域网地址</li>';
+  $('local-clients').textContent = info.clients || 0;
+
+  // 已连接设备列表（可踢出）
+  const dv = $('local-devices');
+  dv.innerHTML = '';
+  (info.devices || []).forEach(d => {
+    const row = document.createElement('div');
+    row.className = 'device';
+    const name = document.createElement('span');
+    name.className = 'dev-name';
+    const time = new Date(d.since * 1000).toLocaleTimeString('zh-CN', { hour12: false });
+    name.textContent = shortUA(d.ua) + ' · ' + d.ip + ' · ' + time + ' 接入';
+    const kick = document.createElement('button');
+    kick.className = 'danger';
+    kick.textContent = '踢出';
+    kick.addEventListener('click', async () => {
+      kick.disabled = true;
+      try {
+        await post('/api/kick', { id: d.id });
+        fillLocal(await api('/api/info'));
+      } catch (e) { kick.disabled = false; }
+    });
+    row.appendChild(name);
+    row.appendChild(kick);
+    dv.appendChild(row);
+  });
+  if (!(info.devices || []).length) {
+    dv.innerHTML = '<div class="device"><span class="dev-name">暂无设备连接</span></div>';
+  }
+}
+
+// 从 User-Agent 提取简短设备描述
+function shortUA(ua) {
+  ua = ua || '';
+  const os = /Android/i.test(ua) ? 'Android'
+    : /iPhone|iPad/i.test(ua) ? 'iOS'
+    : /Windows/i.test(ua) ? 'Windows'
+    : /Mac OS/i.test(ua) ? 'macOS'
+    : /Linux/i.test(ua) ? 'Linux' : '未知设备';
+  const br = /Edg\//.test(ua) ? ' Edge'
+    : /OPR\//.test(ua) ? ' Opera'
+    : /Chrome\//.test(ua) ? ' Chrome'
+    : /Firefox\//.test(ua) ? ' Firefox'
+    : /Safari\//.test(ua) ? ' Safari' : '';
+  return os + br;
+}
+
+/* ---------- 画面流 ---------- */
+function quality() { return $('sel-quality').value; }
+function targetWidth() {
+  const dpr = window.devicePixelRatio || 1;
+  const cssW = $('screen-wrap').clientWidth || window.innerWidth;
+  return clamp(Math.round(cssW * dpr), 320, VW || 3840);
+}
+function startStream() {
+  stopStream();
+  if (!authed) return;
+  $('screen-tip').style.display = 'block';
+  if (streamMode === 'mjpeg') {
+    const img = $('screen');
+    img.onerror = onStreamError;
+    img.src = '/api/stream?w=' + targetWidth() + '&q=' + quality() + '&t=' + Date.now();
+  } else {
+    pollLoop();
+  }
+}
+function stopStream() {
+  clearTimeout(retryTimer);
+  if (pollAbort) { pollAbort.abort(); pollAbort = null; }
+  const img = $('screen');
+  img.onerror = null;
+  img.removeAttribute('src');
+}
+async function pollLoop() {
+  const ctrl = new AbortController();
+  pollAbort = ctrl;
+  while (!ctrl.signal.aborted && authed) {
+    const t0 = performance.now();
+    try {
+      const res = await fetch('/api/frame?w=' + targetWidth() + '&q=' + quality() + '&t=' + Date.now(),
+                              { signal: ctrl.signal, cache: 'no-store' });
+      if (res.status === 401) { sessionLost('连接已过期，请重新输入控制码'); return; }
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const blob = await res.blob();
+      const img = $('screen');
+      const url = URL.createObjectURL(blob);
+      if (img._prevUrl) URL.revokeObjectURL(img._prevUrl);
+      img._prevUrl = url;
+      img.src = url;
+    } catch (e) {
+      if (ctrl.signal.aborted) return;
+      onStreamError();
+      return;
+    }
+    const wait = Math.max(30, 125 - (performance.now() - t0));
+    await new Promise(r => setTimeout(r, wait));
+  }
+}
+function onStreamError() {
+  if (!authed) return;
+  stopStream();
+  retryTimer = setTimeout(async () => {
+    if (!authed) return;
+    try { await post('/api/ping'); startStream(); }
+    catch (e) { /* api() 已处理 401 */ }
+  }, 1500);
+}
+
+/* ---------- 心跳 ---------- */
+function startPing() {
+  clearInterval(pingTimer);
+  const tick = async () => {
+    const t0 = performance.now();
+    try {
+      const r = await post('/api/ping');
+      $('latency').textContent = Math.round(performance.now() - t0) + ' ms';
+      $('clients').textContent = r.clients || 1;
+      if (r.screenW && r.screenW !== VW) { VW = r.screenW; VH = r.screenH; startStream(); }
+    } catch (e) {}
+  };
+  tick();
+  pingTimer = setInterval(tick, 2000);
+}
+
+/* ---------- 鼠标控制 ---------- */
+const img = $('screen');
+img.addEventListener('load', () => { $('screen-tip').style.display = 'none'; });
+img.addEventListener('contextmenu', e => e.preventDefault());
+
+function toScreen(cx, cy) {
+  const r = img.getBoundingClientRect();
+  return {
+    x: clamp(Math.round((cx - r.left) * VW / r.width), 0, VW - 1),
+    y: clamp(Math.round((cy - r.top) * VH / r.height), 0, VH - 1)
+  };
+}
+function btnName(b) { return b === 2 ? 'right' : b === 1 ? 'middle' : 'left'; }
+
+// —— 触控板模式状态 ——
+const pad = {
+  pointers: new Map(),   // pointerId -> {x,y,startX,startY,startT,moved}
+  longPressTimer: null,
+  longPressFired: false,
+  dragArmed: false,      // 「拖动」开关：开启后单指拖动=按住左键拖拽
+  dragging: false,       // 左键正按住
+  lastAvgY: 0, scrollAcc: 0, lastMoveSent: 0
+};
+let ptrMode = 'pad';
+
+// —— 直接触控模式状态（原行为）——
+let pressed = false, pressBtn = 0, lastPt = null, lastMoveSentDirect = 0;
+
+function setMode(m) {
+  ptrMode = m;
+  document.querySelectorAll('input[name="ptrmode"]').forEach(r => r.checked = (r.value === m));
+  $('btn-drag').style.display = (m === 'pad') ? '' : 'none';
+  $('pad-hint').textContent = (m === 'pad')
+    ? '点按=左键 · 拖动=移动指针 · 双指滑=滚动 · 长按=右键'
+    : '点按=左键 · 按住拖动=拖拽';
+  setDrag(false);
+  pad.pointers.clear();
+  clearTimeout(pad.longPressTimer);
+}
+function setDrag(v) {
+  pad.dragArmed = v;
+  $('btn-drag').classList.toggle('on', v);
+  $('btn-drag').textContent = '拖动：' + (v ? '开' : '关');
+}
+function padMoved() {
+  for (const p of pad.pointers.values())
+    if (Math.hypot(p.x - p.startX, p.y - p.startY) > 8) return true;
+  return false;
+}
+function padAvgY() {
+  let s = 0;
+  for (const p of pad.pointers.values()) s += p.y;
+  return s / pad.pointers.size;
+}
+
+img.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  try { img.setPointerCapture(e.pointerId); } catch (err) {}
+
+  if (ptrMode === 'direct') {
+    pressed = true; pressBtn = e.button;
+    const p = toScreen(e.clientX, e.clientY);
+    cmd({ type: 'move', x: p.x, y: p.y });
+    cmd({ type: 'down', button: btnName(e.button) });
+    return;
+  }
+
+  // 触控板模式
+  pad.longPressFired = false;
+  pad.pointers.set(e.pointerId, {
+    x: e.clientX, y: e.clientY, startX: e.clientX, startY: e.clientY,
+    startT: performance.now(), moved: false
+  });
+  if (pad.pointers.size === 1) {
+    if (pad.dragArmed) {
+      const p = toScreen(e.clientX, e.clientY);
+      pad.dragging = true;
+      cmd({ type: 'move', x: p.x, y: p.y });
+      cmd({ type: 'down', button: 'left' });
+    }
+    pad.longPressTimer = setTimeout(async () => {
+      if (padMoved() || pad.dragging || pad.pointers.size !== 1) return;
+      pad.longPressFired = true;
+      if (navigator.vibrate) navigator.vibrate(30);
+      for (const rec of pad.pointers.values()) {
+        const p = toScreen(rec.x, rec.y);
+        await cmd({ type: 'move', x: p.x, y: p.y });
+        cmd({ type: 'down', button: 'right' });
+        cmd({ type: 'up', button: 'right' });
+        break;
+      }
+    }, 600);
+  } else {
+    clearTimeout(pad.longPressTimer);
+    if (pad.dragging) {
+      cmd({ type: 'up', button: 'left' });
+      pad.dragging = false; setDrag(false);
+    }
+    pad.lastAvgY = padAvgY();
+  }
+});
+
+img.addEventListener('pointermove', e => {
+  if (ptrMode === 'direct') {
+    const p = toScreen(e.clientX, e.clientY);
+    const now = performance.now();
+    if (pressed) {
+      if (now - lastMoveSentDirect < 35) return;
+      lastMoveSentDirect = now;
+      cmd({ type: 'move', x: p.x, y: p.y });
+    } else if ($('chk-hover').checked) {
+      if (now - lastMoveSentDirect < 90) return;
+      if (lastPt && Math.abs(p.x - lastPt.x) < 3 && Math.abs(p.y - lastPt.y) < 3) return;
+      lastMoveSentDirect = now;
+      cmd({ type: 'move', x: p.x, y: p.y });
+    }
+    lastPt = p;
+    return;
+  }
+
+  // 触控板模式
+  const rec = pad.pointers.get(e.pointerId);
+  if (!rec) return;
+  rec.x = e.clientX; rec.y = e.clientY;
+
+  if (pad.pointers.size === 2) {           // 双指滑动 = 滚轮
+    const ay = padAvgY();
+    pad.scrollAcc += ay - pad.lastAvgY;
+    pad.lastAvgY = ay;
+    if (Math.abs(pad.scrollAcc) >= 45) {
+      cmd({ type: 'wheel', amount: clamp(Math.round(-pad.scrollAcc / 45 * 120), -2400, 2400) });
+      pad.scrollAcc = 0;
+    }
+    return;
+  }
+  if (pad.pointers.size === 1 && (padMoved() || pad.dragging)) {
+    clearTimeout(pad.longPressTimer);
+    rec.moved = true;
+    const now = performance.now();
+    if (now - pad.lastMoveSent < 35) return;
+    pad.lastMoveSent = now;
+    const p = toScreen(e.clientX, e.clientY);
+    cmd({ type: 'move', x: p.x, y: p.y });
+  }
+});
+
+function padUp(e) {
+  const rec = pad.pointers.get(e.pointerId);
+  pad.pointers.delete(e.pointerId);
+  clearTimeout(pad.longPressTimer);
+  if (pad.dragging) {                       // 拖动结束，松开左键
+    cmd({ type: 'up', button: 'left' });
+    pad.dragging = false; setDrag(false);
+    return;
+  }
+  if (pad.pointers.size > 0) {              // 还有一根手指在滚动
+    pad.lastAvgY = padAvgY();
+    return;
+  }
+  if (!rec || pad.longPressFired) return;
+  const dur = performance.now() - rec.startT;
+  const dist = Math.hypot(rec.x - rec.startX, rec.y - rec.startY);
+  if (!rec.moved && dur < 400 && dist < 10) {   // 点按 = 左键单击
+    const p = toScreen(rec.x, rec.y);
+    cmd({ type: 'move', x: p.x, y: p.y });
+    cmd({ type: 'down', button: 'left' });
+    cmd({ type: 'up', button: 'left' });
+  }
+}
+
+img.addEventListener('pointerup', e => {
+  if (ptrMode === 'direct') {
+    if (!pressed) return;
+    pressed = false;
+    cmd({ type: 'up', button: btnName(pressBtn) });
+    return;
+  }
+  padUp(e);
+});
+img.addEventListener('pointercancel', e => {
+  if (ptrMode === 'direct') {
+    if (!pressed) return;
+    pressed = false;
+    cmd({ type: 'up', button: btnName(pressBtn) });
+    return;
+  }
+  padUp(e);
+});
+img.addEventListener('wheel', e => {
+  e.preventDefault();
+  if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+    cmd({ type: 'wheel', amount: clamp(Math.round(-e.deltaX * 1.2), -2400, 2400), horiz: true });
+  } else if (e.deltaY !== 0) {
+    cmd({ type: 'wheel', amount: clamp(Math.round(-e.deltaY * 1.2), -2400, 2400), horiz: false });
+  }
+}, { passive: false });
+
+/* ---------- 键盘捕获 ---------- */
+const keyNames = {
+  Enter: 'enter', Escape: 'esc', Tab: 'tab', Backspace: 'backspace', Delete: 'delete',
+  ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right',
+  Home: 'home', End: 'end', PageUp: 'pageup', PageDown: 'pagedown',
+  ' ': 'space', Insert: 'insert', CapsLock: 'capslock'
+};
+document.addEventListener('keydown', e => {
+  if (!captureKeys) return;
+  const t = e.target;
+  if (t && (t.tagName === 'TEXTAREA' || t.tagName === 'INPUT' || t.isContentEditable)) return;
+  e.preventDefault();
+  if (e.isComposing || e.key === 'Process' || e.key === 'Dead') return;
+
+  const mods = [];
+  if (e.ctrlKey) mods.push('ctrl');
+  if (e.altKey) mods.push('alt');
+  if (e.shiftKey) mods.push('shift');
+
+  if (mods.length === 0 && e.key.length === 1) {   // 单个普通字符走 Unicode 输入
+    cmd({ type: 'text', text: e.key });
+    return;
+  }
+  let key = keyNames[e.key];
+  if (!key && /^F\d{1,2}$/.test(e.key)) key = e.key.toLowerCase();
+  if (!key && e.key.length === 1) key = e.key.toLowerCase();
+  if (!key) return;
+  cmd({ type: 'key', key: key, mods: mods });
+});
+$('btn-capture').addEventListener('click', () => {
+  captureKeys = !captureKeys;
+  $('btn-capture').classList.toggle('on', captureKeys);
+  $('btn-capture').textContent = '⌨️ 捕获键盘：' + (captureKeys ? '开' : '关');
+  $('capture-hint').textContent = captureKeys ? '已开启' : '';
+});
+
+/* ---------- 文本 ---------- */
+function sendText(withEnter) {
+  let text = $('text-input').value;
+  if (withEnter) text += '\n';
+  if (!text) return;
+  cmd({ type: 'text', text: text });
+}
+$('btn-send-text').addEventListener('click', () => sendText(false));
+$('btn-send-enter').addEventListener('click', () => sendText(true));
+$('btn-paste').addEventListener('click', () => {
+  const text = $('text-input').value;
+  if (!text) return;
+  cmd({ type: 'paste', text: text });
+});
+$('btn-kb').addEventListener('click', () => {
+  $('text-input').focus();                 // 唤起手机系统键盘
+  $('text-input').scrollIntoView({ behavior: 'smooth', block: 'center' });
+});
+
+/* ---------- 快捷键按钮 ---------- */
+document.querySelectorAll('[data-key]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    cmd({ type: 'key', key: btn.dataset.key,
+          mods: (btn.dataset.mods || '').split(',').filter(Boolean) });
+  });
+});
+
+/* ---------- 其他控件 ---------- */
+$('btn-connect').addEventListener('click', () => {
+  const code = $('code-input').value.trim();
+  if (!code) { $('connect-msg').textContent = '请输入控制码'; return; }
+  connect(code);
+});
+$('code-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') $('btn-connect').click();
+});
+$('btn-local-control').addEventListener('click', () => connect($('local-code').textContent.trim()));
+$('btn-regen').addEventListener('click', async () => {
+  try { const r = await post('/api/regen'); $('local-code').textContent = r.code; }
+  catch (e) {}
+});
+$('btn-fullscreen').addEventListener('click', () => {
+  if (document.fullscreenElement) document.exitFullscreen();
+  else $('screen-wrap').requestFullscreen && $('screen-wrap').requestFullscreen();
+});
+$('btn-disconnect').addEventListener('click', async () => {
+  try { await post('/api/disconnect'); } catch (e) {}
+  sessionLost('已断开连接');
+});
+$('sel-mode').addEventListener('change', e => { streamMode = e.target.value; startStream(); });
+$('sel-quality').addEventListener('change', () => { if (authed) startStream(); });
+document.querySelectorAll('input[name="ptrmode"]').forEach(r => {
+  r.addEventListener('change', () => setMode(r.value));
+});
+$('btn-drag').addEventListener('click', () => setDrag(!pad.dragArmed));
+setMode(window.matchMedia && matchMedia('(pointer: coarse)').matches ? 'pad' : 'direct');
+window.addEventListener('resize', () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => { if (authed) startStream(); }, 300);
+});
+window.addEventListener('beforeunload', () => { if (pollAbort) pollAbort.abort(); });
+
+init();
+</script>
+</body>
+</html>

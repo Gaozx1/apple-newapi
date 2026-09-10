@@ -1,6 +1,7 @@
 package openai
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -15,6 +16,7 @@ import (
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/service"
 
 	"github.com/gin-gonic/gin"
@@ -50,6 +52,12 @@ func OpenaiImageHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.
 	}
 
 	updateOpenAIImageCount(info, gjson.GetBytes(responseBody, "data.#").Int())
+
+	// Resolution-tier billing: classify the ACTUAL generated image(s) by
+	// pixel size and swap in the tier's per-call price before settlement. The
+	// pre-consume already used the tier derived from the requested size, so
+	// "size: auto" requests settle at what was really produced.
+	applyImageTierOverride(info, responseBody)
 
 	// 写入新的 response body
 	service.IOCopyBytesGracefully(c, resp, responseBody)
@@ -143,6 +151,13 @@ func OpenaiImageStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp 
 	// client still receives a terminal data: [DONE].
 	if info.StreamStatus != nil && info.StreamStatus.EndReason == relaycommon.StreamEndReasonDone {
 		helper.Done(c)
+	}
+
+	// Resolution-tier billing: classify the ACTUAL generated image by pixel
+	// size from the last streamed output chunk and swap in the tier's per-call
+	// price before settlement, exactly like the non-streaming path.
+	if len(lastStreamData) > 0 {
+		applyImageTierOverride(info, lastStreamData)
 	}
 
 	applyUsagePostProcessing(info, usage, lastStreamData)
@@ -330,4 +345,49 @@ func openaiImageJSONAsStreamHandler(c *gin.Context, info *relaycommon.RelayInfo,
 
 func writeOpenaiImageStreamDone(c *gin.Context) error {
 	return helper.StringData(c, "[DONE]")
+}
+
+// applyImageTierOverride re-derives the per-call price from the ACTUAL
+// generated image dimensions. It reads the first output image (b64_json or
+// url payload) from the response body, classifies its pixels into the 1K/2K/4K
+// tier, and replaces PriceData.ModelPrice with the configured tier price. When
+// dimensions cannot be read (url-only responses upstream may strip headers, or
+// unknown formats) the pre-consumed tier price stands — never a cheaper one by
+// accident, because the pre-consume tier came from the same table.
+func applyImageTierOverride(info *relaycommon.RelayInfo, responseBody []byte) {
+	if info == nil || !info.PriceData.UsePrice {
+		return
+	}
+	size := firstOutputImageSize(responseBody)
+	if size == "" {
+		return
+	}
+	if tierPrice, tier, ok := ratio_setting.ResolveImageTierPrice(size); ok {
+		info.PriceData.ModelPrice = tierPrice
+		if tier != "" {
+			info.PriceData.AddOtherRatio("resolution_tier", 1)
+			logger.LogDebug(context.Background(), "[image-tier] actual %s classified %s price %.4f", size, tier, tierPrice)
+		}
+	}
+}
+
+// firstOutputImageSize extracts pixel dimensions from the first output image
+// in an OpenAI images response. Handles b64_json payloads directly and
+// url-shaped entries by fetching headers only when the URL points back at this
+// deployment's own /v1/files or upstream CDN is skipped for safety — remote
+// fetches during billing are deliberately avoided, so url entries return "".
+func firstOutputImageSize(responseBody []byte) string {
+	count := gjson.GetBytes(responseBody, "data.#").Int()
+	for i := int64(0); i < count && i < 8; i++ {
+		b64 := gjson.GetBytes(responseBody, fmt.Sprintf("data.%d.b64_json", i)).String()
+		if b64 == "" {
+			continue
+		}
+		w, h, ok := helper.DimensionsFromBase64Image(b64)
+		if !ok {
+			continue
+		}
+		return fmt.Sprintf("%dx%d", w, h)
+	}
+	return ""
 }

@@ -1,0 +1,49 @@
+# zcode2api - Python(FastAPI) + Node(jsdom 无痕验证求解器)
+# 国内构建优化版：multi-stage 复用本机 node:20-slim，全部走国内镜像源，不依赖 nodesource。
+
+# ── Node 运行时来源（本机已拉取的 node:20-slim）──
+FROM node:20-slim AS node
+
+FROM python:3.13-slim
+
+ENV PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    ZCODE_HOST=0.0.0.0 \
+    ZCODE_PORT=3000 \
+    ZCODE_DATA_DIR=/data \
+    ZCODE_NODE_PATH=node \
+    PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/ \
+    PIP_TRUSTED_HOST=mirrors.aliyun.com
+
+WORKDIR /app
+
+# ── apt 走清华 debian 源，仅装 ca-certificates ──
+RUN set -eux; \
+    sed -i 's|deb.debian.org|mirrors.tuna.tsinghua.edu.cn|g; s|security.debian.org|mirrors.tuna.tsinghua.edu.cn/debian-security|g' /etc/apt/sources.list.d/debian.sources 2>/dev/null || true; \
+    sed -i 's|deb.debian.org|mirrors.tuna.tsinghua.edu.cn|g; s|security.debian.org|mirrors.tuna.tsinghua.edu.cn/debian-security|g' /etc/apt/sources.list 2>/dev/null || true; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends ca-certificates; \
+    rm -rf /var/lib/apt/lists/*
+
+# ── 从 node:20-slim 拷贝完整 Node 运行时（免 nodesource）──
+COPY --from=node /usr/local/bin/node /usr/local/bin/node
+COPY --from=node /usr/local/lib/node_modules /usr/local/lib/node_modules
+RUN ln -sf /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
+    && ln -sf /usr/local/lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx \
+    && node --version && npm --version
+
+# ── Python 依赖（阿里云 pypi 镜像）──
+COPY requirements.txt ./
+RUN pip install -r requirements.txt
+
+# ── 求解器 Node 依赖（npmmirror 源）──
+COPY captcha_node/package.json captcha_node/package-lock.json ./captcha_node/
+RUN cd captcha_node && npm ci --omit=dev --registry=https://registry.npmmirror.com
+
+# ── 应用源码 ──
+COPY . .
+
+VOLUME ["/data"]
+EXPOSE 3000
+
+CMD ["python", "main.py", "serve"]

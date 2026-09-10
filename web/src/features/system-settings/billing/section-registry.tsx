@@ -25,10 +25,11 @@ import { PaymentSettingsSection } from '../integrations/payment-settings-section
 import { RatioSettingsCard } from '../models/ratio-settings-card'
 import type { BillingSettings } from '../types'
 import { createSectionRegistry } from '../utils/section-registry'
+import { ImageTierPricingSection } from './image-tier-pricing-section'
 
 const getModelDefaults = (settings: BillingSettings) => ({
   ModelPrice: settings.ModelPrice,
-  ImageSizePrice: settings.ImageSizePrice,
+  ImageTierPrice: settings.ImageTierPrice,
   ModelRatio: settings.ModelRatio,
   CacheRatio: settings.CacheRatio,
   CreateCacheRatio: settings.CreateCacheRatio,
@@ -114,6 +115,38 @@ const BILLING_SECTIONS = [
         visibleTabs={['models', 'unset-models', 'tool-prices', 'upstream-sync']}
       />
     ),
+  },
+  {
+    id: 'image-tier-pricing',
+    titleKey: 'Image Resolution Pricing',
+    build: (settings: BillingSettings) => {
+      let defaults = {
+        ImageTierPriceEnabled: false,
+        ImageTierPrice1K: 0,
+        ImageTierPrice2K: 0,
+        ImageTierPrice4K: 0,
+        ImageTierPriceBase: 0,
+      }
+      try {
+        const parsed = JSON.parse(settings.ImageTierPrice) as {
+          enabled?: boolean
+          price_1k?: number
+          price_2k?: number
+          price_4k?: number
+          base_price?: number
+        }
+        defaults = {
+          ImageTierPriceEnabled: Boolean(parsed.enabled),
+          ImageTierPrice1K: Number(parsed.price_1k ?? 0),
+          ImageTierPrice2K: Number(parsed.price_2k ?? 0),
+          ImageTierPrice4K: Number(parsed.price_4k ?? 0),
+          ImageTierPriceBase: Number(parsed.base_price ?? 0),
+        }
+      } catch {
+        // keep numeric defaults on malformed stored value
+      }
+      return <ImageTierPricingSection defaultValues={defaults} />
+    },
   },
   {
     id: 'group-pricing',

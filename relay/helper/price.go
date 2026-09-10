@@ -135,15 +135,16 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 		if meta.ImagePriceRatio != 0 {
 			modelPrice = modelPrice * meta.ImagePriceRatio
 		}
-		// Per-size per-call override: when the admin configured an
-		// ImageSizePrice table entry for this model and the request carries a
-		// matching size, the table's absolute USD price replaces the flat
-		// model price (and the legacy size/quality ratio no longer applies).
-		if meta.ImageSize != "" {
-			if sizePrice, ok := ratio_setting.GetImageSizePriceFormatted(billingModelName, meta.ImageSize); ok {
-				modelPrice = sizePrice
-			}
-		}
+	}
+	// Manual resolution-tier billing: when the admin enables 1K/2K/4K tier
+	// prices, image requests are billed a flat USD per call by resolution
+	// tier instead of the flat model price (and the legacy size/quality
+	// ratio no longer applies). The pre-consume uses the tier derived from
+	// the REQUESTED size; settlement re-runs this with the ACTUAL output
+	// size via relay.ImageHelper's tier override.
+	if tierPrice, _, ok := ratio_setting.ResolveImageTierPrice(meta.ImageSize); ok {
+		modelPrice = tierPrice
+		usePrice = true
 	}
 
 	// check if free model pre-consume is disabled
