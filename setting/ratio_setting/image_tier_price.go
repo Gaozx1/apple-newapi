@@ -188,3 +188,11 @@ func ResolveImageTierPriceForModel(model, size string) (price float64, tier Imag
 }
 
 var _ = common.GetTimestamp // import parity with sibling setting files
+
+// HasImageTierPrice reports whether the model has an enabled tier config.
+// Used to give resolution-tier billing priority over tiered_expr / token
+// billing for image requests.
+func HasImageTierPrice(model string) bool {
+	_, ok := GetImageModelTierPrice(model)
+	return ok
+}

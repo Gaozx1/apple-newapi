@@ -83,6 +83,45 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 
 	groupRatioInfo := HandleGroupRatio(c, info)
 
+	// Image resolution-tier billing takes priority over tiered_expr and token
+	// billing for image requests: when the admin enabled 1K/2K/4K tier prices
+	// for this model, bill a flat USD per call by resolution tier. For
+	// "auto"/unclassifiable requested sizes, pre-consume at the lowest
+	// configured tier; the actual output size is re-derived at settlement
+	// (relay.ImageHelper) and the final charge settles to the measured tier.
+	if tierCfg, hasTiers := ratio_setting.GetImageModelTierPrice(billingModelName); hasTiers {
+		tierPrice, tier, tierOk := ratio_setting.ResolveImageTierPriceForModel(billingModelName, meta.ImageSize)
+		if !tierOk {
+			// Unclassifiable requested size (auto/unknown): reserve the
+			// cheapest configured tier; settlement re-derives from the actual
+			// output image.
+			tierPrice, tierOk = tierCfg.TierPrice(ratio_setting.ImageTier1K)
+		}
+		if tierPrice > 0 {
+			quotaToPreConsume, err := common.QuotaFromFloatStrict(
+				tierPrice * common.QuotaPerUnit * groupRatioInfo.GroupRatio,
+			)
+			if err != nil {
+				return hosttypes.PriceData{}, err
+			}
+			if tier != "" {
+				meta.ImagePriceRatio = 0 // legacy size ratio must not stack on the tier price
+			}
+			priceData := hosttypes.PriceData{
+				FreeModel:         false,
+				ModelPrice:        tierPrice,
+				GroupRatioInfo:    groupRatioInfo,
+				UsePrice:          true,
+				QuotaToPreConsume: quotaToPreConsume,
+			}
+			for name, ratio := range meta.BillingRatios {
+				priceData.AddOtherRatio(name, ratio)
+			}
+			info.PriceData = priceData
+			return priceData, nil
+		}
+	}
+
 	// Check if this model uses tiered_expr billing
 	if billing_setting.GetBillingMode(billingModelName) == billing_setting.BillingModeTieredExpr {
 		return modelPriceHelperTiered(c, info, billingModelName, promptTokens, meta, groupRatioInfo)
