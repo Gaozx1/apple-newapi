@@ -59,3 +59,23 @@ deploy_rc*.sh
 deploy_v*.tar.gz
 deploy_remote.py
 远程
+
+# local ops scripts & artifacts (contain server credentials)
+check*.sh
+verify*.sh
+test*.sh
+ghtest.sh
+push_git.sh
+deploy_*.sh
+deploy_*.tar.gz
+zDockerfile*
+zbun.sh
+zcheck.sh
+zclone.sh
+zdiff.sh
+zinspect.sh
+znode*.sh
+zread.sh
+zsrc.sh
+deploy_remote.py
+__pycache__/
