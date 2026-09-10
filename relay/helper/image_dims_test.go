@@ -78,33 +78,26 @@ func TestClassifyImageTierBoundaries(t *testing.T) {
 }
 
 func TestResolveImageTierPriceConfigAndFallback(t *testing.T) {
-	ratio_setting.UpdateImageTierBilling(false, 0.04, 0.08, 0.15, 0)
+	ratio_setting.UpdateImageTierPriceByJSONString(`{}`)
 	// Disabled → no override.
-	_, _, ok := ratio_setting.ResolveImageTierPrice("1024x1024")
+	_, _, ok := ratio_setting.ResolveImageTierPriceForModel("gpt-image-1", "1024x1024")
 	assert.False(t, ok)
 
-	ratio_setting.UpdateImageTierBilling(true, 0.04, 0.08, 0.15, 0)
-	defer ratio_setting.UpdateImageTierBilling(false, 0, 0, 0, 0)
+	ratio_setting.UpdateImageTierPriceByJSONString(`{"gpt-image-1":{"enabled":true,"price_1k":0.04,"price_2k":0.08,"price_4k":0.15}}`)
+	defer ratio_setting.UpdateImageTierPriceByJSONString(`{}`)
 
-	price, tier, ok := ratio_setting.ResolveImageTierPrice("1024x1024")
+	price, tier, ok := ratio_setting.ResolveImageTierPriceForModel("gpt-image-1", "1024x1024")
 	assert.True(t, ok)
 	assert.Equal(t, ratio_setting.ImageTier1K, tier)
 	assert.Equal(t, 0.04, price)
 
-	price, tier, ok = ratio_setting.ResolveImageTierPrice("4096x4096")
+	price, tier, ok = ratio_setting.ResolveImageTierPriceForModel("gpt-image-1", "4096x4096")
 	assert.True(t, ok)
 	assert.Equal(t, ratio_setting.ImageTier4K, tier)
 	assert.Equal(t, 0.15, price)
 
-	// Unclassifiable size with base price configured → base price, empty tier.
-	ratio_setting.UpdateImageTierBilling(true, 0.04, 0.08, 0.15, 0.02)
-	price, tier, ok = ratio_setting.ResolveImageTierPrice("auto")
-	assert.True(t, ok)
-	assert.Empty(t, tier)
-	assert.Equal(t, 0.02, price)
-
-	// Unclassifiable without base price → no override.
-	ratio_setting.UpdateImageTierBilling(true, 0.04, 0.08, 0.15, 0)
-	_, _, ok = ratio_setting.ResolveImageTierPrice("auto")
+	// Unclassifiable size (auto/unknown) → no tier override; the caller
+	// falls back to the model flat price.
+	_, _, ok = ratio_setting.ResolveImageTierPriceForModel("gpt-image-1", "auto")
 	assert.False(t, ok)
 }

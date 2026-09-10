@@ -2,7 +2,6 @@ package ratio_setting
 
 import (
 	"encoding/json"
-	"errors"
 	"strconv"
 	"strings"
 	"sync"
@@ -10,64 +9,94 @@ import (
 	"github.com/QuantumNous/new-api/common"
 )
 
-// Image tier billing: admins configure per-call USD prices for the 1K/2K/4K
-// tiers (and an optional base price for sizes that do not match any tier).
-// The tier is derived from the ACTUAL generated image's pixel dimensions when
-// the upstream response exposes them, falling back to the requested size, so
-// "size: auto" requests are still billed by what was really produced.
+// Image tier billing: admins configure per-model, per-resolution flat USD
+// prices for image generations/edits. When enabled for a model, image calls
+// bill a flat tier price per call derived from the ACTUAL generated image's
+// pixel dimensions (1K/2K/4K by longest edge), overriding both the model's
+// flat per-call price and upstream token billing.
 //
-// Resolution classification:
-//   1K: longest edge <= 1280 px          (e.g. 1024x1024)
-//   2K: 1280 < longest edge <= 2560 px   (e.g. 2048x2048)
-//   4K: longest edge > 2560 px           (e.g. 4096x4096)
+// Config JSON shape (managed by the admin pricing UI, not hand-written):
+//
+//	{
+//	  "gpt-image-1": {"enabled": true, "price_1k": 0.04, "price_2k": 0.08, "price_4k": 0.15},
+//	  "dall-e-3":    {"enabled": true, "price_1k": 0.02, "price_2k": 0.03, "price_4k": 0.06}
+//	}
 
-type ImageTierPrices struct {
-	// Base is the per-call price for requests whose actual size does not
-	// classify into 1K/2K/4K (unknown, auto without dimensions, tiny images).
-	// When 0, the model's flat per-call price applies for such requests.
-	Base1K float64
-	Base2K float64
-	Base4K float64
-	// BasePrice is the fallback per-call price for unclassified sizes. When 0
-	// the model's regular ModelPrice is used instead.
-	BasePrice float64
-	Enabled   bool
+type ImageModelTierPrice struct {
+	Enabled bool    `json:"enabled"`
+	Price1K float64 `json:"price_1k"`
+	Price2K float64 `json:"price_2k"`
+	Price4K float64 `json:"price_4k"`
 }
 
 var (
-	imageTierMu      sync.RWMutex
-	imageTierEnabled = false
-	imageTier1K      = 0.0
-	imageTier2K      = 0.0
-	imageTier4K      = 0.0
-	imageTierBase    = 0.0
+	imageTierMu    sync.RWMutex
+	imageTierTable = make(map[string]ImageModelTierPrice)
 )
 
-// UpdateImageTierBilling stores the manual tier prices (USD per call).
-func UpdateImageTierBilling(enabled bool, price1K, price2K, price4K, basePrice float64) {
+// UpdateImageTierPriceByJSONString replaces the whole per-model tier table
+// from admin JSON. Models without valid prices are dropped so a bad paste can
+// never break billing.
+func UpdateImageTierPriceByJSONString(jsonStr string) error {
+	table := make(map[string]ImageModelTierPrice)
+	trimmed := strings.TrimSpace(jsonStr)
+	if trimmed != "" {
+		var raw map[string]struct {
+			Enabled bool    `json:"enabled"`
+			Price1K float64 `json:"price_1k"`
+			Price2K float64 `json:"price_2k"`
+			Price4K float64 `json:"price_4k"`
+		}
+		if err := json.Unmarshal([]byte(trimmed), &raw); err != nil {
+			return err
+		}
+		for model, prices := range raw {
+			model = strings.TrimSpace(model)
+			if model == "" || !prices.Enabled {
+				continue
+			}
+			if prices.Price1K <= 0 && prices.Price2K <= 0 && prices.Price4K <= 0 {
+				continue
+			}
+			table[model] = ImageModelTierPrice{
+				Enabled: true,
+				Price1K: prices.Price1K,
+				Price2K: prices.Price2K,
+				Price4K: prices.Price4K,
+			}
+		}
+	}
 	imageTierMu.Lock()
-	defer imageTierMu.Unlock()
-	imageTierEnabled = enabled
-	imageTier1K = price1K
-	imageTier2K = price2K
-	imageTier4K = price4K
-	imageTierBase = basePrice
+	imageTierTable = table
+	imageTierMu.Unlock()
+	return nil
 }
 
-// GetImageTierBilling returns the current manual tier configuration.
-func GetImageTierBilling() ImageTierPrices {
+// ImageTierPriceJSONString serializes the current table for the admin editor.
+func ImageTierPriceJSONString() string {
 	imageTierMu.RLock()
 	defer imageTierMu.RUnlock()
-	return ImageTierPrices{
-		Enabled:   imageTierEnabled,
-		Base1K:    imageTier1K,
-		Base2K:    imageTier2K,
-		Base4K:    imageTier4K,
-		BasePrice: imageTierBase,
+	data, err := json.Marshal(imageTierTable)
+	if err != nil {
+		return "{}"
 	}
+	return string(data)
 }
 
-// ImageTier classifies pixel dimensions into a billing tier.
+// GetImageModelTierPrice returns the tier config for a model. ok is false when
+// the model has no enabled tier pricing.
+func GetImageModelTierPrice(model string) (ImageModelTierPrice, bool) {
+	imageTierMu.RLock()
+	defer imageTierMu.RUnlock()
+	cfg, ok := imageTierTable[strings.TrimSpace(model)]
+	if !ok || !cfg.Enabled {
+		return ImageModelTierPrice{}, false
+	}
+	return cfg, true
+}
+
+// ImageTier classifies pixel dimensions into a billing tier by longest edge:
+// 1K: <= 1280px, 2K: <= 2560px, 4K: > 2560px.
 type ImageTier string
 
 const (
@@ -76,8 +105,13 @@ const (
 	ImageTier4K ImageTier = "4K"
 )
 
-// ClassifyImageTier maps a width/height pair to a billing tier by the longest
-// edge. ok is false when either dimension is missing or non-positive.
+// Valid reports whether the tier carries a real classification.
+func (t ImageTier) Valid() bool {
+	return t == ImageTier1K || t == ImageTier2K || t == ImageTier4K
+}
+
+// ClassifyImageTier maps a width/height pair to a billing tier. ok is false
+// when either dimension is missing or non-positive.
 func ClassifyImageTier(width, height int) (ImageTier, bool) {
 	if width <= 0 || height <= 0 {
 		return "", false
@@ -98,22 +132,22 @@ func ClassifyImageTier(width, height int) (ImageTier, bool) {
 
 // TierPrice returns the configured USD price for a tier. ok is false when the
 // tier has no positive price configured.
-func (p ImageTierPrices) TierPrice(tier ImageTier) (float64, bool) {
+func (p ImageModelTierPrice) TierPrice(tier ImageTier) (float64, bool) {
 	var price float64
 	switch tier {
 	case ImageTier1K:
-		price = p.Base1K
+		price = p.Price1K
 	case ImageTier2K:
-		price = p.Base2K
+		price = p.Price2K
 	case ImageTier4K:
-		price = p.Base4K
+		price = p.Price4K
 	}
 	return price, price > 0
 }
 
 // parseImageDimensions extracts the first "width x height" pair found in a
-// size string. Accepts "1024x1024", "1792x1024", "1024*1024", "auto 2048x2048"
-// and similar shapes; returns 0,0 when nothing parses.
+// size string. Accepts "1024x1024", "1792x1024", "1024*1024" and similar
+// shapes; returns 0,0 when nothing parses.
 func parseImageDimensions(size string) (int, int) {
 	size = strings.ToLower(strings.TrimSpace(size))
 	if size == "" {
@@ -132,22 +166,18 @@ func parseImageDimensions(size string) (int, int) {
 	return w, h
 }
 
-// ResolveImageTierPrice classifies the given size and returns the configured
-// tier price. tier is empty and ok false when tier billing is disabled, the
-// size is unclassifiable, or the matched tier has no configured price (the
-// caller then falls back to the flat model price).
-func ResolveImageTierPrice(size string) (price float64, tier ImageTier, ok bool) {
-	cfg := GetImageTierBilling()
-	if !cfg.Enabled {
+// ResolveImageTierPriceForModel classifies the given size and returns the
+// per-call price from the model's tier config. tier is empty and ok false when
+// the size cannot be classified or the matched tier has no price — the caller
+// then falls back to the flat model price.
+func ResolveImageTierPriceForModel(model, size string) (price float64, tier ImageTier, ok bool) {
+	cfg, cfgOk := GetImageModelTierPrice(model)
+	if !cfgOk {
 		return 0, "", false
 	}
 	w, h := parseImageDimensions(size)
 	tier, classified := ClassifyImageTier(w, h)
 	if !classified {
-		// Unclassifiable size: use the optional base price when configured.
-		if cfg.BasePrice > 0 {
-			return cfg.BasePrice, "", true
-		}
 		return 0, "", false
 	}
 	price, priced := cfg.TierPrice(tier)
@@ -158,41 +188,3 @@ func ResolveImageTierPrice(size string) (price float64, tier ImageTier, ok bool)
 }
 
 var _ = common.GetTimestamp // import parity with sibling setting files
-
-// UpdateImageTierBillingByJSONString accepts an admin JSON body shaped as
-// {"enabled":true,"price_1k":0.04,"price_2k":0.08,"price_4k":0.15,"base_price":0.02}.
-// It exists so the option framework can round-trip the manual form without
-// exposing a JSON editor to operators.
-func UpdateImageTierBillingByJSONString(jsonStr string) error {
-	var body struct {
-		Enabled   bool    `json:"enabled"`
-		Price1K   float64 `json:"price_1k"`
-		Price2K   float64 `json:"price_2k"`
-		Price4K   float64 `json:"price_4k"`
-		BasePrice float64 `json:"base_price"`
-	}
-	if err := json.Unmarshal([]byte(strings.TrimSpace(jsonStr)), &body); err != nil {
-		return err
-	}
-	if body.Price1K < 0 || body.Price2K < 0 || body.Price4K < 0 || body.BasePrice < 0 {
-		return errors.New("价格不能为负数")
-	}
-	UpdateImageTierBilling(body.Enabled, body.Price1K, body.Price2K, body.Price4K, body.BasePrice)
-	return nil
-}
-
-// ImageTierBillingJSONString serializes the current configuration.
-func ImageTierBillingJSONString() string {
-	cfg := GetImageTierBilling()
-	data, err := json.Marshal(map[string]interface{}{
-		"enabled":    cfg.Enabled,
-		"price_1k":   cfg.Base1K,
-		"price_2k":   cfg.Base2K,
-		"price_4k":   cfg.Base4K,
-		"base_price": cfg.BasePrice,
-	})
-	if err != nil {
-		return "{}"
-	}
-	return string(data)
-}

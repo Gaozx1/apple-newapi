@@ -7,54 +7,64 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestUpdateImageTierBillingByJSONStringRoundTrip(t *testing.T) {
-	require.NoError(t, UpdateImageTierBillingByJSONString(
-		`{"enabled":true,"price_1k":0.04,"price_2k":0.08,"price_4k":0.15,"base_price":0.02}`,
+func TestUpdateImageTierPriceByJSONStringRoundTrip(t *testing.T) {
+	require.NoError(t, UpdateImageTierPriceByJSONString(
+		`{"gpt-image-1":{"enabled":true,"price_1k":0.04,"price_2k":0.08,"price_4k":0.15},"dall-e-3":{"enabled":true,"price_1k":0.02}}`,
 	))
-	defer UpdateImageTierBilling(false, 0, 0, 0, 0)
+	defer UpdateImageTierPriceByJSONString(`{}`)
 
-	cfg := GetImageTierBilling()
+	cfg, ok := GetImageModelTierPrice("gpt-image-1")
+	require.True(t, ok)
 	assert.True(t, cfg.Enabled)
-	assert.Equal(t, 0.04, cfg.Base1K)
-	assert.Equal(t, 0.08, cfg.Base2K)
-	assert.Equal(t, 0.15, cfg.Base4K)
-	assert.Equal(t, 0.02, cfg.BasePrice)
+	assert.Equal(t, 0.04, cfg.Price1K)
+	assert.Equal(t, 0.08, cfg.Price2K)
+	assert.Equal(t, 0.15, cfg.Price4K)
 
-	// JSON serialization round-trips for the option framework.
-	serialized := ImageTierBillingJSONString()
-	require.NoError(t, UpdateImageTierBillingByJSONString(serialized))
-	cfg2 := GetImageTierBilling()
+	// Serialized table round-trips.
+	require.NoError(t, UpdateImageTierPriceByJSONString(ImageTierPriceJSONString()))
+	cfg2, ok := GetImageModelTierPrice("gpt-image-1")
+	require.True(t, ok)
 	assert.Equal(t, cfg, cfg2)
+
+	// Disabled entries are dropped.
+	require.NoError(t, UpdateImageTierPriceByJSONString(
+		`{"m":{"enabled":false,"price_1k":1}}`))
+	_, ok = GetImageModelTierPrice("m")
+	assert.False(t, ok)
 }
 
-func TestUpdateImageTierBillingRejectsNegativePrices(t *testing.T) {
-	require.Error(t, UpdateImageTierBillingByJSONString(
-		`{"enabled":true,"price_1k":-1}`))
+func TestUpdateImageTierPriceRejectsMalformedJSON(t *testing.T) {
+	require.Error(t, UpdateImageTierPriceByJSONString(`not-json`))
 }
 
-func TestResolveImageTierPriceTieredOverride(t *testing.T) {
-	UpdateImageTierBilling(true, 0.04, 0.08, 0.15, 0)
-	defer UpdateImageTierBilling(false, 0, 0, 0, 0)
+func TestResolveImageTierPriceForModelTieredOverride(t *testing.T) {
+	require.NoError(t, UpdateImageTierPriceByJSONString(
+		`{"gpt-image-1":{"enabled":true,"price_1k":0.04,"price_2k":0.08,"price_4k":0.15}}`))
+	defer UpdateImageTierPriceByJSONString(`{}`)
 
-	// 1024x1024 → 1K
-	price, tier, ok := ResolveImageTierPrice("1024x1024")
+	// 1024x1024 -> 1K
+	price, tier, ok := ResolveImageTierPriceForModel("gpt-image-1", "1024x1024")
 	require.True(t, ok)
 	assert.Equal(t, ImageTier1K, tier)
 	assert.Equal(t, 0.04, price)
 
-	// 1792x1024 → longest edge 1792 → 2K
-	price, tier, ok = ResolveImageTierPrice("1792x1024")
+	// 1792x1024 -> 2K
+	price, tier, ok = ResolveImageTierPriceForModel("gpt-image-1", "1792x1024")
 	require.True(t, ok)
 	assert.Equal(t, ImageTier2K, tier)
 	assert.Equal(t, 0.08, price)
 
-	// 4096x2160 → 4K
-	price, tier, ok = ResolveImageTierPrice("4096x2160")
+	// 4096x2160 -> 4K
+	price, tier, ok = ResolveImageTierPriceForModel("gpt-image-1", "4096x2160")
 	require.True(t, ok)
 	assert.Equal(t, ImageTier4K, tier)
 	assert.Equal(t, 0.15, price)
 
-	// Auto/unknown size with no base price → no override.
-	_, _, ok = ResolveImageTierPrice("auto")
+	// auto/unknown size -> no override at this layer.
+	_, _, ok = ResolveImageTierPriceForModel("gpt-image-1", "auto")
+	assert.False(t, ok)
+
+	// Other models without config -> no override.
+	_, _, ok = ResolveImageTierPriceForModel("other-model", "1024x1024")
 	assert.False(t, ok)
 }

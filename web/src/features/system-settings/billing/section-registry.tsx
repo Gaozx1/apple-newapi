@@ -119,34 +119,7 @@ const BILLING_SECTIONS = [
   {
     id: 'image-tier-pricing',
     titleKey: 'Image Resolution Pricing',
-    build: (settings: BillingSettings) => {
-      let defaults = {
-        ImageTierPriceEnabled: false,
-        ImageTierPrice1K: 0,
-        ImageTierPrice2K: 0,
-        ImageTierPrice4K: 0,
-        ImageTierPriceBase: 0,
-      }
-      try {
-        const parsed = JSON.parse(settings.ImageTierPrice) as {
-          enabled?: boolean
-          price_1k?: number
-          price_2k?: number
-          price_4k?: number
-          base_price?: number
-        }
-        defaults = {
-          ImageTierPriceEnabled: Boolean(parsed.enabled),
-          ImageTierPrice1K: Number(parsed.price_1k ?? 0),
-          ImageTierPrice2K: Number(parsed.price_2k ?? 0),
-          ImageTierPrice4K: Number(parsed.price_4k ?? 0),
-          ImageTierPriceBase: Number(parsed.base_price ?? 0),
-        }
-      } catch {
-        // keep numeric defaults on malformed stored value
-      }
-      return <ImageTierPricingSection defaultValues={defaults} />
-    },
+    build: () => <ImageTierPricingSection />,
   },
   {
     id: 'group-pricing',

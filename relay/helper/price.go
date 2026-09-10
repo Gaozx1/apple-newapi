@@ -136,13 +136,13 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 			modelPrice = modelPrice * meta.ImagePriceRatio
 		}
 	}
-	// Manual resolution-tier billing: when the admin enables 1K/2K/4K tier
-	// prices, image requests are billed a flat USD per call by resolution
-	// tier instead of the flat model price (and the legacy size/quality
-	// ratio no longer applies). The pre-consume uses the tier derived from
-	// the REQUESTED size; settlement re-runs this with the ACTUAL output
-	// size via relay.ImageHelper's tier override.
-	if tierPrice, _, ok := ratio_setting.ResolveImageTierPrice(meta.ImageSize); ok {
+	// Manual resolution-tier billing: when the admin enables per-model 1K/2K/4K
+	// tier prices, image requests are billed a flat USD per call by resolution
+	// tier instead of the flat model price (and the legacy size/quality ratio
+	// no longer applies). The pre-consume uses the tier derived from the
+	// REQUESTED size; settlement re-runs this with the ACTUAL output size via
+	// relay.ImageHelper's tier override.
+	if tierPrice, _, ok := ratio_setting.ResolveImageTierPriceForModel(billingModelName, meta.ImageSize); ok {
 		modelPrice = tierPrice
 		usePrice = true
 	}

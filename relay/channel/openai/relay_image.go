@@ -362,10 +362,10 @@ func applyImageTierOverride(info *relaycommon.RelayInfo, responseBody []byte) {
 	if size == "" {
 		return
 	}
-	if tierPrice, tier, ok := ratio_setting.ResolveImageTierPrice(size); ok {
+	if tierPrice, tier, ok := ratio_setting.ResolveImageTierPriceForModel(info.GetBillingModelName(), size); ok {
 		info.PriceData.ModelPrice = tierPrice
+		info.PriceData.UsePrice = true
 		if tier != "" {
-			info.PriceData.AddOtherRatio("resolution_tier", 1)
 			logger.LogDebug(context.Background(), "[image-tier] actual %s classified %s price %.4f", size, tier, tierPrice)
 		}
 	}
