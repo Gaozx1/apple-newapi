@@ -25,7 +25,6 @@ import { PaymentSettingsSection } from '../integrations/payment-settings-section
 import { RatioSettingsCard } from '../models/ratio-settings-card'
 import type { BillingSettings } from '../types'
 import { createSectionRegistry } from '../utils/section-registry'
-import { ImageTierPricingSection } from './image-tier-pricing-section'
 
 const getModelDefaults = (settings: BillingSettings) => ({
   ModelPrice: settings.ModelPrice,
@@ -116,11 +115,11 @@ const BILLING_SECTIONS = [
           visibleTabs={[
             'models',
             'unset-models',
+            'image-tiers',
             'tool-prices',
             'upstream-sync',
           ]}
         />
-        <ImageTierPricingSection />
       </>
     ),
   },

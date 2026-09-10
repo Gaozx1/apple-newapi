@@ -33,6 +33,7 @@ import { SettingsSection } from '../components/settings-section'
 import { useUpdateOption } from '../hooks/use-update-option'
 import { positiveIntegerSchema } from '../utils/numeric-field'
 import { GroupRatioForm } from './group-ratio-form'
+import { ImageTierPricingEditor } from './image-tier-pricing-editor'
 import { ModelRatioForm } from './model-ratio-form'
 import { ToolPriceSettings } from './tool-price-settings'
 import { UpstreamRatioSync } from './upstream-ratio-sync'
@@ -143,6 +144,7 @@ type RatioTabId =
   | 'unset-models'
   | 'groups'
   | 'tool-prices'
+  | 'image-tiers'
   | 'upstream-sync'
 
 type RatioSettingsCardProps = {
@@ -405,6 +407,7 @@ export function RatioSettingsCard({
   const tabLabels: Record<RatioTabId, string> = {
     models: 'Model prices',
     'unset-models': 'Unset price models',
+    'image-tiers': 'Image tiers',
     groups: 'Group ratios',
     'tool-prices': 'Tool prices',
     'upstream-sync': 'Upstream price sync',
@@ -420,6 +423,9 @@ export function RatioSettingsCard({
   const defaultTab = visibleTabs[0] ?? 'models'
 
   const renderTabContent = (tab: RatioTabId) => {
+    if (tab === 'image-tiers') {
+      return <ImageTierPricingEditor />
+    }
     if (tab === 'models' || tab === 'unset-models') {
       return (
         <ModelRatioForm
