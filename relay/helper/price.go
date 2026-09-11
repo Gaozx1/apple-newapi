@@ -85,28 +85,19 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 
 	// Image resolution-tier billing takes priority over tiered_expr and token
 	// billing for image requests: when the admin enabled 1K/2K/4K tier prices
-	// for this model, bill a flat USD per call by resolution tier. For
-	// "auto"/unclassifiable requested sizes, pre-consume at the lowest
-	// configured tier; the actual output size is re-derived at settlement
-	// (relay.ImageHelper) and the final charge settles to the measured tier.
-	if tierCfg, hasTiers := ratio_setting.GetImageModelTierPrice(billingModelName); hasTiers {
-		tierPrice, tier, tierOk := ratio_setting.ResolveImageTierPriceForModel(billingModelName, meta.ImageSize)
-		if !tierOk {
-			// Unclassifiable requested size (auto/unknown): reserve the
-			// cheapest configured tier; settlement re-derives from the actual
-			// output image.
-			tierPrice, tierOk = tierCfg.TierPrice(ratio_setting.ImageTier1K)
-		}
-		if tierPrice > 0 {
+	// for this model, bill a flat USD per call by resolution tier. A
+	// classifiable requested size pre-consumes that tier's price; for
+	// "auto"/unknown sizes no reservation is made — the tier price is charged
+	// once after generation, from the measured output image.
+	if _, hasTiers := ratio_setting.GetImageModelTierPrice(billingModelName); hasTiers {
+		if tierPrice, _, tierOk := ratio_setting.ResolveImageTierPriceForModel(billingModelName, meta.ImageSize); tierOk {
 			quotaToPreConsume, err := common.QuotaFromFloatStrict(
 				tierPrice * common.QuotaPerUnit * groupRatioInfo.GroupRatio,
 			)
 			if err != nil {
 				return hosttypes.PriceData{}, err
 			}
-			if tier != "" {
-				meta.ImagePriceRatio = 0 // legacy size ratio must not stack on the tier price
-			}
+			meta.ImagePriceRatio = 0 // legacy size ratio must not stack on the tier price
 			priceData := hosttypes.PriceData{
 				FreeModel:         false,
 				ModelPrice:        tierPrice,
@@ -120,6 +111,21 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 			info.PriceData = priceData
 			return priceData, nil
 		}
+		// auto/unknown requested size: skip the reservation entirely; the
+		// tier price is charged post-generation from the measured output
+		// image, so no pre-consume/adjust round trip is needed.
+		priceData := hosttypes.PriceData{
+			FreeModel:         false,
+			ModelPrice:        0,
+			GroupRatioInfo:    groupRatioInfo,
+			UsePrice:          true,
+			QuotaToPreConsume: 0,
+		}
+		for name, ratio := range meta.BillingRatios {
+			priceData.AddOtherRatio(name, ratio)
+		}
+		info.PriceData = priceData
+		return priceData, nil
 	}
 
 	// Check if this model uses tiered_expr billing

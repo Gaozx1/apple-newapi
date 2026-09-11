@@ -16,8 +16,8 @@ import (
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
@@ -355,7 +355,7 @@ func writeOpenaiImageStreamDone(c *gin.Context) error {
 // unknown formats) the pre-consumed tier price stands — never a cheaper one by
 // accident, because the pre-consume tier came from the same table.
 func applyImageTierOverride(info *relaycommon.RelayInfo, responseBody []byte) {
-	if info == nil || !info.PriceData.UsePrice {
+	if info == nil {
 		return
 	}
 	size := firstOutputImageSize(responseBody)
