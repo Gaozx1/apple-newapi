@@ -1,6 +1,7 @@
 package ratio_setting
 
 import (
+	"maps"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -405,6 +406,23 @@ func GetDefaultModelRatioMap() map[string]float64 {
 
 func GetDefaultModelPriceMap() map[string]float64 {
 	return defaultModelPrice
+}
+
+// GetDefaultPricingMaps returns independent copies for model-level reset and
+// first-write initialization; callers cannot mutate the built-in defaults.
+func GetDefaultPricingMaps() map[string]map[string]float64 {
+	defaults := map[string]map[string]float64{
+		"ModelPrice": defaultModelPrice, "ModelRatio": defaultModelRatio,
+		"CompletionRatio": defaultCompletionRatio, "CacheRatio": defaultCacheRatio,
+		"CreateCacheRatio": defaultCreateCacheRatio, "ImageRatio": defaultImageRatio,
+		"AudioRatio": defaultAudioRatio, "AudioCompletionRatio": defaultAudioCompletionRatio,
+	}
+	result := make(map[string]map[string]float64, len(defaults))
+	for key, values := range defaults {
+		result[key] = make(map[string]float64, len(values))
+		maps.Copy(result[key], values)
+	}
+	return result
 }
 
 func CompletionRatio2JSONString() string {
