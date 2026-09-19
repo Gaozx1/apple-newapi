@@ -23,6 +23,8 @@ import { requireServerSuccess } from '@/lib/server-error-message'
 import type {
   AddChannelRequest,
   BatchDeleteParams,
+  BatchKeyTestParams,
+  BatchKeyTestResponse,
   BatchSetTagParams,
   Channel,
   ChannelBalanceResponse,
@@ -487,6 +489,21 @@ export async function deleteDisabledMultiKeys(
     channel_id: channelId,
     action: 'delete_disabled_keys',
   }) as Promise<{ success: boolean; message?: string; data?: number }>
+}
+
+/**
+ * Batch-test every key of a multi-key channel. Keys whose upstream error proves
+ * them unusable are auto-disabled; recovered keys are restored.
+ */
+export async function batchTestMultiKeys(
+  params: BatchKeyTestParams
+): Promise<BatchKeyTestResponse> {
+  const res = await api.post(
+    '/api/channel/multi_key/batch_test',
+    params,
+    channelActionConfig()
+  )
+  return res.data
 }
 
 // ============================================================================

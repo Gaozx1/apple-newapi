@@ -16,19 +16,29 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { SendHorizontal } from 'lucide-react'
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
 
 import { SectionPageLayout } from '@/components/layout'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
+import { IconBadge } from '@/components/ui/icon-badge'
 import { useStatus } from '@/hooks/use-status'
 import { useSystemConfig } from '@/hooks/use-system-config'
 import { getSelf } from '@/lib/api'
+import { handleServerError } from '@/lib/handle-server-error'
 
 import { AffiliateRewardsCard } from './components/affiliate-rewards-card'
 import { BillingHistoryDialog } from './components/dialogs/billing-history-dialog'
 import { CreemConfirmDialog } from './components/dialogs/creem-confirm-dialog'
 import { PaymentConfirmDialog } from './components/dialogs/payment-confirm-dialog'
 import { TransferDialog } from './components/dialogs/transfer-dialog'
+import {
+  UserTransferDialog,
+  type TransferFeeMode,
+} from './components/dialogs/user-transfer-dialog'
 import { RechargeFormCard } from './components/recharge-form-card'
 import { SubscriptionPlansCard } from './components/subscription-plans-card'
 import { WalletStatsCard } from './components/wallet-stats-card'
@@ -47,6 +57,7 @@ import {
   getMinTopupAmount,
   dispatchSelectedPayment,
 } from './lib'
+import { transferQuotaToUser } from './api'
 import type {
   UserWalletData,
   PaymentMethod,
@@ -73,6 +84,8 @@ export function Wallet(props: WalletProps) {
   const [paymentLoading, setPaymentLoading] = useState<string | null>(null)
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false)
   const [transferDialogOpen, setTransferDialogOpen] = useState(false)
+  const [userTransferDialogOpen, setUserTransferDialogOpen] = useState(false)
+  const [userTransferring, setUserTransferring] = useState(false)
   const [billingDialogOpen, setBillingDialogOpen] = useState(false)
   const [redemptionCode, setRedemptionCode] = useState('')
   const [creemDialogOpen, setCreemDialogOpen] = useState(false)
@@ -231,6 +244,34 @@ export function Wallet(props: WalletProps) {
     return success
   }
 
+  // Handle user-to-user transfer (0.5% fee)
+  const handleUserTransfer = async (
+    username: string,
+    quota: number,
+    feeMode: TransferFeeMode
+  ): Promise<boolean> => {
+    setUserTransferring(true)
+    try {
+      const res = await transferQuotaToUser({
+        username,
+        quota,
+        fee_mode: feeMode,
+      })
+      if (res.success) {
+        toast.success(t('Transfer successful'))
+        await fetchUser()
+        return true
+      }
+      handleServerError(res, t('Transfer failed'))
+      return false
+    } catch (error) {
+      handleServerError(error, t('Transfer failed'))
+      return false
+    } finally {
+      setUserTransferring(false)
+    }
+  }
+
   // Handle Creem product selection
   const handleCreemProductSelect = (product: CreemProduct) => {
     setSelectedCreemProduct(product)
@@ -348,6 +389,33 @@ export function Wallet(props: WalletProps) {
               }
               loading={affiliateLoading}
             />
+
+            <Card data-card-hover='false' className='bg-muted/20 py-0'>
+              <CardContent className='flex flex-wrap items-center justify-between gap-3 p-3 sm:p-4'>
+                <div className='flex min-w-0 items-center gap-2.5'>
+                  <IconBadge tone='info'>
+                    <SendHorizontal />
+                  </IconBadge>
+                  <div className='min-w-0'>
+                    <h3 className='truncate text-sm font-semibold'>
+                      {t('Transfer to User')}
+                    </h3>
+                    <p className='text-muted-foreground line-clamp-1 text-xs'>
+                      {t(
+                        'Send balance to another user. A 0.5% fee is charged and burned.'
+                      )}
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  variant='outline'
+                  onClick={() => setUserTransferDialogOpen(true)}
+                  disabled={(user?.quota ?? 0) <= 0}
+                >
+                  {t('Transfer')}
+                </Button>
+              </CardContent>
+            </Card>
           </div>
         </SectionPageLayout.Content>
       </SectionPageLayout>
@@ -371,6 +439,14 @@ export function Wallet(props: WalletProps) {
         onConfirm={handleTransfer}
         availableQuota={user?.aff_quota ?? 0}
         transferring={transferring}
+      />
+
+      <UserTransferDialog
+        open={userTransferDialogOpen}
+        onOpenChange={setUserTransferDialogOpen}
+        onConfirm={handleUserTransfer}
+        availableQuota={user?.quota ?? 0}
+        transferring={userTransferring}
       />
 
       <BillingHistoryDialog

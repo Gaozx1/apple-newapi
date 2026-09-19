@@ -61,6 +61,7 @@ import {
 } from '../../api'
 import { formatTimestamp } from '../../lib'
 import type { PlanRecord, UserSubscriptionRecord } from '../../types'
+import { SubscriptionModelUsage } from '../subscription-model-usage'
 
 interface Props {
   open: boolean
@@ -338,9 +339,21 @@ export function UserSubscriptionsDialog(props: Props) {
                     const sub = record.subscription
                     const total = Number(sub.amount_total || 0)
                     const used = Number(sub.amount_used || 0)
-                    return total > 0
-                      ? `${formatQuota(used)}/${formatQuota(total)}`
-                      : t('Unlimited')
+                    // total < 0 means the plan has no shared pool and funds
+                    // only through per-model buckets.
+                    let totalLabel = t('Unlimited')
+                    if (total > 0) {
+                      totalLabel = `${formatQuota(used)}/${formatQuota(total)}`
+                    } else if (total < 0) {
+                      totalLabel = t('Per-model buckets only')
+                    }
+
+                    return (
+                      <div className='min-w-0'>
+                        <div className='text-sm tabular-nums'>{totalLabel}</div>
+                        <SubscriptionModelUsage record={record} />
+                      </div>
+                    )
                   },
                 },
                 {

@@ -667,9 +667,26 @@ func SetupContextForSelectedChannel(c *gin.Context, channel *model.Channel, mode
 	common.SetContextKey(c, constant.ContextKeyChannelModelMapping, channel.GetModelMapping())
 	common.SetContextKey(c, constant.ContextKeyChannelStatusCodeMapping, channel.GetStatusCodeMapping())
 
-	key, index, newAPIError := channel.GetNextEnabledKey()
-	if newAPIError != nil {
-		return newAPIError
+	// The manual batch key test pins one exact index so it can probe every key
+	// without advancing the shared random/polling cursor.
+	var key string
+	var index int
+	if forcedIndex, ok := common.GetContextKey(c, constant.ContextKeyChannelForceMultiKeyIndex); ok {
+		forced, isInt := forcedIndex.(int)
+		if !isInt || forced < 0 {
+			return types.NewError(errors.New("invalid forced multi-key index"), types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
+		}
+		var indexErr *types.NewAPIError
+		key, indexErr = channel.GetKeyByIndex(forced)
+		if indexErr != nil {
+			return indexErr
+		}
+	} else {
+		var keyErr *types.NewAPIError
+		key, index, keyErr = channel.GetNextEnabledKey()
+		if keyErr != nil {
+			return keyErr
+		}
 	}
 	if channel.ChannelInfo.IsMultiKey {
 		common.SetContextKey(c, constant.ContextKeyChannelIsMultiKey, true)

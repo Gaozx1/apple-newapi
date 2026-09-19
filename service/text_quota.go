@@ -457,7 +457,14 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		model.UpdateChannelUsedQuota(relayInfo.ChannelId, summary.Quota)
 	}
 
-	if err := SettleBilling(ctx, relayInfo, summary.Quota); err != nil {
+	// token 桶按"全量 token"结算：OpenAI/Gemini 语义的 PromptTokens 已包含
+	// 缓存读/缓存写；Anthropic 语义的 PromptTokens 只是未命中输入，需要把
+	// 缓存读（CacheTokens）与缓存写（CacheCreationTokens）一并计入。
+	actualTokens := summary.PromptTokens + summary.CompletionTokens
+	if summary.IsClaudeUsageSemantic {
+		actualTokens += summary.CacheTokens + summary.CacheCreationTokens
+	}
+	if err := SettleBilling(ctx, relayInfo, summary.Quota, actualTokens); err != nil {
 		logger.LogError(ctx, "error settling billing: "+err.Error())
 	}
 

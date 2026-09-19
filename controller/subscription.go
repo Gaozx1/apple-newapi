@@ -182,8 +182,9 @@ func AdminCreateSubscriptionPlan(c *gin.Context) {
 		common.ApiErrorMsg(c, "购买上限不能为负数")
 		return
 	}
-	if req.Plan.TotalAmount < 0 {
-		common.ApiErrorMsg(c, "总额度不能为负数")
+	// TotalAmount == -1 是合法值：表示套餐没有共享额度池，仅按单模型桶计费。
+	if req.Plan.TotalAmount < -1 {
+		common.ApiErrorMsg(c, "总额度不能小于-1（-1 表示无共享额度池，仅按模型桶计费）")
 		return
 	}
 	req.Plan.UpgradeGroup = strings.TrimSpace(req.Plan.UpgradeGroup)
@@ -260,8 +261,9 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 		common.ApiErrorMsg(c, "购买上限不能为负数")
 		return
 	}
-	if req.Plan.TotalAmount < 0 {
-		common.ApiErrorMsg(c, "总额度不能为负数")
+	// TotalAmount == -1 是合法值：表示套餐没有共享额度池，仅按单模型桶计费。
+	if req.Plan.TotalAmount < -1 {
+		common.ApiErrorMsg(c, "总额度不能小于-1（-1 表示无共享额度池，仅按模型桶计费）")
 		return
 	}
 	req.Plan.UpgradeGroup = strings.TrimSpace(req.Plan.UpgradeGroup)
@@ -306,6 +308,7 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 			"max_purchase_per_user":      req.Plan.MaxPurchasePerUser,
 			"total_amount":               req.Plan.TotalAmount,
 			"model_quotas":               req.Plan.ModelQuotas,
+			"model_token_quotas":         req.Plan.ModelTokenQuotas,
 			"usable_groups":              req.Plan.UsableGroups,
 			"upgrade_group":              req.Plan.UpgradeGroup,
 			"downgrade_group":            req.Plan.DowngradeGroup,
@@ -558,9 +561,11 @@ func AdminDeleteUserSubscription(c *gin.Context) {
 }
 
 // normalizePlanQuotaConfig validates and normalizes the plan's per-model quota
-// buckets (model_quotas) and its usable billing groups (usable_groups).
-// model_quotas must be a JSON object of model name -> positive quota; entries
-// with non-positive or overflowing values are rejected. usable_groups is a
+// buckets (model_quotas), per-model token buckets (model_token_quotas), and its
+// usable billing groups (usable_groups).
+// model_quotas must be a JSON object of model name -> positive quota;
+// model_token_quotas must be a JSON object of model name -> positive raw token
+// count. Entries with non-positive values are rejected. usable_groups is a
 // comma-separated list; every group must exist in the group ratio settings.
 func normalizePlanQuotaConfig(plan *model.SubscriptionPlan) error {
 	trimmed := strings.TrimSpace(plan.ModelQuotas)
@@ -590,6 +595,35 @@ func normalizePlanQuotaConfig(plan *model.SubscriptionPlan) error {
 				return errors.New("模型额度配置序列化失败")
 			}
 			plan.ModelQuotas = string(encoded)
+		}
+	}
+	tokenTrimmed := strings.TrimSpace(plan.ModelTokenQuotas)
+	if tokenTrimmed == "" {
+		plan.ModelTokenQuotas = ""
+	} else {
+		var quotas map[string]int64
+		if err := common.UnmarshalJsonStr(tokenTrimmed, &quotas); err != nil {
+			return errors.New("模型Token额度配置必须是 {\"模型名\": Token数} 形式的JSON对象")
+		}
+		normalized := make(map[string]int64)
+		for modelName, tokens := range quotas {
+			modelName = strings.TrimSpace(modelName)
+			if modelName == "" {
+				continue
+			}
+			if tokens <= 0 {
+				return fmt.Errorf("模型 %s 的Token额度必须大于0", modelName)
+			}
+			normalized[modelName] = tokens
+		}
+		if len(normalized) == 0 {
+			plan.ModelTokenQuotas = ""
+		} else {
+			encoded, err := common.Marshal(normalized)
+			if err != nil {
+				return errors.New("模型Token额度配置序列化失败")
+			}
+			plan.ModelTokenQuotas = string(encoded)
 		}
 	}
 	groups := plan.ParseUsableGroups()

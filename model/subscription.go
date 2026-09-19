@@ -178,7 +178,8 @@ type SubscriptionPlan struct {
 	// Downgrade user group on expiry (empty = revert to the group held before purchase)
 	DowngradeGroup string `json:"downgrade_group" gorm:"type:varchar(64);default:''"`
 
-	// Total quota (amount in quota units, 0 = unlimited)
+	// Total quota (amount in quota units, 0 = unlimited, -1 = no shared pool:
+	// the plan funds requests only through per-model buckets)
 	TotalAmount int64 `json:"total_amount" gorm:"type:bigint;not null;default:0"`
 
 	// Per-model quota buckets as JSON {"model": quota}. When non-empty, each
@@ -187,6 +188,12 @@ type SubscriptionPlan struct {
 	// NOTE: no SQL default — MySQL 5.7 rejects TEXT defaults; empty string and
 	// NULL both parse as "no buckets".
 	ModelQuotas string `json:"model_quotas" gorm:"type:text"`
+
+	// Per-model token buckets as JSON {"model": tokens}. Draws are denominated
+	// in raw prompt+completion token counts instead of quota units, so a plan
+	// can sell e.g. "1e8 tokens of deepseek-chat" independent of model ratios.
+	// When a request's model has a token bucket, it is consumed first.
+	ModelTokenQuotas string `json:"model_token_quotas" gorm:"type:text"`
 
 	// Comma-separated billing groups where the subscription quota may be used
 	// (empty = all groups allowed).
@@ -247,6 +254,28 @@ func (p *SubscriptionPlan) ParseModelQuotas() map[string]int64 {
 // means the quota may be used from any group.
 func (p *SubscriptionPlan) ParseUsableGroups() []string {
 	return parseCommaSeparatedGroups(p.UsableGroups)
+}
+
+// ParseModelTokenQuotas returns the plan's per-model token buckets
+// ({"model": tokens}). Malformed or non-positive entries are ignored; an empty
+// map means the plan has no token-denominated buckets.
+func (p *SubscriptionPlan) ParseModelTokenQuotas() map[string]int64 {
+	quotas := make(map[string]int64)
+	if strings.TrimSpace(p.ModelTokenQuotas) == "" {
+		return quotas
+	}
+	var raw map[string]int64
+	if err := common.UnmarshalJsonStr(p.ModelTokenQuotas, &raw); err != nil {
+		return quotas
+	}
+	for modelName, tokens := range raw {
+		modelName = strings.TrimSpace(modelName)
+		if modelName == "" || tokens <= 0 {
+			continue
+		}
+		quotas[modelName] = tokens
+	}
+	return quotas
 }
 
 // parseCommaSeparatedGroups splits a comma-separated group list, trims each
@@ -324,6 +353,10 @@ type UserSubscription struct {
 	// NOTE: no SQL default — MySQL 5.7 rejects TEXT defaults.
 	ModelUsed string `json:"model_used" gorm:"type:text"`
 
+	// Per-model used token counts as JSON {"model": tokens}, only maintained
+	// when the plan defines model_token_quotas. Same TEXT-no-default rule.
+	TokenUsed string `json:"token_used" gorm:"type:text"`
+
 	StartTime int64  `json:"start_time" gorm:"bigint"`
 	EndTime   int64  `json:"end_time" gorm:"bigint;index;index:idx_user_sub_active,priority:3"`
 	Status    string `json:"status" gorm:"type:varchar(32);index;index:idx_user_sub_active,priority:2"` // active/expired/cancelled
@@ -365,6 +398,25 @@ func (s *UserSubscription) ParseModelUsed() map[string]int64 {
 	return used
 }
 
+// ParseTokenUsed returns the subscription's per-model used token counts.
+func (s *UserSubscription) ParseTokenUsed() map[string]int64 {
+	used := make(map[string]int64)
+	if strings.TrimSpace(s.TokenUsed) == "" {
+		return used
+	}
+	var raw map[string]int64
+	if err := common.UnmarshalJsonStr(s.TokenUsed, &raw); err != nil {
+		return used
+	}
+	for modelName, tokens := range raw {
+		if modelName == "" {
+			continue
+		}
+		used[modelName] = tokens
+	}
+	return used
+}
+
 func (s *UserSubscription) BeforeCreate(tx *gorm.DB) error {
 	now := common.GetTimestamp()
 	s.CreatedAt = now
@@ -383,6 +435,10 @@ type SubscriptionSummary struct {
 	// uses a single shared pool); ModelUsed is the matching per-model usage.
 	ModelQuotas map[string]int64 `json:"model_quotas,omitempty"`
 	ModelUsed   map[string]int64 `json:"model_used,omitempty"`
+	// ModelTokenQuotas mirrors the plan's token-denominated per-model buckets;
+	// TokenUsed is the matching per-model usage in raw token counts.
+	ModelTokenQuotas map[string]int64 `json:"model_token_quotas,omitempty"`
+	TokenUsed        map[string]int64 `json:"token_used,omitempty"`
 }
 
 type SubscriptionResetResult struct {
@@ -1014,6 +1070,10 @@ func buildSubscriptionSummaries(subs []UserSubscription) []SubscriptionSummary {
 				summary.ModelQuotas = quotas
 				summary.ModelUsed = subCopy.ParseModelUsed()
 			}
+			if tokenQuotas := plan.ParseModelTokenQuotas(); len(tokenQuotas) > 0 {
+				summary.ModelTokenQuotas = tokenQuotas
+				summary.TokenUsed = subCopy.ParseTokenUsed()
+			}
 		}
 		result = append(result, summary)
 	}
@@ -1112,6 +1172,7 @@ func resetUserSubscriptionTx(tx *gorm.DB, sub *UserSubscription, plan *Subscript
 	}
 	sub.AmountUsed = 0
 	sub.ModelUsed = "{}"
+	sub.TokenUsed = "{}"
 	if advanceResetTime {
 		nextReset := calcNextResetTime(time.Unix(now, 0), plan, sub.EndTime)
 		sub.NextResetTime = nextReset
@@ -1235,6 +1296,9 @@ type SubscriptionPreConsumeResult struct {
 	// ModelName is non-empty when the consume drew from a per-model bucket
 	// (plan has model_quotas); settle/refund must then target that bucket.
 	ModelName string
+	// Unit denominates PreConsumed: "quota" (default) or "token" when the
+	// draw came from a token-denominated bucket (plan has model_token_quotas).
+	Unit string
 }
 
 // ExpireDueSubscriptions marks expired subscriptions and handles group downgrade.
@@ -1345,8 +1409,11 @@ type SubscriptionPreConsumeRecord struct {
 	Status             string `json:"status" gorm:"type:varchar(32);index"` // consumed/refunded
 	// ModelName is set when the pre-consume drew from a per-model quota bucket.
 	ModelName string `json:"model_name" gorm:"type:varchar(255);default:''"`
+	// Unit denominates PreConsumed: "quota" (default) or "token" for
+	// token-denominated per-model buckets.
+	Unit      string `json:"unit" gorm:"type:varchar(16);default:'quota'"`
 	CreatedAt int64  `json:"created_at" gorm:"bigint"`
-	UpdatedAt int64  `json:"updated_at" gorm:"bigint;index"`
+	UpdatedAt int64  `json:"updated_at" gorm:"type:bigint;index"`
 }
 
 func (r *SubscriptionPreConsumeRecord) BeforeCreate(tx *gorm.DB) error {
@@ -1393,13 +1460,19 @@ func maybeResetUserSubscriptionWithPlanTx(tx *gorm.DB, sub *UserSubscription, pl
 	}
 	sub.AmountUsed = 0
 	sub.ModelUsed = "{}"
+	sub.TokenUsed = "{}"
 	sub.LastResetTime = base.Unix()
 	sub.NextResetTime = next
 	return tx.Save(sub).Error
 }
 
-// PreConsumeUserSubscription pre-consumes from any active subscription total quota.
-func PreConsumeUserSubscription(requestId string, userId int, modelName string, quotaType int, amount int64, groupName string) (*SubscriptionPreConsumeResult, error) {
+// PreConsumeUserSubscription pre-consumes from any active subscription.
+// amount is denominated in quota units; tokenAmount is the estimated raw
+// prompt+completion token count used when the selected plan funds the model
+// through a token-denominated bucket (model_token_quotas). A plan with any
+// per-model bucket (quota or token) funds only via buckets — the shared pool
+// is not consulted — and TotalAmount == -1 disables the shared pool outright.
+func PreConsumeUserSubscription(requestId string, userId int, modelName string, quotaType int, amount int64, groupName string, tokenAmount int64) (*SubscriptionPreConsumeResult, error) {
 	if userId <= 0 {
 		return nil, errors.New("invalid userId")
 	}
@@ -1433,6 +1506,7 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 			returnValue.AmountUsedBefore = sub.AmountUsed
 			returnValue.AmountUsedAfter = sub.AmountUsed
 			returnValue.ModelName = existing.ModelName
+			returnValue.Unit = existing.Unit
 			return nil
 		}
 
@@ -1468,11 +1542,66 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 					continue
 				}
 			}
+			modelTokenQuotas := plan.ParseModelTokenQuotas()
 			modelQuotas := plan.ParseModelQuotas()
 			usedBefore := sub.AmountUsed
-			if len(modelQuotas) > 0 {
-				// Per-model buckets: the model must have its own bucket and the
-				// draw comes out of that bucket only (buckets are not fungible).
+			if len(modelTokenQuotas) > 0 || len(modelQuotas) > 0 {
+				// Bucket mode: the plan funds only via per-model buckets; the
+				// shared pool is not consulted. Token buckets are denominated
+				// in raw token counts and take precedence over quota buckets.
+				if bucketTokens, ok := modelTokenQuotas[modelName]; ok && bucketTokens > 0 && tokenAmount > 0 {
+					tokenUsed := sub.ParseTokenUsed()
+					remain := bucketTokens - tokenUsed[modelName]
+					if remain < tokenAmount {
+						continue
+					}
+					record := &SubscriptionPreConsumeRecord{
+						RequestId:          requestId,
+						UserId:             userId,
+						UserSubscriptionId: sub.Id,
+						PreConsumed:        tokenAmount,
+						Status:             "consumed",
+						ModelName:          modelName,
+						Unit:               "token",
+					}
+					if err := tx.Create(record).Error; err != nil {
+						var dup SubscriptionPreConsumeRecord
+						if err2 := tx.Where("request_id = ?", requestId).First(&dup).Error; err2 == nil {
+							if dup.Status == "refunded" {
+								return errors.New("subscription pre-consume already refunded")
+							}
+							returnValue.UserSubscriptionId = sub.Id
+							returnValue.PreConsumed = dup.PreConsumed
+							returnValue.AmountTotal = sub.AmountTotal
+							returnValue.AmountUsedBefore = sub.AmountUsed
+							returnValue.AmountUsedAfter = sub.AmountUsed
+							returnValue.ModelName = dup.ModelName
+							returnValue.Unit = dup.Unit
+							return nil
+						}
+						return err
+					}
+					tokenUsed[modelName] += tokenAmount
+					tokenUsedJson, err := common.Marshal(tokenUsed)
+					if err != nil {
+						return err
+					}
+					sub.TokenUsed = string(tokenUsedJson)
+					if err := tx.Save(&sub).Error; err != nil {
+						return err
+					}
+					returnValue.UserSubscriptionId = sub.Id
+					returnValue.PreConsumed = tokenAmount
+					returnValue.AmountTotal = sub.AmountTotal
+					returnValue.AmountUsedBefore = usedBefore
+					returnValue.AmountUsedAfter = sub.AmountUsed
+					returnValue.ModelName = modelName
+					returnValue.Unit = "token"
+					return nil
+				}
+				// Per-model quota buckets: the model must have its own bucket
+				// and the draw comes out of that bucket only (buckets are not
+				// fungible).
 				bucketQuota, ok := modelQuotas[modelName]
 				if !ok || bucketQuota <= 0 {
 					continue
@@ -1502,6 +1631,7 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 						returnValue.AmountUsedBefore = sub.AmountUsed
 						returnValue.AmountUsedAfter = sub.AmountUsed
 						returnValue.ModelName = dup.ModelName
+						returnValue.Unit = dup.Unit
 						return nil
 					}
 					return err
@@ -1521,7 +1651,13 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 				returnValue.AmountUsedBefore = usedBefore
 				returnValue.AmountUsedAfter = sub.AmountUsed
 				returnValue.ModelName = modelName
+				returnValue.Unit = "quota"
 				return nil
+			}
+			if plan.TotalAmount < 0 {
+				// TotalAmount == -1: no shared pool — the plan funds requests
+				// only through per-model buckets.
+				continue
 			}
 			if sub.AmountTotal > 0 {
 				remain := sub.AmountTotal - usedBefore
@@ -1548,6 +1684,7 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 					returnValue.AmountUsedBefore = sub.AmountUsed
 					returnValue.AmountUsedAfter = sub.AmountUsed
 					returnValue.ModelName = dup.ModelName
+					returnValue.Unit = dup.Unit
 					return nil
 				}
 				return err
@@ -1561,6 +1698,7 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 			returnValue.AmountTotal = sub.AmountTotal
 			returnValue.AmountUsedBefore = usedBefore
 			returnValue.AmountUsedAfter = sub.AmountUsed
+			returnValue.Unit = "quota"
 			return nil
 		}
 		return fmt.Errorf("subscription quota insufficient, need=%d", amount)
@@ -1589,7 +1727,11 @@ func RefundSubscriptionPreConsume(requestId string) error {
 			record.Status = "refunded"
 			return tx.Save(&record).Error
 		}
-		if record.ModelName != "" {
+		if record.ModelName != "" && record.Unit == "token" {
+			if err := postConsumeUserSubscriptionTokenDeltaTx(tx, record.UserSubscriptionId, record.ModelName, -record.PreConsumed); err != nil {
+				return err
+			}
+		} else if record.ModelName != "" {
 			if err := postConsumeUserSubscriptionModelDeltaTx(tx, record.UserSubscriptionId, record.ModelName, -record.PreConsumed); err != nil {
 				return err
 			}
@@ -1767,5 +1909,58 @@ func postConsumeUserSubscriptionModelDeltaTx(tx *gorm.DB, userSubscriptionId int
 		return err
 	}
 	sub.ModelUsed = string(modelUsedJson)
+	return tx.Save(&sub).Error
+}
+
+// PostConsumeUserSubscriptionTokenDelta updates a per-model token bucket on a
+// subscription (positive consume more, negative refund). The plan must define
+// a token bucket for the model; the delta is denominated in raw token counts.
+func PostConsumeUserSubscriptionTokenDelta(userSubscriptionId int, modelName string, delta int64) error {
+	if userSubscriptionId <= 0 {
+		return errors.New("invalid userSubscriptionId")
+	}
+	if strings.TrimSpace(modelName) == "" {
+		return errors.New("invalid modelName")
+	}
+	if delta == 0 {
+		return nil
+	}
+	return DB.Transaction(func(tx *gorm.DB) error {
+		return postConsumeUserSubscriptionTokenDeltaTx(tx, userSubscriptionId, modelName, delta)
+	})
+}
+
+// postConsumeUserSubscriptionTokenDeltaTx is the transactional core of
+// PostConsumeUserSubscriptionTokenDelta; reuse it inside an existing
+// transaction instead of nesting DB.Transaction calls.
+func postConsumeUserSubscriptionTokenDeltaTx(tx *gorm.DB, userSubscriptionId int, modelName string, delta int64) error {
+	var sub UserSubscription
+	if err := lockForUpdate(tx).
+		Where("id = ?", userSubscriptionId).
+		First(&sub).Error; err != nil {
+		return err
+	}
+	plan, err := getSubscriptionPlanByIdTx(tx, sub.PlanId)
+	if err != nil {
+		return err
+	}
+	bucketTokens, ok := plan.ParseModelTokenQuotas()[modelName]
+	if !ok || bucketTokens <= 0 {
+		return fmt.Errorf("subscription plan has no token bucket for model %s", modelName)
+	}
+	tokenUsed := sub.ParseTokenUsed()
+	newUsed := tokenUsed[modelName] + delta
+	if newUsed < 0 {
+		newUsed = 0
+	}
+	if newUsed > bucketTokens {
+		return fmt.Errorf("subscription model token bucket exceeded, model=%s used=%d tokens=%d", modelName, newUsed, bucketTokens)
+	}
+	tokenUsed[modelName] = newUsed
+	tokenUsedJson, err := common.Marshal(tokenUsed)
+	if err != nil {
+		return err
+	}
+	sub.TokenUsed = string(tokenUsedJson)
 	return tx.Save(&sub).Error
 }

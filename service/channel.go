@@ -46,6 +46,19 @@ func ShouldDisableChannel(err *types.NewAPIError) bool {
 	if !common.AutomaticDisableChannelEnabled {
 		return false
 	}
+	return ErrorWarrantsChannelDisable(err)
+}
+
+// ErrorWarrantsChannelDisable reports whether an upstream error indicates the
+// credential or the upstream account is unusable — authentication failures,
+// explicit channel errors, configured status codes, and configured
+// quota/permission keywords. It deliberately ignores transient failures
+// (timeouts, 5xx, rate limits) so a healthy key is not disabled by them.
+//
+// It applies the same rules as ShouldDisableChannel but without the global
+// auto-disable switch: the manual batch key test is an explicit administrator
+// action, so it must not be silently neutered when the global switch is off.
+func ErrorWarrantsChannelDisable(err *types.NewAPIError) bool {
 	if err == nil {
 		return false
 	}

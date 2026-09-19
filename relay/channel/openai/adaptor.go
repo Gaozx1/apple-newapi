@@ -424,6 +424,37 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 		request.Messages[0].Role = "developer"
 	}
 
+	// Strip leaked special-token text (DSML tool-call markers spelled out as
+	// plain text) from assistant history: replaying them upstream drives the
+	// model into marker-mimicry mode, and some upstreams fail outright (502)
+	// when tools are present alongside such history.
+	for i := range request.Messages {
+		msg := &request.Messages[i]
+		if msg.Role != "assistant" {
+			continue
+		}
+		switch content := msg.Content.(type) {
+		case string:
+			if out := service.ScrubSpecialTokenText(content); out != content {
+				msg.SetStringContent(out)
+			}
+		case []any:
+			for _, itemAny := range content {
+				item, ok := itemAny.(map[string]any)
+				if !ok || item["type"] != "text" {
+					continue
+				}
+				text, ok := item["text"].(string)
+				if !ok {
+					continue
+				}
+				if out := service.ScrubSpecialTokenText(text); out != text {
+					item["text"] = out
+				}
+			}
+		}
+	}
+
 	return request, nil
 }
 

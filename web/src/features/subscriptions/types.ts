@@ -41,6 +41,8 @@ export const subscriptionPlanSchema = z.object({
   total_amount: z.number(),
   // JSON string {"model": quota} — per-model buckets (empty = shared pool).
   model_quotas: z.string().optional(),
+  // JSON string {"model": tokens} — token-denominated per-model buckets.
+  model_token_quotas: z.string().optional(),
   // Comma-separated billing groups where the quota may be used (empty = all).
   usable_groups: z.string().optional(),
   upgrade_group: z.string().optional(),
@@ -80,6 +82,9 @@ export interface UserSubscriptionRecord {
   // Present when the plan defines per-model buckets (keys match model names).
   model_quotas?: Record<string, number>
   model_used?: Record<string, number>
+  // Token-denominated per-model buckets and their usage in raw token counts.
+  model_token_quotas?: Record<string, number>
+  token_used?: Record<string, number>
 }
 
 // ============================================================================

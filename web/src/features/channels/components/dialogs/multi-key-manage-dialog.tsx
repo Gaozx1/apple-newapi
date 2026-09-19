@@ -63,6 +63,7 @@ import {
 } from '../../lib'
 import type { KeyStatus, MultiKeyConfirmAction } from '../../types'
 import { useChannels } from '../channels-provider'
+import { MultiKeyBatchTestPanel } from './multi-key-batch-test-panel'
 import { StatisticsCard } from './multi-key-statistics-card'
 import { MultiKeyTableRowActions } from './multi-key-table-row-actions'
 
@@ -287,6 +288,11 @@ export function MultiKeyManageDialog({
           </div>
 
           <Separator className='shrink-0' />
+
+          <MultiKeyBatchTestPanel
+            channel={currentRow}
+            onFinished={() => loadKeyStatus(currentPage, pageSize)}
+          />
 
           {/* Toolbar */}
           <div className='flex shrink-0 items-center justify-between'>

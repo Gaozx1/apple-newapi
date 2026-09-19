@@ -175,7 +175,7 @@ func runFixedPriceAccountingCases(t *testing.T, db *gorm.DB) {
 					} else {
 						PostTextConsumeQuota(ctx, info, tc.usage, nil)
 					}
-					require.NoError(t, info.Billing.Settle(tc.want), "a repeated settlement must not charge again")
+					require.NoError(t, info.Billing.Settle(tc.want, 0), "a repeated settlement must not charge again")
 					var log model.Log
 					require.NoError(t, db.Where("user_id = ?", user.Id).Take(&log).Error)
 					assert.Equal(t, tc.want, log.Quota)

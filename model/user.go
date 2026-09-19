@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 
@@ -632,6 +633,111 @@ func (user *User) TransferAffQuotaToQuota(quota int) error {
 
 	// 提交事务
 	return tx.Commit().Error
+}
+
+// TransferFeeRate is the in-site user-to-user transfer fee rate (0.5%).
+// The fee is burned (not credited to anyone).
+const TransferFeeRate = 0.005
+
+// TransferFeeModeDeduct takes the fee out of the transferred amount (the
+// recipient receives quota - fee); TransferFeeModeExtra charges the sender
+// quota + fee on top so the recipient receives the full amount.
+const (
+	TransferFeeModeDeduct = "deduct"
+	TransferFeeModeExtra  = "extra"
+)
+
+// TransferQuotaToUser moves quota from fromUserId to the user named toUsername,
+// charging a 0.5% fee that is burned. Returns the fee actually charged.
+func TransferQuotaToUser(fromUserId int, toUsername string, quota int, feeMode string) (fee int, err error) {
+	if float64(quota) < common.QuotaPerUnit {
+		return 0, fmt.Errorf("转账额度最小为%s！", logger.LogQuota(common.QuotaFromFloat(common.QuotaPerUnit)))
+	}
+	if feeMode != TransferFeeModeExtra {
+		feeMode = TransferFeeModeDeduct
+	}
+
+	var toUser User
+	if err = DB.Select("id", "username").Where("username = ?", toUsername).First(&toUser).Error; err != nil {
+		return 0, errors.New("收款用户不存在")
+	}
+	if toUser.Id == fromUserId {
+		return 0, errors.New("不能给自己转账")
+	}
+
+	// 手续费 0.5%，向上取整，至少 1 个额度单位
+	fee = int(math.Ceil(float64(quota) * TransferFeeRate))
+	if fee < 1 {
+		fee = 1
+	}
+	charge := quota
+	received := quota - fee
+	if feeMode == TransferFeeModeExtra {
+		charge = quota + fee
+		received = quota
+	}
+	if received <= 0 {
+		return 0, errors.New("扣除手续费后到账额度必须大于0")
+	}
+
+	err = DB.Transaction(func(tx *gorm.DB) error {
+		// 按用户 id 顺序加锁，避免并发互转死锁
+		first, second := fromUserId, toUser.Id
+		if second < first {
+			first, second = second, first
+		}
+		for _, id := range []int{first, second} {
+			var locked User
+			if err := lockForUpdate(tx).Select("id").Where("id = ?", id).First(&locked).Error; err != nil {
+				return err
+			}
+		}
+		// 原子扣减，余额不足则失败
+		res := tx.Model(&User{}).
+			Where("id = ? AND quota >= ?", fromUserId, charge).
+			Update("quota", gorm.Expr("quota - ?", charge))
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return errors.New("余额不足以支付转账金额和手续费")
+		}
+		res = tx.Model(&User{}).
+			Where("id = ? AND quota <= ?", toUser.Id, common.MaxWalletQuota-received).
+			Update("quota", gorm.Expr("quota + ?", received))
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return ErrWalletQuotaLimitExceeded
+		}
+		return nil
+	})
+	if err != nil {
+		return 0, err
+	}
+
+	// 缓存与日志在提交后处理
+	gopool.Go(func() {
+		if err := cacheDecrUserQuota(fromUserId, int64(charge)); err != nil {
+			common.SysLog("failed to decrease user quota cache: " + err.Error())
+		}
+		if err := cacheIncrUserQuota(toUser.Id, int64(received)); err != nil {
+			common.SysLog("failed to increase user quota cache: " + err.Error())
+		}
+	})
+	RecordLog(fromUserId, LogTypeSystem, fmt.Sprintf("转账给 %s %s，手续费 %s (0.5%%)", toUsername, logger.LogQuota(charge), logger.LogQuota(fee)))
+	RecordLog(toUser.Id, LogTypeSystem, fmt.Sprintf("收到 %s 转账 %s（已扣手续费 %s）", GetUsernameByIdMust(fromUserId), logger.LogQuota(received), logger.LogQuota(fee)))
+	return fee, nil
+}
+
+// GetUsernameByIdMust returns the username or a numeric fallback, for log text.
+func GetUsernameByIdMust(id int) string {
+	name, err := GetUsernameById(id, false)
+	if err != nil || name == "" {
+		return fmt.Sprintf("用户%d", id)
+	}
+	return name
 }
 
 func (user *User) prepareForInsert(tx *gorm.DB) error {

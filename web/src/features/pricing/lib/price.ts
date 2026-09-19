@@ -242,6 +242,43 @@ export function formatFixedPrice(
 }
 
 /**
+ * Format the configured image tier prices (1K/2K/4K, USD per call) for a
+ * model. Returns an empty list when tier pricing is not enabled.
+ */
+export function formatImageTierPrices(
+  model: PricingModel,
+  showWithRecharge = false,
+  priceRate = 1,
+  usdExchangeRate = 1,
+  selectedGroup?: string,
+  groupRatioOverride?: number
+): { tier: string; formatted: string }[] {
+  const cfg = model.image_tier_price
+  if (!cfg || !cfg.enabled) return []
+  const ratio =
+    groupRatioOverride ?? getDisplayGroupRatio(model, selectedGroup)
+  const tiers: [string, number][] = [
+    ['1K', cfg.price_1k],
+    ['2K', cfg.price_2k],
+    ['4K', cfg.price_4k],
+  ]
+  return tiers
+    .filter(([, price]) => price > 0)
+    .map(([tier, price]) => ({
+      tier,
+      formatted: formatBillingCurrencyFromUSD(
+        applyRechargeRate(
+          price * ratio,
+          showWithRecharge,
+          priceRate,
+          usdExchangeRate
+        ),
+        { digitsLarge: 4, digitsSmall: 4, abbreviate: false }
+      ),
+    }))
+}
+
+/**
  * Format fixed price for pay-per-request models (minimum price from all groups)
  */
 export function formatRequestPrice(

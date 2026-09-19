@@ -419,6 +419,40 @@ type TransferAffQuotaRequest struct {
 	Quota int `json:"quota" binding:"required"`
 }
 
+type TransferQuotaRequest struct {
+	Username string `json:"username" binding:"required"`
+	Quota    int    `json:"quota" binding:"required"`
+	FeeMode  string `json:"fee_mode"` // deduct（默认，内扣）/ extra（外加）
+}
+
+// TransferQuota 站内用户间转账，收取 0.5% 手续费（销毁）。
+func TransferQuota(c *gin.Context) {
+	if !requirePaymentCompliance(c) {
+		return
+	}
+	id := c.GetInt("id")
+	var req TransferQuotaRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	req.Username = strings.TrimSpace(req.Username)
+	if req.Username == "" {
+		common.ApiErrorMsg(c, "收款用户不能为空")
+		return
+	}
+	if req.Quota <= 0 {
+		common.ApiErrorMsg(c, "转账额度必须大于0")
+		return
+	}
+	fee, err := model.TransferQuotaToUser(id, req.Username, req.Quota, req.FeeMode)
+	if err != nil {
+		common.ApiErrorMsg(c, err.Error())
+		return
+	}
+	common.ApiSuccess(c, gin.H{"fee": fee})
+}
+
 func TransferAffQuota(c *gin.Context) {
 	if !requirePaymentCompliance(c) {
 		return

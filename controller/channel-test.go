@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -70,6 +71,14 @@ func resolveChannelTestUserID(c *gin.Context) (int, error) {
 }
 
 func testChannel(ctx context.Context, channel *model.Channel, testUserID int, testModel string, endpointType string, isStream bool) testResult {
+	return testChannelWithKeyIndex(ctx, channel, testUserID, testModel, endpointType, isStream, nil)
+}
+
+// testChannelWithKeyIndex runs a channel test with an optional pinned multi-key
+// index. The manual batch key test passes keyIndex so each key is probed
+// exactly, without the shared random/polling cursor choosing (and advancing) a
+// different one.
+func testChannelWithKeyIndex(ctx context.Context, channel *model.Channel, testUserID int, testModel string, endpointType string, isStream bool, keyIndex *int) testResult {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -167,6 +176,10 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 	c.Set("base_url", channel.GetBaseURL())
 	group, _ := model.GetUserGroup(testUserID, false)
 	c.Set("group", group)
+
+	if keyIndex != nil {
+		common.SetContextKey(c, constant.ContextKeyChannelForceMultiKeyIndex, *keyIndex)
+	}
 
 	newAPIError := middleware.SetupContextForSelectedChannel(c, channel, testModel)
 	if newAPIError != nil {
@@ -1123,6 +1136,237 @@ func selectChannelsForAutomaticTest(channels []*model.Channel, mode string) []*m
 		selected = append(selected, channel)
 	}
 	return selected
+}
+
+// batchKeyTestConcurrency is the fixed worker count for the manual batch key
+// test. Each probe is a real upstream request, so it stays well below the
+// scheduled channel-test ceiling.
+const batchKeyTestConcurrency = 5
+
+type BatchKeyTestRequest struct {
+	ChannelId int    `json:"channel_id"`
+	TestModel string `json:"test_model"`
+}
+
+// BatchKeyTestKeyResult is the per-key outcome of a manual batch key test.
+type BatchKeyTestKeyResult struct {
+	Index      int     `json:"index"`
+	KeyPreview string  `json:"key_preview"`
+	Success    bool    `json:"success"`
+	Message    string  `json:"message"`
+	Time       float64 `json:"time"`
+	// AutoDisable is set when the probe proved the key unusable and it was
+	// taken out of service.
+	AutoDisable bool `json:"auto_disabled"`
+	// ReEnabled is set when a previously auto-disabled key passed the probe and
+	// was restored to service.
+	ReEnabled bool `json:"re_enabled"`
+}
+
+type BatchKeyTestSummary struct {
+	Tested       int                     `json:"tested"`
+	Succeeded    int                     `json:"succeeded"`
+	Failed       int                     `json:"failed"`
+	AutoDisabled int                     `json:"auto_disabled"`
+	ReEnabled    int                     `json:"re_enabled"`
+	Results      []BatchKeyTestKeyResult `json:"results"`
+}
+
+// batchKeyTestTarget is one key scheduled for probing. The prior status is
+// captured before the workers start so they never read the channel's status map
+// while a concurrent disable is rewriting it.
+type batchKeyTestTarget struct {
+	index           int
+	wasAutoDisabled bool
+}
+
+// maskKeyPreview mirrors the multi-key status listing so the UI can label a row
+// before its full status is reloaded.
+func maskKeyPreview(key string) string {
+	if len(key) > 10 {
+		return key[:10] + "..."
+	}
+	return key
+}
+
+// testSingleMultiKey probes one key and mirrors the outcome back into the
+// shared multi-key status flow: a key whose upstream error proves it unusable is
+// auto-disabled, and a previously auto-disabled key that now answers is restored.
+//
+// Only errors that indicate a dead credential or exhausted upstream account
+// trigger a disable (see service.ErrorWarrantsChannelDisable); transient
+// failures such as timeouts and 5xx leave the key untouched.
+func testSingleMultiKey(ctx context.Context, channel *model.Channel, testUserID int, target batchKeyTestTarget, testModel string) BatchKeyTestKeyResult {
+	keyIndex := target.index
+	result := BatchKeyTestKeyResult{Index: keyIndex}
+
+	key, keyErr := channel.GetKeyByIndex(keyIndex)
+	if keyErr != nil {
+		result.Message = keyErr.Error()
+		return result
+	}
+	result.KeyPreview = maskKeyPreview(key)
+
+	tik := time.Now()
+	testResult := testChannelWithKeyIndex(ctx, channel, testUserID, testModel, "", shouldUseStreamForAutomaticChannelTest(channel), &keyIndex)
+	result.Time = time.Since(tik).Seconds()
+	result.Success = testResult.newAPIError == nil && testResult.localErr == nil
+
+	if testResult.localErr != nil {
+		result.Message = testResult.localErr.Error()
+	}
+	if testResult.newAPIError != nil {
+		result.Message = testResult.newAPIError.Error()
+	}
+
+	switch {
+	case !result.Success && channel.GetAutoBan() && service.ErrorWarrantsChannelDisable(testResult.newAPIError):
+		// Reuse the shared status flow so the auto-disabled entry, reason,
+		// timestamp, and cache refresh behave exactly like a disable triggered
+		// by live traffic. ErrorWarrantsChannelDisable is false for a nil error,
+		// so newAPIError is non-nil here; a local-only failure (e.g. an
+		// unsupported channel type) never disables a key.
+		reason := testResult.newAPIError.ErrorWithStatusCode()
+		if model.UpdateChannelStatus(channel.Id, key, common.ChannelStatusAutoDisabled, reason) {
+			result.AutoDisable = true
+		} else {
+			common.SysLog(fmt.Sprintf("failed to auto-disable multi-key after batch test: channel_id=%d key_index=%d", channel.Id, keyIndex))
+		}
+	case result.Success && target.wasAutoDisabled:
+		// The key now works again: clear the auto-disabled marker so it returns
+		// to the rotation. Manually disabled keys are never probed, so an
+		// administrator's explicit choice is not overridden here.
+		if model.UpdateChannelStatus(channel.Id, key, common.ChannelStatusEnabled, "") {
+			result.ReEnabled = true
+		} else {
+			common.SysLog(fmt.Sprintf("failed to re-enable multi-key after batch test: channel_id=%d key_index=%d", channel.Id, keyIndex))
+		}
+	}
+
+	return result
+}
+
+// BatchTestChannelKeys tests every key of a multi-key channel concurrently and
+// auto-disables the keys whose upstream error proves them unusable. Unlike the
+// scheduled channel test (which probes one cursor-selected key), this pins each
+// index so the whole key pool is covered in one run.
+func BatchTestChannelKeys(c *gin.Context) {
+	var request BatchKeyTestRequest
+	if err := c.ShouldBindJSON(&request); err != nil || request.ChannelId <= 0 {
+		common.ApiErrorMsg(c, "参数错误")
+		return
+	}
+
+	channel, err := model.GetChannelById(request.ChannelId, true)
+	if err != nil {
+		common.ApiErrorMsg(c, "渠道不存在")
+		return
+	}
+	if !channel.ChannelInfo.IsMultiKey {
+		common.ApiErrorMsg(c, "该渠道不是多密钥模式")
+		return
+	}
+
+	testUserID, err := resolveChannelTestUserID(c)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	keys := channel.GetKeys()
+	if len(keys) == 0 {
+		common.ApiErrorMsg(c, "该渠道没有可用的密钥")
+		return
+	}
+
+	recordManageAudit(c, "channel.multi_key_batch_test", map[string]any{
+		"id": channel.Id,
+	})
+
+	// Probe every key except the manually disabled ones: disabling a key by hand
+	// is an explicit administrator decision, and re-testing it would silently
+	// override that choice. Auto-disabled keys ARE probed so a key that has
+	// recovered can be put back into rotation.
+	//
+	// The per-key status is read here, before any worker starts, so concurrent
+	// disables cannot race on the channel's status map.
+	targets := make([]batchKeyTestTarget, 0, len(keys))
+	for i := range keys {
+		status := common.ChannelStatusEnabled
+		if channel.ChannelInfo.MultiKeyStatusList != nil {
+			if s, exists := channel.ChannelInfo.MultiKeyStatusList[i]; exists {
+				status = s
+			}
+		}
+		if status == common.ChannelStatusManuallyDisabled {
+			continue
+		}
+		targets = append(targets, batchKeyTestTarget{
+			index:           i,
+			wasAutoDisabled: status == common.ChannelStatusAutoDisabled,
+		})
+	}
+	if len(targets) == 0 {
+		common.ApiErrorMsg(c, "没有可测试的密钥（手动禁用的密钥不会被测试）")
+		return
+	}
+
+	testModel := strings.TrimSpace(request.TestModel)
+
+	resultCh := make(chan BatchKeyTestKeyResult, len(targets))
+	sem := make(chan struct{}, min(batchKeyTestConcurrency, len(targets)))
+	var workers sync.WaitGroup
+	for _, target := range targets {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			resultCh <- testSingleMultiKey(c.Request.Context(), channel, testUserID, target, testModel)
+		}()
+	}
+	workers.Wait()
+	close(resultCh)
+
+	summary := BatchKeyTestSummary{Results: make([]BatchKeyTestKeyResult, 0, len(targets))}
+	for result := range resultCh {
+		summary.Results = append(summary.Results, result)
+		summary.Tested++
+		if result.Success {
+			summary.Succeeded++
+		} else {
+			summary.Failed++
+		}
+		if result.AutoDisable {
+			summary.AutoDisabled++
+		}
+		if result.ReEnabled {
+			summary.ReEnabled++
+		}
+	}
+	sort.Slice(summary.Results, func(i, j int) bool {
+		return summary.Results[i].Index < summary.Results[j].Index
+	})
+
+	// Key status may have changed, so drop the cached channel snapshot.
+	model.InitChannelCache()
+
+	// One summary notification per run rather than one per key: the per-user
+	// notification limit would otherwise be exhausted by a large key pool.
+	if summary.AutoDisabled > 0 || summary.ReEnabled > 0 {
+		service.NotifyRootUser(
+			fmt.Sprintf("%s_%d_%d", dto.NotifyTypeChannelUpdate, channel.Id, common.ChannelStatusAutoDisabled),
+			fmt.Sprintf("通道「%s」（#%d）密钥批量测试完成", channel.Name, channel.Id),
+			fmt.Sprintf("通道「%s」（#%d）批量测试完成：共测试 %d 个密钥，成功 %d 个，失败 %d 个，已自动禁用 %d 个，已恢复 %d 个。",
+				channel.Name, channel.Id, summary.Tested, summary.Succeeded, summary.Failed, summary.AutoDisabled, summary.ReEnabled),
+		)
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data":    summary,
+	})
 }
 
 // TestAllChannels enqueues a channel_test system task instead of running the

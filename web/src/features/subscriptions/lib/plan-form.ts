@@ -44,11 +44,18 @@ export function getPlanFormSchema(t: TFunction) {
     allow_balance_pay: z.boolean(),
     allow_wallet_overflow: z.boolean(),
     max_purchase_per_user: z.coerce.number().min(0),
-    total_amount: z.coerce.number().min(0),
+    // -1 = no shared pool (per-model buckets only); 0 = unlimited.
+    total_amount: z.coerce.number().min(-1),
     model_quotas: z.array(
       z.object({
         model: z.string().min(1, t('Please enter the model name')),
         quota: z.coerce.number().min(0),
+      })
+    ),
+    model_token_quotas: z.array(
+      z.object({
+        model: z.string().min(1, t('Please enter the model name')),
+        tokens: z.coerce.number().min(0),
       })
     ),
     usable_groups: z.array(z.string()),
@@ -78,6 +85,7 @@ export const PLAN_FORM_DEFAULTS: PlanFormValues = {
   max_purchase_per_user: 0,
   total_amount: 0,
   model_quotas: [],
+  model_token_quotas: [],
   usable_groups: [],
   upgrade_group: '',
   downgrade_group: '',
@@ -121,6 +129,41 @@ export function serializeModelQuotas(
   return JSON.stringify(quotas)
 }
 
+// parseModelTokenQuotasJson converts the plan's model_token_quotas JSON string
+// into editable form rows. Values are raw token counts (no quota conversion).
+export function parseModelTokenQuotasJson(
+  raw: string | undefined
+): { model: string; tokens: number }[] {
+  if (!raw || raw.trim() === '') return []
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>
+    return Object.entries(parsed)
+      .filter(([model, tokens]) => model && Number(tokens) > 0)
+      .map(([model, tokens]) => ({
+        model,
+        tokens: Number(tokens),
+      }))
+  } catch {
+    return []
+  }
+}
+
+// serializeModelTokenQuotas converts token-bucket form rows back into the
+// plan's JSON string. Rows with an empty model name or non-positive token
+// count are dropped; an empty result serializes to ''.
+export function serializeModelTokenQuotas(
+  rows: { model: string; tokens: number }[] | undefined
+): string {
+  const quotas: Record<string, number> = {}
+  for (const row of rows || []) {
+    const model = (row.model || '').trim()
+    const tokens = Math.floor(Number(row.tokens || 0))
+    if (model && tokens > 0) quotas[model] = tokens
+  }
+  if (Object.keys(quotas).length === 0) return ''
+  return JSON.stringify(quotas)
+}
+
 export function planToFormValues(plan: SubscriptionPlan): PlanFormValues {
   return {
     title: plan.title || '',
@@ -136,8 +179,13 @@ export function planToFormValues(plan: SubscriptionPlan): PlanFormValues {
     allow_balance_pay: plan.allow_balance_pay !== false,
     allow_wallet_overflow: plan.allow_wallet_overflow !== false,
     max_purchase_per_user: Number(plan.max_purchase_per_user || 0),
-    total_amount: quotaUnitsToDollars(Number(plan.total_amount || 0)),
+    // -1 is the no-shared-pool sentinel and must survive the dollar round-trip.
+    total_amount:
+      Number(plan.total_amount || 0) === -1
+        ? -1
+        : quotaUnitsToDollars(Number(plan.total_amount || 0)),
     model_quotas: parseModelQuotasJson(plan.model_quotas),
+    model_token_quotas: parseModelTokenQuotasJson(plan.model_token_quotas),
     usable_groups: (plan.usable_groups || '')
       .split(',')
       .map((g) => g.trim())
@@ -165,8 +213,12 @@ export function formValuesToPlanPayload(values: PlanFormValues): PlanPayload {
           : 0,
       sort_order: Number(values.sort_order || 0),
       max_purchase_per_user: Number(values.max_purchase_per_user || 0),
-      total_amount: parseQuotaFromDollars(Number(values.total_amount || 0)),
+      total_amount:
+        Number(values.total_amount) === -1
+          ? -1
+          : parseQuotaFromDollars(Number(values.total_amount || 0)),
       model_quotas: serializeModelQuotas(values.model_quotas),
+      model_token_quotas: serializeModelTokenQuotas(values.model_token_quotas),
       usable_groups: (values.usable_groups || []).join(','),
       upgrade_group: values.upgrade_group || '',
       downgrade_group: values.downgrade_group || '',

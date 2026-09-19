@@ -79,6 +79,9 @@ type ChannelMeta struct {
 type TokenCountMeta struct {
 	//promptTokens int
 	estimatePromptTokens int
+	// estimateMaxTokens 是请求声明的补全上限（max_tokens 系列字段），
+	// 供按 token 计量的订阅桶估算预扣量；客户端未声明时为 0。
+	estimateMaxTokens int
 }
 
 type RelayInfo struct {
@@ -760,6 +763,20 @@ func (info *RelayInfo) GetEstimatePromptTokens() int {
 		return 0
 	}
 	return info.estimatePromptTokens
+}
+
+func (info *RelayInfo) SetEstimateMaxTokens(maxTokens int) {
+	if info == nil {
+		return
+	}
+	info.estimateMaxTokens = maxTokens
+}
+
+func (info *RelayInfo) GetEstimateMaxTokens() int {
+	if info == nil {
+		return 0
+	}
+	return info.estimateMaxTokens
 }
 
 // ---------------------------------------------------------------------------

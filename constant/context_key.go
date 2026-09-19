@@ -39,6 +39,11 @@ const (
 	ContextKeyChannelIsMultiKey        ContextKey = "channel_is_multi_key"
 	ContextKeyChannelMultiKeyIndex     ContextKey = "channel_multi_key_index"
 	ContextKeyChannelKey               ContextKey = "channel_key"
+	// ContextKeyChannelForceMultiKeyIndex pins the multi-key index used for one
+	// request instead of letting the shared random/polling cursor pick a key.
+	// Set only by the manual batch key test: it keeps probing each key from
+	// advancing MultiKeyPollingIndex, which would disturb live traffic.
+	ContextKeyChannelForceMultiKeyIndex ContextKey = "channel_force_multi_key_index"
 
 	ContextKeyAutoGroup           ContextKey = "auto_group"
 	ContextKeyAutoGroupIndex      ContextKey = "auto_group_index"

@@ -200,6 +200,18 @@ export async function transferAffiliateQuota(
 }
 
 /**
+ * Transfer balance to another user (0.5% fee, burned)
+ */
+export async function transferQuotaToUser(request: {
+  username: string
+  quota: number
+  fee_mode: 'deduct' | 'extra'
+}): Promise<ApiResponse<{ fee: number }>> {
+  const res = await api.post('/api/user/transfer', request)
+  return res.data
+}
+
+/**
  * Get billing history for current user
  */
 export async function getUserBillingHistory(

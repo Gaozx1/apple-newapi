@@ -79,3 +79,14 @@ zread.sh
 zsrc.sh
 deploy_remote.py
 __pycache__/
+
+# Local scratch dirs (ad-hoc patch/probe scripts and askpass helpers that may
+# contain server credentials) and unrelated side projects living in the tree.
+tmp_admin/
+tmp_ask/
+tmp_patch/
+tmp_test/
+dsh/
+astrbot_plugin_newapi_tx/
+astrbot_plugin_newapi_tx.zip
+deepseekreg/

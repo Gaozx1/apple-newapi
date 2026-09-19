@@ -60,6 +60,8 @@ export type PricingModel = {
   cache_ratio?: number | null
   create_cache_ratio?: number | null
   image_ratio?: number | null
+  /** Per-resolution image tier prices; when enabled it overrides the flat price. */
+  image_tier_price?: ImageTierPrice | null
   audio_ratio?: number | null
   audio_completion_ratio?: number | null
   enable_groups: string[]
@@ -130,3 +132,11 @@ export type PriceType =
   | 'audio_input'
   | 'audio_output'
 export type QuotaType = 0 | 1 // 0: token-based, 1: per-request
+
+/** Per-resolution flat image prices (USD per call) when tier billing is on. */
+export type ImageTierPrice = {
+  enabled: boolean
+  price_1k: number
+  price_2k: number
+  price_4k: number
+}

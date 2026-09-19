@@ -125,6 +125,10 @@ export function SubscriptionsMutateDrawer({
     control: form.control,
     name: 'model_quotas',
   })
+  const modelTokenQuotasArray = useFieldArray({
+    control: form.control,
+    name: 'model_token_quotas',
+  })
 
   const toggleUsableGroup = (group: string) => {
     const current = form.getValues('usable_groups') || []
@@ -391,7 +395,7 @@ export function SubscriptionsMutateDrawer({
                         <Input
                           {...field}
                           type='number'
-                          min={0}
+                          min={-1}
                           step={tokensOnly ? 1 : 0.01}
                           placeholder={
                             tokensOnly
@@ -409,7 +413,7 @@ export function SubscriptionsMutateDrawer({
                       </FormControl>
                       <FormDescription>
                         {t(
-                          'Total quota included in the plan, usable per billing period. 0 means unlimited.'
+                          'Total quota included in the plan, usable per billing period. 0 means unlimited; -1 means no shared pool (fund only via per-model buckets).'
                         )}
                       </FormDescription>
                       <FormMessage />
@@ -679,6 +683,85 @@ export function SubscriptionsMutateDrawer({
                   >
                     <Plus className='mr-1 h-3.5 w-3.5' />
                     {t('Add Model Bucket')}
+                  </Button>
+                </div>
+              </div>
+
+              <div>
+                <FormLabel>{t('Per-model Token Buckets')}</FormLabel>
+                <FormDescription>
+                  {t(
+                    'Token-denominated buckets: consumption is measured in raw prompt+completion tokens, independent of model pricing ratios (e.g. sell 100000000 tokens of deepseek-chat). A token bucket is consumed before the quota bucket of the same model.'
+                  )}
+                </FormDescription>
+                <div className='mt-2 space-y-2'>
+                  {modelTokenQuotasArray.fields.length === 0 && (
+                    <p className='text-muted-foreground text-xs'>
+                      {t('No token buckets configured')}
+                    </p>
+                  )}
+                  {modelTokenQuotasArray.fields.map((field, index) => (
+                    <div key={field.id} className='flex items-center gap-2'>
+                      <FormField
+                        control={form.control}
+                        name={`model_token_quotas.${index}.model`}
+                        render={({ field: modelField }) => (
+                          <FormItem className='flex-1'>
+                            <FormControl>
+                              <Input
+                                {...modelField}
+                                placeholder={t('Model name, e.g. deepseek-chat')}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name={`model_token_quotas.${index}.tokens`}
+                        render={({ field: tokensField }) => (
+                          <FormItem className='flex-1'>
+                            <FormControl>
+                              <Input
+                                {...tokensField}
+                                type='number'
+                                min={0}
+                                step={1}
+                                placeholder={t('Token count, e.g. 100000000')}
+                                onChange={(e) =>
+                                  tokensField.onChange(
+                                    Number.parseFloat(e.target.value) || 0
+                                  )
+                                }
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <Button
+                        type='button'
+                        variant='ghost'
+                        size='icon'
+                        className='h-9 w-9 shrink-0'
+                        aria-label={t('Remove')}
+                        onClick={() => modelTokenQuotasArray.remove(index)}
+                      >
+                        <Trash2 className='h-4 w-4' />
+                      </Button>
+                    </div>
+                  ))}
+                  <Button
+                    type='button'
+                    variant='outline'
+                    size='sm'
+                    onClick={() =>
+                      modelTokenQuotasArray.append({ model: '', tokens: 0 })
+                    }
+                  >
+                    <Plus className='mr-1 h-3.5 w-3.5' />
+                    {t('Add Token Bucket')}
                   </Button>
                 </div>
               </div>

@@ -201,12 +201,29 @@ func (channel *Channel) GetKeys() []string {
 	return keys
 }
 
+// GetKeyByIndex returns the key stored at the given index without consulting the
+// enabled-status filter or advancing MultiKeyPollingIndex. The manual batch key
+// test uses it to probe one exact key (including a currently disabled one)
+// without disturbing live traffic key rotation.
+func (channel *Channel) GetKeyByIndex(index int) (string, *types.NewAPIError) {
+	if !channel.ChannelInfo.IsMultiKey {
+		if index != 0 {
+			return "", types.NewError(fmt.Errorf("channel is not in multi-key mode"), types.ErrorCodeChannelNoAvailableKey, types.ErrOptionWithSkipRetry())
+		}
+		return channel.Key, nil
+	}
+	keys := channel.GetKeys()
+	if index < 0 || index >= len(keys) {
+		return "", types.NewError(fmt.Errorf("key index %d is out of range", index), types.ErrorCodeChannelNoAvailableKey, types.ErrOptionWithSkipRetry())
+	}
+	return keys[index], nil
+}
+
 func (channel *Channel) GetNextEnabledKey() (string, int, *types.NewAPIError) {
 	// If not in multi-key mode, return the original key string directly.
 	if !channel.ChannelInfo.IsMultiKey {
 		return channel.Key, 0, nil
 	}
-
 	// Obtain all keys (split by \n)
 	keys := channel.GetKeys()
 	if len(keys) == 0 {
@@ -696,7 +713,12 @@ func handlerMultiKeyUpdate(channel *Channel, usingKey string, status int, reason
 			channel.ChannelInfo.MultiKeyStatusList = make(map[int]int)
 		}
 		if status == common.ChannelStatusEnabled {
+			// Clear the reason and timestamp along with the status; leaving the
+			// stale reason behind makes a restored key still read as "disabled"
+			// in the multi-key listing.
 			delete(channel.ChannelInfo.MultiKeyStatusList, keyIndex)
+			delete(channel.ChannelInfo.MultiKeyDisabledReason, keyIndex)
+			delete(channel.ChannelInfo.MultiKeyDisabledTime, keyIndex)
 		} else {
 			channel.ChannelInfo.MultiKeyStatusList[keyIndex] = status
 			if channel.ChannelInfo.MultiKeyDisabledReason == nil {
@@ -782,17 +804,20 @@ func UpdateChannelStatus(channelId int, usingKey string, status int, reason stri
 	if err != nil {
 		return false
 	} else {
-		if channel.Status == status {
-			return false
-		}
-
 		if channel.ChannelInfo.IsMultiKey {
+			// A multi-key channel keeps its channel-level status while one of its
+			// keys is disabled, so the channel-status short-circuit below must be
+			// skipped: re-enabling key #2 of a still-enabled channel has to reach
+			// the per-key status map.
 			beforeStatus := channel.Status
 			handlerMultiKeyUpdate(channel, usingKey, status, reason)
 			if beforeStatus != channel.Status {
 				shouldUpdateAbilities = true
 			}
 		} else {
+			if channel.Status == status {
+				return false
+			}
 			info := channel.GetOtherInfo()
 			info["status_reason"] = reason
 			info["status_time"] = common.GetTimestamp()

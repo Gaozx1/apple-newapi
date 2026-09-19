@@ -17,6 +17,11 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// defaultSubscriptionTokenPreConsumeMaxTokens is the fallback completion-token
+// ceiling used to size token-denominated subscription bucket pre-consumes when
+// the client omits max_tokens (mirrors relay/helper's tiered-expr fallback).
+const defaultSubscriptionTokenPreConsumeMaxTokens = 8192
+
 // ---------------------------------------------------------------------------
 // BillingSession — 统一计费会话
 // ---------------------------------------------------------------------------
@@ -36,44 +41,54 @@ type BillingSession struct {
 	mu               sync.Mutex
 }
 
-// Settle 根据实际消耗额度进行结算。
+// Settle 根据实际消耗进行结算。
 // 资金来源和令牌额度分两步提交：若资金来源已提交但令牌调整失败，
 // 会标记 fundingSettled 防止 Refund 对已提交的资金来源执行退款。
-func (s *BillingSession) Settle(actualQuota int) error {
+//
+// 额度差额（quotaDelta = actualQuota - preConsumedQuota）始终用于 API 令牌额度。
+// 资金差额通常等于 quotaDelta；但当订阅按 token 桶计费（fundedUnit == "token"）时，
+// 资金差额改用原始 token 数：actualTokens - preConsumedTokens。
+func (s *BillingSession) Settle(actualQuota int, actualTokens int) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.settled {
 		return nil
 	}
-	delta := actualQuota - s.preConsumedQuota
-	if delta == 0 {
+	quotaDelta := actualQuota - s.preConsumedQuota
+	fundingDelta := int64(quotaDelta)
+	if sub, ok := s.funding.(*SubscriptionFunding); ok && sub.fundedUnit == "token" {
+		fundingDelta = int64(actualTokens) - sub.preConsumed
+	}
+	if fundingDelta == 0 && quotaDelta == 0 {
 		s.settled = true
 		return nil
 	}
 	// 1) 调整资金来源（仅在尚未提交时执行，防止重复调用）
 	if !s.fundingSettled {
-		if err := s.funding.Settle(delta); err != nil {
-			return err
+		if fundingDelta != 0 {
+			if err := s.funding.Settle(int(fundingDelta)); err != nil {
+				return err
+			}
 		}
 		s.fundingSettled = true
 	}
 	// 2) 调整令牌额度
 	var tokenErr error
-	if !s.relayInfo.IsPlayground {
-		if delta > 0 {
-			tokenErr = model.DecreaseTokenQuota(s.relayInfo.TokenId, s.relayInfo.TokenKey, delta)
+	if !s.relayInfo.IsPlayground && quotaDelta != 0 {
+		if quotaDelta > 0 {
+			tokenErr = model.DecreaseTokenQuota(s.relayInfo.TokenId, s.relayInfo.TokenKey, quotaDelta)
 		} else {
-			tokenErr = model.IncreaseTokenQuota(s.relayInfo.TokenId, s.relayInfo.TokenKey, -delta)
+			tokenErr = model.IncreaseTokenQuota(s.relayInfo.TokenId, s.relayInfo.TokenKey, -quotaDelta)
 		}
 		if tokenErr != nil {
 			// 资金来源已提交，令牌调整失败只能记录日志；标记 settled 防止 Refund 误退资金
 			common.SysLog(fmt.Sprintf("error adjusting token quota after funding settled (userId=%d, tokenId=%d, delta=%d): %s",
-				s.relayInfo.UserId, s.relayInfo.TokenId, delta, tokenErr.Error()))
+				s.relayInfo.UserId, s.relayInfo.TokenId, quotaDelta, tokenErr.Error()))
 		}
 	}
-	// 3) 更新 relayInfo 上的订阅 PostDelta（用于日志）
+	// 3) 更新 relayInfo 上的订阅 PostDelta（用于日志；token 桶时为 token 数）
 	if s.funding.Source() == BillingSourceSubscription {
-		s.relayInfo.SubscriptionPostDelta += int64(delta)
+		s.relayInfo.SubscriptionPostDelta += fundingDelta
 	}
 	s.settled = true
 	return tokenErr
@@ -109,7 +124,13 @@ func (s *BillingSession) Refund(c *gin.Context) {
 		if err := funding.Refund(); err != nil {
 			common.SysLog("error refunding billing source: " + err.Error())
 		}
-		if extraReserved > 0 && funding.Source() == BillingSourceSubscription && subscriptionId > 0 {
+		// extraReserved 只可能来自 Reserve 的池化（非桶）订阅补充预扣；
+		// 桶/token 计费下 Reserve 是 no-op，此退款路径不适用。
+		poolBased := true
+		if sub, ok := funding.(*SubscriptionFunding); ok {
+			poolBased = sub.fundedModel == "" && sub.fundedUnit != "token"
+		}
+		if extraReserved > 0 && poolBased && funding.Source() == BillingSourceSubscription && subscriptionId > 0 {
 			if err := model.PostConsumeUserSubscriptionDelta(subscriptionId, -int64(extraReserved)); err != nil {
 				common.SysLog("error refunding subscription extra reserved quota: " + err.Error())
 			}
@@ -155,6 +176,12 @@ func (s *BillingSession) Reserve(targetQuota int) error {
 	defer s.mu.Unlock()
 
 	if s.settled || s.refunded || s.trusted || targetQuota <= s.preConsumedQuota {
+		return nil
+	}
+	if sub, ok := s.funding.(*SubscriptionFunding); ok && sub.fundedUnit == "token" {
+		// Token-denominated buckets were sized at pre-consume time
+		// (prompt + max_tokens estimate); quota-denominated top-ups do not
+		// apply, so Reserve is a no-op for them.
 		return nil
 	}
 
@@ -396,6 +423,19 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 		if subConsume <= 0 {
 			subConsume = 1
 		}
+		// Token-denominated buckets reserve estimated raw tokens
+		// (prompt + completion ceiling) instead of quota. The completion
+		// ceiling falls back to a default when the client omits max_tokens,
+		// mirroring the tiered-expression pre-consume fallback.
+		estTokens := int64(relayInfo.GetEstimatePromptTokens())
+		maxTokens := int64(relayInfo.GetEstimateMaxTokens())
+		if maxTokens <= 0 {
+			maxTokens = defaultSubscriptionTokenPreConsumeMaxTokens
+		}
+		estTokens += maxTokens
+		if estTokens <= 0 {
+			estTokens = 1
+		}
 		billingGroup := relayInfo.UsingGroup
 		if billingGroup == "" {
 			billingGroup = relayInfo.UserGroup
@@ -403,11 +443,12 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 		session := &BillingSession{
 			relayInfo: relayInfo,
 			funding: &SubscriptionFunding{
-				requestId: relayInfo.RequestId,
-				userId:    relayInfo.UserId,
-				modelName: relayInfo.GetBillingModelName(),
-				groupName: billingGroup,
-				amount:    subConsume,
+				requestId:   relayInfo.RequestId,
+				userId:      relayInfo.UserId,
+				modelName:   relayInfo.GetBillingModelName(),
+				groupName:   billingGroup,
+				amount:      subConsume,
+				tokenAmount: estTokens,
 			},
 		}
 		// 必须传 subConsume 而非 preConsumedQuota，保证 SubscriptionFunding.amount、

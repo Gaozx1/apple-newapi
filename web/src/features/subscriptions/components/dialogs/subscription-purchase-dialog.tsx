@@ -87,6 +87,14 @@ export function SubscriptionPurchaseDialog(props: Props) {
     props.enableOnlineTopUp && (props.epayMethods || []).length > 0
   const hasAnyPayment = hasStripe || hasCreem || hasWaffoPancake || hasEpay
   const totalAmount = Number(plan.total_amount || 0)
+  let quotaText: string
+  if (totalAmount > 0) {
+    quotaText = formatQuota(totalAmount)
+  } else if (totalAmount < 0) {
+    quotaText = t('Per-model buckets only')
+  } else {
+    quotaText = t('Unlimited')
+  }
   const price = Number(plan.price_amount || 0).toFixed(2)
   const quotaPerUnit =
     currency?.quotaPerUnit && currency.quotaPerUnit > 0
@@ -272,7 +280,7 @@ export function SubscriptionPurchaseDialog(props: Props) {
             </span>
             <span className='flex items-center gap-1 text-sm'>
               <Package className='h-3.5 w-3.5' />
-              {totalAmount > 0 ? formatQuota(totalAmount) : t('Unlimited')}
+              {quotaText}
             </span>
           </div>
           {plan.upgrade_group && (

@@ -318,6 +318,39 @@ export interface MultiKeyManageParams {
   status?: number // 1=enabled, 2=manual_disabled, 3=auto_disabled
 }
 
+/** One key's outcome from a manual batch key test. */
+export interface BatchKeyTestKeyResult {
+  index: number
+  key_preview: string
+  success: boolean
+  message: string
+  time: number
+  /** The probe proved the key unusable and it was taken out of service. */
+  auto_disabled: boolean
+  /** A previously auto-disabled key passed and was restored to service. */
+  re_enabled: boolean
+}
+
+export interface BatchKeyTestSummary {
+  tested: number
+  succeeded: number
+  failed: number
+  auto_disabled: number
+  re_enabled: number
+  results: BatchKeyTestKeyResult[]
+}
+
+export interface BatchKeyTestParams {
+  channel_id: number
+  test_model?: string
+}
+
+export interface BatchKeyTestResponse {
+  success: boolean
+  message?: string
+  data?: BatchKeyTestSummary
+}
+
 export interface BatchDeleteParams {
   ids: number[]
 }

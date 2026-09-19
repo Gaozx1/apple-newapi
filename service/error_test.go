@@ -4,15 +4,14 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io"
-	"net/http"
-	"strings"
-	"testing"
-
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
+	"io"
+	"net/http"
+	"strings"
+	"testing"
 )
 
 func TestResetStatusCode(t *testing.T) {
@@ -157,4 +156,69 @@ func withDebugEnabled(t *testing.T, enabled bool) {
 	t.Cleanup(func() {
 		common.DebugEnabled = oldDebug
 	})
+}
+
+// ErrorWarrantsChannelDisable is the rule the manual batch key test uses to
+// decide whether a probe result proves a key dead. It must disable keys on
+// credential/account failures and must NOT disable them on transient failures,
+// otherwise a flaky upstream would drain a healthy key pool.
+func TestErrorWarrantsChannelDisableIgnoresTransientFailures(t *testing.T) {
+	testCases := []struct {
+		name string
+		err  *types.NewAPIError
+		want bool
+	}{
+		{
+			name: "nil error",
+			err:  nil,
+			want: false,
+		},
+		{
+			name: "401 invalid credential disables the key",
+			err:  types.NewOpenAIError(fmt.Errorf("Invalid token"), types.ErrorCodeBadResponse, http.StatusUnauthorized),
+			want: true,
+		},
+		{
+			name: "server error does not disable the key",
+			err:  types.NewOpenAIError(fmt.Errorf("upstream exploded"), types.ErrorCodeBadResponse, http.StatusInternalServerError),
+			want: false,
+		},
+		{
+			name: "bad gateway does not disable the key",
+			err:  types.NewOpenAIError(fmt.Errorf("bad gateway"), types.ErrorCodeBadResponse, http.StatusBadGateway),
+			want: false,
+		},
+		{
+			name: "rate limit does not disable the key",
+			err:  types.NewOpenAIError(fmt.Errorf("too many requests"), types.ErrorCodeBadResponse, http.StatusTooManyRequests),
+			want: false,
+		},
+		{
+			name: "quota exhausted keyword disables the key",
+			err:  types.NewOpenAIError(fmt.Errorf("You exceeded your current quota, please check your plan"), types.ErrorCodeBadResponse, http.StatusOK),
+			want: true,
+		},
+	}
+
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			require.Equal(t, test.want, ErrorWarrantsChannelDisable(test.err))
+		})
+	}
+}
+
+// The manual batch key test is an explicit administrator action, so it must not
+// be silently neutered by the global auto-disable switch. Live traffic keeps
+// honoring that switch through ShouldDisableChannel.
+func TestManualKeyTestDisableIgnoresGlobalSwitch(t *testing.T) {
+	original := common.AutomaticDisableChannelEnabled
+	common.AutomaticDisableChannelEnabled = false
+	t.Cleanup(func() { common.AutomaticDisableChannelEnabled = original })
+
+	authErr := types.NewOpenAIError(fmt.Errorf("Invalid token"), types.ErrorCodeBadResponse, http.StatusUnauthorized)
+
+	require.True(t, ErrorWarrantsChannelDisable(authErr),
+		"manual batch test must still disable a dead key while the global switch is off")
+	require.False(t, ShouldDisableChannel(authErr),
+		"live traffic must keep honoring the global auto-disable switch")
 }

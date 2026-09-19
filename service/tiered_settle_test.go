@@ -319,7 +319,7 @@ type recordingBillingSettler struct {
 	reserveTargets   []int
 }
 
-func (*recordingBillingSettler) Settle(int) error { return nil }
+func (*recordingBillingSettler) Settle(int, int) error { return nil }
 
 func (*recordingBillingSettler) Refund(*gin.Context) {}
 
@@ -483,7 +483,7 @@ func TestPrepareTieredBillingForSelectedGroupTopUpArrearsAllowsNegativeBalance(t
 
 	// Settlement still reconciles against the full reservation: actual 80k
 	// refunds the 20k over-reserve, landing at seed - (actual - initial) = -10k.
-	require.NoError(t, session.Settle(80_000))
+	require.NoError(t, session.Settle(80_000, 0))
 	userQuota, err = model.GetUserQuota(userID, false)
 	require.NoError(t, err)
 	assert.Equal(t, -10_000, userQuota)

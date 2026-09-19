@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { Crown, RefreshCw, Sparkles, Check } from 'lucide-react'
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
@@ -421,6 +421,12 @@ export function SubscriptionPlansCard({
                       ? sub.model_quotas
                       : null
                   const modelUsed = sub.model_used || {}
+                  const modelTokenQuotas =
+                    sub.model_token_quotas &&
+                    Object.keys(sub.model_token_quotas).length > 0
+                      ? sub.model_token_quotas
+                      : null
+                  const tokenUsed = sub.token_used || {}
                   const planTitle =
                     planTitleMap.get(subscription?.plan_id) || ''
                   const remainDays = getRemainingDays(sub)
@@ -463,6 +469,28 @@ export function SubscriptionPlansCard({
                     endTimeLabel = t('Cancelled at')
                   }
 
+                  let totalQuotaNode: ReactNode
+                  if (totalAmount > 0) {
+                    totalQuotaNode = (
+                      <Tooltip>
+                        <TooltipTrigger
+                          render={<span className='cursor-help' />}
+                        >
+                          {formatQuota(usedAmount)}/{formatQuota(totalAmount)} ·{' '}
+                          {t('Remaining')} {formatQuota(remainAmount)}
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          {t('Raw Quota')}: {usedAmount}/{totalAmount} ·{' '}
+                          {t('Remaining')} {remainAmount}
+                        </TooltipContent>
+                      </Tooltip>
+                    )
+                  } else if (totalAmount < 0) {
+                    totalQuotaNode = t('Per-model buckets only')
+                  } else {
+                    totalQuotaNode = t('Unlimited')
+                  }
+
                   return (
                     <div
                       key={subscription?.id}
@@ -498,24 +526,7 @@ export function SubscriptionPlansCard({
                         </div>
                       )}
                       <div className='text-muted-foreground mt-1'>
-                        {t('Total Quota')}:{' '}
-                        {totalAmount > 0 ? (
-                          <Tooltip>
-                            <TooltipTrigger
-                              render={<span className='cursor-help' />}
-                            >
-                              {formatQuota(usedAmount)}/
-                              {formatQuota(totalAmount)} · {t('Remaining')}{' '}
-                              {formatQuota(remainAmount)}
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              {t('Raw Quota')}: {usedAmount}/{totalAmount} ·{' '}
-                              {t('Remaining')} {remainAmount}
-                            </TooltipContent>
-                          </Tooltip>
-                        ) : (
-                          t('Unlimited')
-                        )}
+                        {t('Total Quota')}: {totalQuotaNode}
                         {totalAmount > 0 && (
                           <span className='ml-2'>
                             {t('Used')} {usagePercent}%
@@ -568,6 +579,41 @@ export function SubscriptionPlansCard({
                           )}
                         </div>
                       )}
+                      {modelTokenQuotas &&
+                        Object.keys(modelTokenQuotas).length > 0 && (
+                          <div className='mt-2 space-y-1'>
+                            <div className='text-muted-foreground font-medium'>
+                              {t('Per-model token buckets')}
+                            </div>
+                            {Object.entries(modelTokenQuotas).map(
+                              ([modelName, tokens]) => {
+                                const usedTokens = Number(
+                                  tokenUsed?.[modelName] || 0
+                                )
+                                const bucketRemain = Math.max(
+                                  0,
+                                  tokens - usedTokens
+                                )
+                                return (
+                                  <div
+                                    key={modelName}
+                                    className='flex items-center justify-between gap-2'
+                                  >
+                                    <span className='min-w-0 truncate font-medium'>
+                                      {modelName}
+                                    </span>
+                                    <span className='text-muted-foreground shrink-0'>
+                                      {usedTokens.toLocaleString()}/
+                                      {tokens.toLocaleString()} {t('tokens')} ·{' '}
+                                      {t('Remaining')}{' '}
+                                      {bucketRemain.toLocaleString()}
+                                    </span>
+                                  </div>
+                                )
+                              }
+                            )}
+                          </div>
+                        )}
                     </div>
                   )
                 })}
@@ -595,13 +641,24 @@ export function SubscriptionPlansCard({
               const count = planPurchaseCountMap.get(plan.id) || 0
               const reached = limit > 0 && count >= limit
               const planBuckets = getPlanModelBuckets(plan.model_quotas)
+              const planTokenBuckets = getPlanModelBuckets(
+                plan.model_token_quotas
+              )
               const planGroups = (plan.usable_groups || '')
                 .split(',')
                 .map((g) => g.trim())
                 .filter(Boolean)
 
               let quotaLine: string
-              if (planBuckets.length > 0) {
+              if (planTokenBuckets.length > 0) {
+                // Token buckets are denominated in raw token counts.
+                quotaLine = `${t('Per-model token buckets')}: ${planTokenBuckets
+                  .map(
+                    ([modelName, tokens]) =>
+                      `${modelName} ${tokens.toLocaleString()} ${t('tokens')}`
+                  )
+                  .join(' / ')}`
+              } else if (planBuckets.length > 0) {
                 // With per-model buckets the shared pool is not used for
                 // funding, so show the buckets instead of the total quota.
                 quotaLine = `${t('Per-model quota buckets')}: ${planBuckets
@@ -611,6 +668,8 @@ export function SubscriptionPlansCard({
                   .join(' / ')}`
               } else if (totalAmount > 0) {
                 quotaLine = `${t('Total Quota')}: ${formatQuota(totalAmount)}`
+              } else if (totalAmount < 0) {
+                quotaLine = `${t('Total Quota')}: ${t('Per-model buckets only')}`
               } else {
                 quotaLine = `${t('Total Quota')}: ${t('Unlimited')}`
               }

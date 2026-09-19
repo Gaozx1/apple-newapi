@@ -32,7 +32,7 @@ type taskSubmissionTestBilling struct {
 	refunds   int
 }
 
-func (b *taskSubmissionTestBilling) Settle(int) error {
+func (b *taskSubmissionTestBilling) Settle(int, int) error {
 	*b.events = append(*b.events, "settle")
 	if b.onSettle != nil {
 		b.onSettle()

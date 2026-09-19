@@ -120,8 +120,17 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 	var secondLastStreamData string // 保留倒数第二个stream data；部分兼容网关把完整usage放在倒数第二个事件
 	seenStreamToolCalls := make(map[string]struct{})
 	var streamFunctionCallNames []string
+	// Per-(choice, field) scrubbers strip special-token text leaks (DSML
+	// tool-call markers spelled out as plain text) from streamed content.
+	var streamScrubbers map[string]*service.StreamTextScrubber
+	if info.RelayFormat == types.RelayFormatOpenAI {
+		streamScrubbers = make(map[string]*service.StreamTextScrubber)
+	}
 
 	helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
+		if len(data) > 0 && streamScrubbers != nil {
+			data = service.ScrubStreamChunkText(data, streamScrubbers)
+		}
 		if lastStreamData != "" {
 			if err := HandleStreamFormat(c, info, lastStreamData, info.ChannelSetting.ForceFormat, info.ChannelSetting.ThinkingToContent); err != nil {
 				common.SysLog("error handling stream format: " + err.Error())
@@ -173,6 +182,10 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 	}
 
 	if info.RelayFormat == types.RelayFormatOpenAI {
+		// Emit any text the scrubber was still holding before the final chunk.
+		if flushed := service.FlushStreamScrubbers(streamScrubbers, lastStreamData); flushed != "" {
+			_ = helper.StringData(c, flushed)
+		}
 		if shouldSendLastResp {
 			_ = sendStreamData(c, info, lastStreamData, info.ChannelSetting.ForceFormat, info.ChannelSetting.ThinkingToContent)
 		}
@@ -247,6 +260,11 @@ func OpenaiHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respo
 		return nil, types.NewOpenAIError(err, types.ErrorCodeReadResponseBodyFailed, http.StatusInternalServerError)
 	}
 	logger.LogDebug(c, "upstream response body: %s", responseBody)
+	// Strip special-token text leaks (DSML tool-call markers spelled out as
+	// plain text) from message content before any parsing/conversion.
+	if scrubbed := service.ScrubChatResponseText(responseBody); scrubbed != nil {
+		responseBody = scrubbed
+	}
 	// Unmarshal to simpleResponse
 	if info.ChannelType == constant.ChannelTypeOpenRouter && info.ChannelOtherSettings.IsOpenRouterEnterprise() {
 		// 尝试解析为 openrouter enterprise

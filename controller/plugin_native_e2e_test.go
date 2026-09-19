@@ -32,7 +32,7 @@ type nativeRouteBilling struct {
 	settled     bool
 }
 
-func (b *nativeRouteBilling) Settle(int) error {
+func (b *nativeRouteBilling) Settle(int, int) error {
 	b.events = append(b.events, "settle")
 	b.settled = true
 	return nil

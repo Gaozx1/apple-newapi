@@ -18,19 +18,23 @@ import (
 )
 
 type Pricing struct {
-	ModelName              string                               `json:"model_name"`
-	Description            string                               `json:"description,omitempty"`
-	Icon                   string                               `json:"icon,omitempty"`
-	Tags                   string                               `json:"tags,omitempty"`
-	VendorID               int                                  `json:"vendor_id,omitempty"`
-	QuotaType              int                                  `json:"quota_type"`
-	ModelRatio             float64                              `json:"model_ratio"`
-	ModelPrice             float64                              `json:"model_price"`
-	OwnerBy                string                               `json:"owner_by"`
-	CompletionRatio        float64                              `json:"completion_ratio"`
-	CacheRatio             *float64                             `json:"cache_ratio,omitempty"`
-	CreateCacheRatio       *float64                             `json:"create_cache_ratio,omitempty"`
-	ImageRatio             *float64                             `json:"image_ratio,omitempty"`
+	ModelName        string   `json:"model_name"`
+	Description      string   `json:"description,omitempty"`
+	Icon             string   `json:"icon,omitempty"`
+	Tags             string   `json:"tags,omitempty"`
+	VendorID         int      `json:"vendor_id,omitempty"`
+	QuotaType        int      `json:"quota_type"`
+	ModelRatio       float64  `json:"model_ratio"`
+	ModelPrice       float64  `json:"model_price"`
+	OwnerBy          string   `json:"owner_by"`
+	CompletionRatio  float64  `json:"completion_ratio"`
+	CacheRatio       *float64 `json:"cache_ratio,omitempty"`
+	CreateCacheRatio *float64 `json:"create_cache_ratio,omitempty"`
+	ImageRatio       *float64 `json:"image_ratio,omitempty"`
+	// ImageTierPrice carries the per-resolution flat image prices (1K/2K/4K
+	// USD per call) when the admin enabled tier billing for the model; it
+	// overrides the flat model price for image requests.
+	ImageTierPrice         *ratio_setting.ImageModelTierPrice   `json:"image_tier_price,omitempty"`
 	AudioRatio             *float64                             `json:"audio_ratio,omitempty"`
 	AudioCompletionRatio   *float64                             `json:"audio_completion_ratio,omitempty"`
 	EnableGroup            []string                             `json:"enable_groups"`
@@ -353,6 +357,9 @@ func updatePricing() {
 		}
 		if imageRatio, ok := ratio_setting.GetImageRatio(model); ok {
 			pricing.ImageRatio = &imageRatio
+		}
+		if imageTierPrice, ok := ratio_setting.GetImageModelTierPrice(model); ok {
+			pricing.ImageTierPrice = &imageTierPrice
 		}
 		if ratio_setting.ContainsAudioRatio(model) {
 			audioRatio := ratio_setting.GetAudioRatio(model)

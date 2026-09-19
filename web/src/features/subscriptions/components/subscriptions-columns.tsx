@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { type ColumnDef } from '@tanstack/react-table'
+import type { ColumnDef } from '@tanstack/react-table'
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -166,9 +166,34 @@ export function useSubscriptionsColumns(): ColumnDef<PlanRecord>[] {
         meta: { mobileHidden: true },
         cell: ({ row }) => {
           const total = Number(row.original.plan.total_amount || 0)
+          const plan = row.original.plan
+          let bucketSummary: string | null = null
+          try {
+            const tokenBuckets = JSON.parse(
+              plan.model_token_quotas || ''
+            ) as Record<string, number>
+            const entries = Object.entries(tokenBuckets || {})
+            if (entries.length > 0) {
+              bucketSummary = entries
+                .map(([m, n]) => `${m}: ${Number(n).toLocaleString()} tokens`)
+                .join(' / ')
+            }
+          } catch {
+            bucketSummary = null
+          }
+          let quotaText = bucketSummary
+          if (quotaText === null) {
+            if (total > 0) {
+              quotaText = formatQuota(total)
+            } else if (total < 0) {
+              quotaText = t('Per-model buckets only')
+            } else {
+              quotaText = t('Unlimited')
+            }
+          }
           return (
-            <span className='text-muted-foreground'>
-              {total > 0 ? formatQuota(total) : t('Unlimited')}
+            <span className='text-muted-foreground' title={bucketSummary ?? ''}>
+              {quotaText}
             </span>
           )
         },

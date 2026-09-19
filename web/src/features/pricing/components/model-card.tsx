@@ -37,7 +37,7 @@ import {
 } from '../lib/dynamic-price'
 import { parseTags } from '../lib/filters'
 import { isTokenBasedModel } from '../lib/model-helpers'
-import { formatPrice, formatRequestPrice } from '../lib/price'
+import { formatImageTierPrices, formatPrice, formatRequestPrice } from '../lib/price'
 import { taskPriceLabel } from '../lib/task-price-display'
 import type { PricingModel, PriceType, TokenUnit } from '../types'
 import { ModelBillingModeBadge } from './model-billing-mode-badge'
@@ -186,7 +186,7 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
         ? [{ type: 'cache' as const, label: t('Cached') }]
         : []),
     ]
-    priceSummary = prices.map((price) => (
+    const tokenPriceSummary = prices.map((price) => (
       <div key={price.type} className='flex min-w-0 flex-col gap-1'>
         <span className='text-muted-foreground text-xs'>{price.label}</span>
         <span className='font-mono text-sm font-semibold tabular-nums'>
@@ -206,24 +206,79 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
         </span>
       </div>
     ))
-  } else {
-    priceSummary = (
-      <div className='col-span-full flex min-w-0 flex-col gap-1'>
-        <span className='font-mono text-sm font-semibold tabular-nums'>
-          {formatRequestPrice(
-            props.model,
-            showRechargePrice,
-            priceRate,
-            usdExchangeRate,
-            props.selectedGroup
-          )}
-          <span className='text-muted-foreground text-xs font-normal'>
-            {' '}
-            / {t('request')}
-          </span>
-        </span>
-      </div>
+    // Image tier billing (per-resolution flat price) also applies to
+    // token-based models — image requests bill per call, not per token.
+    const imageTierPrices = formatImageTierPrices(
+      props.model,
+      showRechargePrice,
+      priceRate,
+      usdExchangeRate,
+      props.selectedGroup
     )
+    priceSummary = [
+      ...tokenPriceSummary,
+      ...imageTierPrices.map((tier) => (
+        <div key={tier.tier} className='flex min-w-0 flex-col gap-1'>
+          <span className='text-muted-foreground text-xs'>
+            {t('Image')} {tier.tier}
+          </span>
+          <span className='font-mono text-sm font-semibold tabular-nums'>
+            {tier.formatted}
+            <span className='text-muted-foreground text-xs font-normal'>
+              {' '}
+              / {t('request')}
+            </span>
+          </span>
+        </div>
+      )),
+    ]
+  } else {
+    const imageTierPrices = formatImageTierPrices(
+      props.model,
+      showRechargePrice,
+      priceRate,
+      usdExchangeRate,
+      props.selectedGroup
+    )
+    if (imageTierPrices.length > 0) {
+      // Image tier billing overrides the flat per-call price.
+      priceSummary = (
+        <>
+          {imageTierPrices.map((tier) => (
+            <div key={tier.tier} className='flex min-w-0 flex-col gap-1'>
+              <span className='text-muted-foreground text-xs'>
+                {tier.tier}
+              </span>
+              <span className='font-mono text-sm font-semibold tabular-nums'>
+                {tier.formatted}
+                <span className='text-muted-foreground text-xs font-normal'>
+                  {' '}
+                  / {t('request')}
+                </span>
+              </span>
+            </div>
+          ))}
+        </>
+      )
+    } else {
+      priceSummary = (
+        <div className='col-span-full flex min-w-0 flex-col gap-1'>
+          <span className='font-mono text-sm font-semibold tabular-nums'>
+            {formatRequestPrice(
+              props.model,
+              showRechargePrice,
+              priceRate,
+              usdExchangeRate,
+              props.selectedGroup
+            )}
+            <span className='text-muted-foreground text-xs font-normal'>
+              {' '}
+              / {t('request')}
+            </span>
+          </span>
+        </div>
+      )
+    }
   }
 
   return (
