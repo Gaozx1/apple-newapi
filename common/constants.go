@@ -240,6 +240,25 @@ var (
 	SearchRateLimitEnable         = true
 	SearchRateLimitNum            = 10
 	SearchRateLimitDuration int64 = 60
+
+	// LoginRateLimitEnable controls the account-scoped authentication limiter.
+	// It is deliberately separate from CriticalRateLimitEnable so operators can
+	// throttle credential stuffing without enabling the IP-keyed limiters, which
+	// misbehave when many users share a CDN egress address.
+	LoginRateLimitEnable         = true
+	LoginRateLimitNum            = 10
+	LoginRateLimitDuration int64 = 15 * 60
+
+	// EmailTargetRateLimitEnable controls the recipient-scoped mail limiter. The
+	// key is the destination address, so it is unaffected by the sender's IP and
+	// cannot punish users who share a CDN address.
+	//
+	// The default is intentionally loose (3 mails / 5 minutes per recipient) so a
+	// user who resends a verification mail after not receiving it is not blocked.
+	// Tighten it only after checking the site's resend UX.
+	EmailTargetRateLimitEnable         = true
+	EmailTargetRateLimitNum            = 3
+	EmailTargetRateLimitDuration int64 = 5 * 60
 )
 
 var RateLimitKeyExpirationDuration = 20 * time.Minute

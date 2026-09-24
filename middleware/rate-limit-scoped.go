@@ -35,20 +35,18 @@ const (
 	EmailTargetRateLimitMark = "mailto"
 )
 
-// Per-account authentication budget. Ten attempts per fifteen minutes is
-// generous for a human mistyping a password, and makes online brute force
-// impractical (≈960 attempts/day per account).
-const (
-	accountLoginMaxRequests = 10
-	accountLoginDuration    = 15 * 60
-)
+// loginLimit reads the account-scoped authentication budget. It is a function
+// rather than a constant so operators can retune it per deployment via
+// LOGIN_RATE_LIMIT / LOGIN_RATE_LIMIT_DURATION without a rebuild.
+func loginLimit() (int, int64) {
+	return common.LoginRateLimitNum, common.LoginRateLimitDuration
+}
 
-// Per-recipient mail budget. One mail per minute to a given address: enough for
-// a legitimate resend after a typo, far too slow to exhaust a sending quota.
-const (
-	emailTargetMaxRequests = 1
-	emailTargetDuration    = 60
-)
+// emailTargetLimit reads the recipient-scoped mail budget, retunable via
+// EMAIL_TARGET_RATE_LIMIT / EMAIL_TARGET_RATE_LIMIT_DURATION.
+func emailTargetLimit() (int, int64) {
+	return common.EmailTargetRateLimitNum, common.EmailTargetRateLimitDuration
+}
 
 // redisScopedRateLimitKey builds a namespaced key for a caller-supplied scope
 // value (username or target mailbox) instead of an IP or numeric user id.
@@ -118,13 +116,14 @@ func memoryScopedRateLimiter(c *gin.Context, maxRequestNum int, duration int64, 
 // Intended for unauthenticated endpoints such as /api/user/login and
 // /api/user/register. Order it before the handler; it does not require auth.
 func AccountLoginRateLimit() gin.HandlerFunc {
-	if !common.CriticalRateLimitEnable {
+	if !common.LoginRateLimitEnable {
 		return defNext
 	}
 	inMemoryRateLimiter.Init(common.RateLimitKeyExpirationDuration)
 	return func(c *gin.Context) {
 		scope := normalizeRateLimitScope(accountScopeFromBody(c))
-		scopedRateLimiter(c, accountLoginMaxRequests, accountLoginDuration, LoginRateLimitMark, scope)
+		maxRequests, duration := loginLimit()
+		scopedRateLimiter(c, maxRequests, duration, LoginRateLimitMark, scope)
 	}
 }
 
@@ -164,12 +163,13 @@ func accountScopeFromBody(c *gin.Context) string {
 // follow the recipient. It cannot be bypassed by rotating source IPs, and it
 // cannot punish users who merely share a CDN egress address.
 func EmailTargetRateLimit() gin.HandlerFunc {
-	if !common.CriticalRateLimitEnable {
+	if !common.EmailTargetRateLimitEnable {
 		return defNext
 	}
 	inMemoryRateLimiter.Init(common.RateLimitKeyExpirationDuration)
 	return func(c *gin.Context) {
-		scopedRateLimiter(c, emailTargetMaxRequests, emailTargetDuration,
+		maxRequests, duration := emailTargetLimit()
+		scopedRateLimiter(c, maxRequests, duration,
 			EmailTargetRateLimitMark, normalizeRateLimitScope(c.Query("email")))
 	}
 }
@@ -177,7 +177,7 @@ func EmailTargetRateLimit() gin.HandlerFunc {
 // EmailTargetFromBodyRateLimit is the JSON-body counterpart of
 // EmailTargetRateLimit, for endpoints that take the address in the body.
 func EmailTargetFromBodyRateLimit() gin.HandlerFunc {
-	if !common.CriticalRateLimitEnable {
+	if !common.EmailTargetRateLimitEnable {
 		return defNext
 	}
 	inMemoryRateLimiter.Init(common.RateLimitKeyExpirationDuration)
@@ -193,6 +193,7 @@ func EmailTargetFromBodyRateLimit() gin.HandlerFunc {
 				}
 			}
 		}
-		scopedRateLimiter(c, emailTargetMaxRequests, emailTargetDuration, EmailTargetRateLimitMark, scope)
+		maxRequests, duration := emailTargetLimit()
+		scopedRateLimiter(c, maxRequests, duration, EmailTargetRateLimitMark, scope)
 	}
 }

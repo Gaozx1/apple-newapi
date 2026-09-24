@@ -18,17 +18,33 @@ import (
 func setupScopedLimitTest(t *testing.T) {
 	t.Helper()
 	prevRedis := common.RedisEnabled
-	prevEnable := common.CriticalRateLimitEnable
+	prevLoginEnable := common.LoginRateLimitEnable
+	prevLoginNum := common.LoginRateLimitNum
+	prevLoginDur := common.LoginRateLimitDuration
+	prevMailEnable := common.EmailTargetRateLimitEnable
+	prevMailNum := common.EmailTargetRateLimitNum
+	prevMailDur := common.EmailTargetRateLimitDuration
 	prevTTL := common.RateLimitKeyExpirationDuration
+
 	common.RedisEnabled = false
-	common.CriticalRateLimitEnable = true
+	common.LoginRateLimitEnable = true
+	common.LoginRateLimitNum = 10
+	common.LoginRateLimitDuration = 15 * 60
+	common.EmailTargetRateLimitEnable = true
+	common.EmailTargetRateLimitNum = 1
+	common.EmailTargetRateLimitDuration = 60
 	if common.RateLimitKeyExpirationDuration <= 0 {
 		common.RateLimitKeyExpirationDuration = 60
 	}
 	gin.SetMode(gin.TestMode)
 	t.Cleanup(func() {
 		common.RedisEnabled = prevRedis
-		common.CriticalRateLimitEnable = prevEnable
+		common.LoginRateLimitEnable = prevLoginEnable
+		common.LoginRateLimitNum = prevLoginNum
+		common.LoginRateLimitDuration = prevLoginDur
+		common.EmailTargetRateLimitEnable = prevMailEnable
+		common.EmailTargetRateLimitNum = prevMailNum
+		common.EmailTargetRateLimitDuration = prevMailDur
 		common.RateLimitKeyExpirationDuration = prevTTL
 	})
 }
@@ -44,7 +60,8 @@ func TestAccountLoginRateLimitBlocksPerAccount(t *testing.T) {
 	})
 
 	blocked := 0
-	for i := 0; i < accountLoginMaxRequests+5; i++ {
+	budget := common.LoginRateLimitNum
+	for i := 0; i < budget+5; i++ {
 		rec := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodPost, "/login",
 			strings.NewReader(`{"username":"victim","password":"guess"}`))
@@ -55,7 +72,7 @@ func TestAccountLoginRateLimitBlocksPerAccount(t *testing.T) {
 		}
 	}
 	t.Logf("同一账号尝试 %d 次，被限流 %d 次（预算 %d）",
-		accountLoginMaxRequests+5, blocked, accountLoginMaxRequests)
+		common.LoginRateLimitNum+5, blocked, common.LoginRateLimitNum)
 	assert.Positive(t, blocked, "同一账号超预算后必须被限流")
 }
 
@@ -71,7 +88,8 @@ func TestAccountLoginRateLimitIsolatesAccounts(t *testing.T) {
 	})
 
 	// Exhaust the budget for account A.
-	for i := 0; i < accountLoginMaxRequests+3; i++ {
+	budget := common.LoginRateLimitNum
+	for i := 0; i < budget+3; i++ {
 		rec := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodPost, "/login",
 			strings.NewReader(`{"username":"accountA","password":"x"}`))
@@ -171,7 +189,8 @@ func TestScopedLimitSkipsWhenScopeMissing(t *testing.T) {
 		c.JSON(http.StatusOK, gin.H{"success": false})
 	})
 
-	for i := 0; i < accountLoginMaxRequests+5; i++ {
+	budget := common.LoginRateLimitNum
+	for i := 0; i < budget+5; i++ {
 		rec := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(`{}`))
 		req.Header.Set("Content-Type", "application/json")
