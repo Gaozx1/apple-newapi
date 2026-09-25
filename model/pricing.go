@@ -43,7 +43,7 @@ type Pricing struct {
 	// ImageTierPrice carries the per-resolution flat image prices (1K/2K/4K
 	// USD per call) when the admin enabled tier billing for the model; it
 	// overrides the flat model price for image requests.
-	ImageTierPrice *ratio_setting.ImageModelTierPrice `json:"image_tier_price,omitempty"`
+	ImageTierPrice         *ratio_setting.ImageModelTierPrice   `json:"image_tier_price,omitempty"`
 	AudioRatio             *float64                             `json:"audio_ratio,omitempty"`
 	AudioCompletionRatio   *float64                             `json:"audio_completion_ratio,omitempty"`
 	EnableGroup            []string                             `json:"enable_groups"`
