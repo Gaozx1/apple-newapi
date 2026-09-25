@@ -14,6 +14,8 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/jsplugin"
 	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/relaykit/types"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/model_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -340,4 +342,26 @@ func TestSharedEndpointRebindsToBoundNewAPIExtension(t *testing.T) {
 	require.Nil(t, SetupContextForSelectedChannel(c, channel, "task-model"))
 	assert.Equal(t, "alpha", c.GetString("task_plugin_key"), "the first bound candidate executes regardless of the earlier pin")
 	assert.Equal(t, "alpha", c.MustGet(jsplugin.ContextKeyPinnedEndpoint).(jsplugin.PinnedEndpoint).Plugin.Meta.Key)
+}
+
+// A channel at its admission limit is busy, not broken: the attempt is refused
+// locally and the channel must never be auto-disabled for it.
+func TestSetupContextForSelectedChannelRefusesSaturatedCredential(t *testing.T) {
+	c, _ := gin.CreateTestContext(nil)
+	channel := &model.Channel{Id: 910100, Type: constant.ChannelTypeOpenAI, Key: "sk-limited"}
+	channel.SetOtherSettings(dto.ChannelOtherSettings{ConcurrencyLimit: 1})
+
+	require.Nil(t, SetupContextForSelectedChannel(c, channel, "gpt-4o"))
+	require.Equal(t, "sk-limited", common.GetContextKeyString(c, constant.ContextKeyChannelKey))
+
+	err := SetupContextForSelectedChannel(c, channel, "gpt-4o")
+	require.NotNil(t, err)
+	assert.Equal(t, http.StatusTooManyRequests, err.StatusCode)
+	assert.Equal(t, types.ErrorCodeChannelRateLimited, err.GetErrorCode())
+	assert.True(t, types.IsSkipRetryError(err), "a saturated channel must not be retried in a storm")
+	assert.False(t, service.ErrorWarrantsChannelDisable(err), "a busy channel must not be auto-disabled")
+
+	service.ReleaseChannelSlot(c)
+	require.Nil(t, SetupContextForSelectedChannel(c, channel, "gpt-4o"))
+	service.ReleaseChannelSlot(c)
 }
