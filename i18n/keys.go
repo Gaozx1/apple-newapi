@@ -332,6 +332,8 @@ const (
 	MsgDistributorGetChannelFailed             = "distributor.get_channel_failed"
 	MsgDistributorNoAvailableChannel           = "distributor.no_available_channel"
 	MsgDistributorNoAvailableChannelTaskPlugin = "distributor.no_available_channel_task_plugin"
+	MsgDistributorChannelRateLimited           = "distributor.channel_rate_limited"
+	MsgDistributorChannelPoolRateLimited       = "distributor.channel_pool_rate_limited"
 	MsgDistributorInvalidMidjourney            = "distributor.invalid_midjourney_request"
 	MsgDistributorInvalidParseModel            = "distributor.invalid_request_parse_model"
 )

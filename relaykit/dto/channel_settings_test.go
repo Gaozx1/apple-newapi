@@ -732,3 +732,29 @@ func TestChannelOtherSettingsValidateToolLossPolicy(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "tool_loss_policy")
 }
+
+func TestChannelOtherSettingsValidateAdmissionLimits(t *testing.T) {
+	require.NoError(t, (*ChannelOtherSettings)(nil).ValidateAdmissionLimits())
+	require.NoError(t, (&ChannelOtherSettings{}).ValidateAdmissionLimits())
+	require.NoError(t, (&ChannelOtherSettings{ConcurrencyLimit: 4, RpmLimit: 600}).ValidateAdmissionLimits())
+	require.NoError(t, (&ChannelOtherSettings{
+		ConcurrencyLimit: MaxChannelAdmissionLimit,
+		RpmLimit:         MaxChannelAdmissionLimit,
+	}).ValidateAdmissionLimits())
+
+	err := (&ChannelOtherSettings{ConcurrencyLimit: -1}).ValidateAdmissionLimits()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "concurrency_limit")
+
+	err = (&ChannelOtherSettings{RpmLimit: -1}).ValidateAdmissionLimits()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "rpm_limit")
+
+	err = (&ChannelOtherSettings{ConcurrencyLimit: MaxChannelAdmissionLimit + 1}).ValidateAdmissionLimits()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "concurrency_limit")
+
+	err = (&ChannelOtherSettings{RpmLimit: MaxChannelAdmissionLimit + 1}).ValidateAdmissionLimits()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "rpm_limit")
+}

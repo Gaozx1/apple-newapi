@@ -12,6 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	taskdto "github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
@@ -70,6 +71,10 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	requestId := c.GetString(common.RequestIdKey)
 	//group := common.GetContextKeyString(c, constant.ContextKeyUsingGroup)
 	//originalModel := common.GetContextKeyString(c, constant.ContextKeyOriginalModel)
+
+	// Safety net: any slot still held when Relay unwinds (early validation
+	// failure, billing error, panic) is released exactly once here.
+	defer service.ReleaseChannelSlot(c)
 
 	var (
 		newAPIError *types.NewAPIError
@@ -195,6 +200,10 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			newAPIError = relayHandler(c, relayInfo)
 		}
 
+		// The attempt finished (helpers block until streams close): hand back
+		// the channel limit slot before deciding on success or retry.
+		service.ReleaseChannelSlot(c)
+
 		if newAPIError == nil {
 			service.MarkRequestPolicySuccess(c, relayInfo.StreamStatus)
 			relayInfo.LastError = nil
@@ -275,22 +284,39 @@ func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service
 		service.RequestPolicy(c).BeginAttempt(channel, info.UsingGroup)
 		return channel, nil
 	}
-	channel, selectGroup, err := service.CacheGetRandomSatisfiedChannel(retryParam)
-	if err != nil {
-		return nil, types.NewError(fmt.Errorf("获取分组 %s 下模型 %s 的可用渠道失败（retry）: %s", selectGroup, info.OriginModelName, err.Error()), types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
-	}
-	if channel == nil {
-		return nil, types.NewError(fmt.Errorf("分组 %s 下模型 %s 的可用渠道不存在（retry）", selectGroup, info.OriginModelName), types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
-	}
+	for attempt := 0; ; attempt++ {
+		channel, selectGroup, selErr := service.SelectRetryChannelWithLimits(c, retryParam)
+		if selErr != nil {
+			message := selErr.Message
+			if selErr.MessageID != "" {
+				message = i18n.T(c, selErr.MessageID, selErr.Params)
+			}
+			code := selErr.Code
+			if code == "" {
+				code = types.ErrorCodeGetChannelFailed
+			}
+			logger.LogError(c, message)
+			return nil, types.NewErrorWithStatusCode(errors.New(message), code, selErr.StatusCode, types.ErrOptionWithSkipRetry())
+		}
 
-	info.PriceData.GroupRatioInfo = helper.HandleGroupRatio(c, info)
+		info.PriceData.GroupRatioInfo = helper.HandleGroupRatio(c, info)
 
-	service.RequestPolicy(c).BeginAttempt(channel, selectGroup)
-	newAPIError := middleware.SetupContextForSelectedChannel(c, channel, info.OriginModelName)
-	if newAPIError != nil {
-		return nil, newAPIError
+		service.RequestPolicy(c).BeginAttempt(channel, selectGroup)
+		newAPIError := middleware.SetupContextForSelectedChannel(c, channel, info.OriginModelName)
+		if newAPIError == nil {
+			return channel, nil
+		}
+		// Selection only peeks at capacity, so a concurrent request may have taken
+		// the last credential slot in between. Drop the channel from this
+		// request's pool and try another one instead of failing the retry.
+		if !service.IsChannelSaturatedError(newAPIError) || attempt >= service.MaxChannelAdmissionReselects {
+			return nil, newAPIError
+		}
+		service.GetChannelConstraints(c).AddFilter(taskdto.ChannelFilter{
+			Kind:               taskdto.FilterExcludedChannelIds,
+			ExcludedChannelIds: []int{channel.Id},
+		})
 	}
-	return channel, nil
 }
 
 func processChannelError(c *gin.Context, channelError types.ChannelError, err *types.NewAPIError, relayInfo *relaycommon.RelayInfo) {
@@ -477,6 +503,9 @@ func executeTaskSubmissionWith(
 	policy := service.RequestPolicy(c)
 	diagnostics := newTaskPluginSubmitDiagnostics(c)
 	diagnostics.start(relayInfo)
+	// Safety net: the task path returns from many branches, so any slot the
+	// final attempt still holds is released here.
+	defer service.ReleaseChannelSlot(c)
 	var result *relay.TaskSubmitResult
 	var taskErr *taskdto.TaskError
 	durable := false
@@ -515,6 +544,10 @@ func executeTaskSubmissionWith(
 			policy.BeginAttempt(channel, relayInfo.UsingGroup)
 			if retryParam.GetRetry() > 0 {
 				if setupErr := middleware.SetupContextForSelectedChannel(c, channel, relayInfo.OriginModelName); setupErr != nil {
+					if service.IsChannelSaturatedError(setupErr) {
+						taskErr = service.TaskErrorWrapperLocal(setupErr.Err, "channel_rate_limited", http.StatusTooManyRequests)
+						break
+					}
 					taskErr = service.TaskErrorWrapperLocal(setupErr.Err, "setup_locked_channel_failed", http.StatusInternalServerError)
 					break
 				}
@@ -545,6 +578,9 @@ func executeTaskSubmissionWith(
 
 		stage = "submit"
 		result, taskErr = submit(c, relayInfo)
+		// The submission finished; hand back the channel limit slot before
+		// deciding on retry, which acquires a new one for the next attempt.
+		service.ReleaseChannelSlot(c)
 		if requestErr := c.Request.Context().Err(); requestErr != nil {
 			diagnostics.cancelled("after_submit", retryParam.GetRetry()+1)
 			taskErr = service.TaskErrorWrapperLocal(requestErr, "request_cancelled", http.StatusRequestTimeout)

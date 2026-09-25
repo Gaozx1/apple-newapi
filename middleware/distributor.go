@@ -34,6 +34,9 @@ type ModelRequest struct {
 func Distribute() func(c *gin.Context) {
 	return func(c *gin.Context) {
 		var channel *model.Channel
+		// The limit slot acquired for the selected channel is released here if
+		// the downstream handler never did (early return, panic recovery).
+		defer service.ReleaseChannelSlot(c)
 		defer func() {
 			if c.Writer.Status() >= 400 {
 				service.RecordRequestPolicyTermination(c, types.NewErrorWithStatusCode(errors.New("request rejected"), types.ErrorCodeInvalidRequest, c.Writer.Status(), types.ErrOptionWithSkipRetry()))
@@ -97,32 +100,54 @@ func Distribute() func(c *gin.Context) {
 				}
 			}
 		}
-		if pinned || shouldSelectChannel {
-			usingGroup := common.GetContextKeyString(c, constant.ContextKeyUsingGroup)
-			var selectErr *service.ChannelSelectError
-			channel, _, selectErr = service.SelectChannelForRequest(c, modelRequest.Model, &service.RetryParam{
-				Ctx:         c,
-				ModelName:   modelRequest.Model,
-				TokenGroup:  usingGroup,
-				RequestPath: c.Request.URL.Path,
-				Retry:       common.GetPointer(0),
-			})
-			if selectErr != nil {
-				if selectErr.FilterKind == taskdto.FilterTaskPluginIdentity {
-					logTaskPluginChannelDecision(c, selectErr.Channel, modelRequest.Model, "channel_rejected", "identity_mismatch")
+		selectable := pinned || shouldSelectChannel
+		usingGroup := common.GetContextKeyString(c, constant.ContextKeyUsingGroup)
+		retryParam := &service.RetryParam{
+			Ctx:         c,
+			ModelName:   modelRequest.Model,
+			TokenGroup:  usingGroup,
+			RequestPath: c.Request.URL.Path,
+			Retry:       common.GetPointer(0),
+		}
+		var setupErr *types.NewAPIError
+		for attempt := 0; ; attempt++ {
+			if selectable {
+				var selectErr *service.ChannelSelectError
+				channel, _, selectErr = service.SelectChannelWithLimits(c, modelRequest.Model, retryParam)
+				if selectErr != nil {
+					if selectErr.FilterKind == taskdto.FilterTaskPluginIdentity {
+						logTaskPluginChannelDecision(c, selectErr.Channel, modelRequest.Model, "channel_rejected", "identity_mismatch")
+					}
+					message := selectErr.Message
+					if selectErr.NoAvailableChannel {
+						message = noAvailableChannelMessage(c, usingGroup, modelRequest.Model)
+					} else if selectErr.MessageID != "" {
+						message = i18n.T(c, selectErr.MessageID, selectErr.Params)
+					}
+					abortWithOpenAiMessage(c, selectErr.StatusCode, message, selectErr.Code)
+					return
 				}
-				message := selectErr.Message
-				if selectErr.NoAvailableChannel {
-					message = noAvailableChannelMessage(c, usingGroup, modelRequest.Model)
-				} else if selectErr.MessageID != "" {
-					message = i18n.T(c, selectErr.MessageID, selectErr.Params)
-				}
-				abortWithOpenAiMessage(c, selectErr.StatusCode, message, selectErr.Code)
+			}
+			common.SetContextKey(c, constant.ContextKeyRequestStartTime, time.Now())
+			setupErr = SetupContextForSelectedChannel(c, channel, modelRequest.Model)
+			if !service.IsChannelSaturatedError(setupErr) {
+				break
+			}
+			// Selection only peeks at capacity, so a concurrent request may have
+			// taken the last credential slot in between. Admission happens after
+			// the key is resolved; rather than failing a request another channel
+			// could serve, drop this channel from the request's pool and pick
+			// again. A pinned channel has no alternative, so it reports the local
+			// 429 that also tells the client to back off.
+			if pinned || !selectable || attempt >= service.MaxChannelAdmissionReselects {
+				abortWithOpenAiMessage(c, http.StatusTooManyRequests, setupErr.Error(), types.ErrorCodeChannelRateLimited)
 				return
 			}
+			service.GetChannelConstraints(c).AddFilter(taskdto.ChannelFilter{
+				Kind:               taskdto.FilterExcludedChannelIds,
+				ExcludedChannelIds: []int{channel.Id},
+			})
 		}
-		common.SetContextKey(c, constant.ContextKeyRequestStartTime, time.Now())
-		SetupContextForSelectedChannel(c, channel, modelRequest.Model)
 		c.Next()
 		if channel != nil && c.Writer != nil && c.Writer.Status() < http.StatusBadRequest {
 			service.RecordChannelAffinity(c, channel.Id)
@@ -643,6 +668,24 @@ func SetupContextForSelectedChannel(c *gin.Context, channel *model.Channel, mode
 	} else {
 		// 必须设置为 false，否则在重试到单个 key 的时候会导致日志显示错误
 		common.SetContextKey(c, constant.ContextKeyChannelIsMultiKey, false)
+	}
+	// Admission control: every credential of a channel has its own concurrency
+	// and per-minute request budget, because upstream accounts meter each key
+	// separately. A saturated key falls back to another enabled key of the same
+	// channel; when every key is saturated the attempt fails with a local 429
+	// before any upstream call, so a limit spreads load instead of creating a
+	// retry storm. The slot is released when the attempt finishes. A channel test
+	// is exempt: it reports whether the credential works, so the live traffic
+	// budget must not turn a healthy channel into a failed health check.
+	if !common.GetContextKeyBool(c, constant.ContextKeyChannelSkipAdmission) {
+		admittedKey, admittedIndex, admitErr := service.AdmitChannelCredential(c, channel, key, index)
+		if admitErr != nil {
+			return types.NewErrorWithStatusCode(admitErr, types.ErrorCodeChannelRateLimited, http.StatusTooManyRequests, types.ErrOptionWithSkipRetry())
+		}
+		key, index = admittedKey, admittedIndex
+		if channel.ChannelInfo.IsMultiKey {
+			common.SetContextKey(c, constant.ContextKeyChannelMultiKeyIndex, index)
+		}
 	}
 	// c.Request.Header.Set("Authorization", fmt.Sprintf("Bearer %s", key))
 	common.SetContextKey(c, constant.ContextKeyChannelKey, key)

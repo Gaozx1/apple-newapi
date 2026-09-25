@@ -60,6 +60,13 @@ const (
 	ErrorCodeChannelInvalidKey            ErrorCode = "channel:invalid_key"
 	ErrorCodeChannelResponseTimeExceeded  ErrorCode = "channel:response_time_exceeded"
 
+	// ErrorCodeChannelRateLimited is a local admission decision: the gateway
+	// refused the attempt because the channel credential reached its configured
+	// concurrency or per-minute request limit. It deliberately carries no
+	// "channel:" prefix, because the channel is healthy and must not be
+	// auto-disabled or health-checked as a failed upstream.
+	ErrorCodeChannelRateLimited ErrorCode = "channel_rate_limited"
+
 	// client request error
 	ErrorCodeReadRequestBodyFailed ErrorCode = "read_request_body_failed"
 	ErrorCodeConvertRequestFailed  ErrorCode = "convert_request_failed"

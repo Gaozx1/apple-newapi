@@ -109,6 +109,7 @@ type responsesWSSession struct {
 	lastResponseID  string
 	lockedModel     string
 	lockedChannelID int
+	lockedChannel   *appmodel.Channel
 	lockedGroup     string
 	lockedKey       string
 	lockedKeyIndex  int
@@ -230,6 +231,10 @@ func (s *responsesWSSession) runCall(c *gin.Context, state *responsesWSCallState
 	started := time.Now()
 	var info *relaycommon.RelayInfo
 	billingPrepared := false
+	// One Responses WebSocket response counts as one attempt against the
+	// channel's limits: the slot acquired at selection is held until the
+	// response terminates.
+	defer service.ReleaseChannelSlot(c)
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			apiErr = types.NewError(fmt.Errorf("responses websocket call panic: %v", recovered), types.ErrorCodeBadResponse, types.ErrOptionWithSkipRetry())
@@ -262,6 +267,12 @@ func (s *responsesWSSession) runCall(c *gin.Context, state *responsesWSCallState
 	if s.lockedChannelID != 0 {
 		if apiErr = s.restoreConnectionContext(c, modelName); apiErr != nil {
 			return apiErr
+		}
+		// The connection is already authenticated with the locked credential, so
+		// each response on it must still claim that credential's budget; another
+		// key cannot serve an established connection.
+		if admitErr := service.AdmitLockedChannelCredential(c, s.lockedChannel, s.lockedKey); admitErr != nil {
+			return types.NewErrorWithStatusCode(admitErr, types.ErrorCodeChannelRateLimited, http.StatusTooManyRequests, types.ErrOptionWithSkipRetry())
 		}
 		info = relaycommon.GenRelayInfoResponses(c, &create.Request)
 		info.IsStream = true
@@ -332,6 +343,7 @@ func (s *responsesWSSession) runCall(c *gin.Context, state *responsesWSCallState
 				return types.NewError(err, types.ErrorCodeBadResponse, types.ErrOptionWithSkipRetry())
 			}
 			s.lockedModel, s.lockedChannelID, s.lockedGroup = modelName, channel.Id, info.UsingGroup
+			s.lockedChannel = channel
 			s.lockedKey, s.lockedKeyIndex = info.ApiKey, info.ChannelMultiKeyIndex
 			s.lockedRoute, _ = channel.GetOtherSettings().AdvancedCustom.MatchPathForModel(c.Request.URL.Path, modelName)
 			s.lockedContext = make(map[appconstant.ContextKey]any)
@@ -537,6 +549,7 @@ func (s *responsesWSSession) restoreConnectionContext(c *gin.Context, model stri
 	if err != nil || channel == nil || channel.Status != common.ChannelStatusEnabled || !channel.GetSetting().ResponsesWebSocketEnabled {
 		return types.NewErrorWithStatusCode(errors.New("Responses WebSocket is disabled for this channel"), types.ErrorCode(appdto.FilterResponsesWebSocket), http.StatusForbidden, types.ErrOptionWithSkipRetry())
 	}
+	s.lockedChannel = channel
 	keyEnabled := channel.Key == s.lockedKey
 	if channel.ChannelInfo.IsMultiKey {
 		keys := channel.GetKeys()
@@ -920,7 +933,7 @@ func selectResponsesWSChannel(c *gin.Context, modelName string, retryParam *serv
 	}) {
 		constraints.AddFilter(appdto.ChannelFilter{Kind: appdto.FilterResponsesWebSocket})
 	}
-	channel, _, selectErr := service.SelectChannelForRequest(c, modelName, retryParam)
+	channel, _, selectErr := service.SelectChannelWithLimits(c, modelName, retryParam)
 	if selectErr != nil {
 		message := selectErr.Message
 		if selectErr.MessageID != "" {

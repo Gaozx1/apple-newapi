@@ -288,6 +288,12 @@ export const channelFormSchema = z
     claude_beta_query: z.boolean().optional(), // Anthropic: beta query passthrough
     ollama_openai_chat: z.boolean().optional(), // Ollama: OpenAI-compatible /v1/chat/completions instead of native /api/chat
     disable_task_polling_sleep: z.boolean().optional(),
+    // Rate limits (stored in settings JSON, applied to every channel type).
+    // Each value counts per channel credential, so a multi-key channel budgets
+    // every key independently. The upper bound mirrors the backend's
+    // dto.MaxChannelAdmissionLimit.
+    concurrency_limit: z.number().int().min(0).max(1000000).optional(),
+    rpm_limit: z.number().int().min(0).max(1000000).optional(),
     // Upstream model update settings (stored in settings JSON)
     upstream_model_update_check_enabled: z.boolean().optional(),
     upstream_model_update_auto_sync_enabled: z.boolean().optional(),
@@ -479,6 +485,8 @@ export const CHANNEL_FORM_DEFAULT_VALUES: ChannelFormValues = {
   claude_beta_query: false,
   ollama_openai_chat: false,
   disable_task_polling_sleep: false,
+  concurrency_limit: 0,
+  rpm_limit: 0,
   upstream_model_update_check_enabled: false,
   upstream_model_update_auto_sync_enabled: false,
   upstream_model_update_ignored_models: '',
@@ -551,6 +559,8 @@ export function transformChannelToFormDefaults(
   let claudeBetaQuery = false
   let ollamaOpenAIChat = false
   let disableTaskPollingSleep = false
+  let concurrencyLimit = 0
+  let rpmLimit = 0
   let upstreamModelUpdateCheckEnabled = false
   let upstreamModelUpdateAutoSyncEnabled = false
   let upstreamModelUpdateIgnoredModels = ''
@@ -572,6 +582,15 @@ export function transformChannelToFormDefaults(
       claudeBetaQuery = parsed.claude_beta_query === true
       ollamaOpenAIChat = parsed.ollama_openai_chat === true
       disableTaskPollingSleep = parsed.disable_task_polling_sleep === true
+      concurrencyLimit =
+        typeof parsed.concurrency_limit === 'number' &&
+        parsed.concurrency_limit > 0
+          ? Math.floor(parsed.concurrency_limit)
+          : 0
+      rpmLimit =
+        typeof parsed.rpm_limit === 'number' && parsed.rpm_limit > 0
+          ? Math.floor(parsed.rpm_limit)
+          : 0
       upstreamModelUpdateCheckEnabled =
         parsed.upstream_model_update_check_enabled === true
       upstreamModelUpdateAutoSyncEnabled =
@@ -631,6 +650,8 @@ export function transformChannelToFormDefaults(
     claude_beta_query: claudeBetaQuery,
     ollama_openai_chat: ollamaOpenAIChat,
     disable_task_polling_sleep: disableTaskPollingSleep,
+    concurrency_limit: concurrencyLimit,
+    rpm_limit: rpmLimit,
     allow_safety_identifier: allowSafetyIdentifier,
     upstream_model_update_check_enabled: upstreamModelUpdateCheckEnabled,
     upstream_model_update_auto_sync_enabled: upstreamModelUpdateAutoSyncEnabled,
@@ -785,6 +806,24 @@ function buildSettingsJSON(formData: ChannelFormValues): string {
 
   settingsObj.disable_task_polling_sleep =
     formData.disable_task_polling_sleep === true
+
+  // Rate limits apply to every channel type; 0/absent means unlimited. Write
+  // only positive values so unchanged channels keep equivalent JSON.
+  const concurrencyLimit = Math.max(
+    0,
+    Math.floor(formData.concurrency_limit || 0)
+  )
+  if (concurrencyLimit > 0) {
+    settingsObj.concurrency_limit = concurrencyLimit
+  } else if ('concurrency_limit' in settingsObj) {
+    delete settingsObj.concurrency_limit
+  }
+  const rpmLimit = Math.max(0, Math.floor(formData.rpm_limit || 0))
+  if (rpmLimit > 0) {
+    settingsObj.rpm_limit = rpmLimit
+  } else if ('rpm_limit' in settingsObj) {
+    delete settingsObj.rpm_limit
+  }
 
   // Upstream model update settings (for model-fetchable channel types)
   if (MODEL_FETCHABLE_TYPES.has(formData.type)) {

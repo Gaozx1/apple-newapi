@@ -85,6 +85,8 @@ const CONFIGURATION_BLOCKS = {
       'http_protocol',
       'http2_connection_shards',
       'disable_task_polling_sleep',
+      'concurrency_limit',
+      'rpm_limit',
     ],
   },
   upstreamModelDetection: {

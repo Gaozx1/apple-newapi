@@ -101,6 +101,12 @@ func testChannelWithKeyIndex(ctx context.Context, channel *model.Channel, testUs
 	}
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
+	// The test probes upstream through SetupContextForSelectedChannel, which
+	// admits the channel credential; a diagnostic request must not keep holding
+	// that slot after it finishes, and it must not be refused because live
+	// traffic currently fills the channel's budget.
+	defer service.ReleaseChannelSlot(c)
+	common.SetContextKey(c, constant.ContextKeyChannelSkipAdmission, true)
 
 	testModel = strings.TrimSpace(testModel)
 	if testModel == "" {

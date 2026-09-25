@@ -203,6 +203,102 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 	return channel, selectGroup, nil
 }
 
+// maxLimitSkipSelection bounds how many saturated candidates one selection may
+// skip before the remaining pool is declared saturated with a 429.
+const maxLimitSkipSelection = 5
+
+// SelectChannelWithLimits wraps SelectChannelForRequest with the per-channel
+// concurrency/RPM gate (AcquireChannelSlot). A candidate found saturated is
+// excluded from this request's pool and selection retried; a pinned channel
+// that is saturated fails fast with 429. The slot acquired for the winning
+// channel is stored on the request context and must be released when the
+// attempt finishes (ReleaseChannelSlot).
+func SelectChannelWithLimits(c *gin.Context, modelName string, retry *RetryParam) (*model.Channel, string, *ChannelSelectError) {
+	excluded := 0
+	for attempt := 0; ; attempt++ {
+		// One attempt never holds two slots: re-selection (e.g. the Responses
+		// WebSocket relay re-picking the distributor's channel) releases first.
+		ReleaseChannelSlot(c)
+		channel, selectGroup, selErr := SelectChannelForRequest(c, modelName, retry)
+		if selErr != nil {
+			if excluded > 0 && selErr.NoAvailableChannel {
+				return nil, selectGroup, channelPoolSaturatedError(selectGroup, modelName)
+			}
+			return nil, selectGroup, selErr
+		}
+		// The credential is only resolved after selection, so the check here asks
+		// whether any key of the channel still has capacity; the per-key
+		// admission runs once the key is known.
+		if ChannelPoolHasCapacity(channel) {
+			return channel, selectGroup, nil
+		}
+		if pin, pinned, _ := GetChannelConstraints(c).ResolvedPin(); pinned && pin.ChannelId == channel.Id {
+			logger.LogWarn(c, "pinned channel #%d is at its admission limit", channel.Id)
+			return nil, selectGroup, channelSaturatedError(channel, selectGroup, modelName)
+		}
+		logger.LogWarn(c, "channel #%d skipped: every key is at its admission limit", channel.Id)
+		if attempt >= maxLimitSkipSelection {
+			return nil, selectGroup, channelPoolSaturatedError(selectGroup, modelName)
+		}
+		GetChannelConstraints(c).AddFilter(dto.ChannelFilter{
+			Kind:               dto.FilterExcludedChannelIds,
+			ExcludedChannelIds: []int{channel.Id},
+		})
+		excluded++
+	}
+}
+
+// SelectRetryChannelWithLimits gates the retry-path selection, which reads
+// candidates straight from the cache and skips pin/affinity handling.
+func SelectRetryChannelWithLimits(c *gin.Context, retry *RetryParam) (*model.Channel, string, *ChannelSelectError) {
+	ReleaseChannelSlot(c)
+	excluded := 0
+	for attempt := 0; ; attempt++ {
+		channel, selectGroup, err := CacheGetRandomSatisfiedChannel(retry)
+		if err != nil {
+			return nil, selectGroup, &ChannelSelectError{
+				StatusCode: http.StatusServiceUnavailable, Code: types.ErrorCodeGetChannelFailed, MessageID: i18n.MsgDistributorGetChannelFailed,
+				Params: map[string]any{"Group": selectGroup, "Model": retry.ModelName, "Error": err.Error()},
+			}
+		}
+		if channel == nil {
+			if excluded > 0 {
+				return nil, selectGroup, channelPoolSaturatedError(selectGroup, retry.ModelName)
+			}
+			return nil, selectGroup, &ChannelSelectError{
+				StatusCode: http.StatusServiceUnavailable, Code: types.ErrorCodeModelNotFound, MessageID: i18n.MsgDistributorNoAvailableChannel,
+				Params: map[string]any{"Group": selectGroup, "Model": retry.ModelName}, NoAvailableChannel: true,
+			}
+		}
+		if ChannelPoolHasCapacity(channel) {
+			return channel, selectGroup, nil
+		}
+		logger.LogWarn(c, "channel #%d skipped: every key is at its admission limit", channel.Id)
+		if attempt >= maxLimitSkipSelection {
+			return nil, selectGroup, channelPoolSaturatedError(selectGroup, retry.ModelName)
+		}
+		GetChannelConstraints(c).AddFilter(dto.ChannelFilter{
+			Kind:               dto.FilterExcludedChannelIds,
+			ExcludedChannelIds: []int{channel.Id},
+		})
+		excluded++
+	}
+}
+
+func channelSaturatedError(channel *model.Channel, group, modelName string) *ChannelSelectError {
+	return &ChannelSelectError{
+		StatusCode: http.StatusTooManyRequests, Code: types.ErrorCodeChannelRateLimited, MessageID: i18n.MsgDistributorChannelRateLimited,
+		Params: map[string]any{"Channel": channel.Name, "Group": group, "Model": modelName},
+	}
+}
+
+func channelPoolSaturatedError(group, modelName string) *ChannelSelectError {
+	return &ChannelSelectError{
+		StatusCode: http.StatusTooManyRequests, Code: types.ErrorCodeChannelRateLimited, MessageID: i18n.MsgDistributorChannelPoolRateLimited,
+		Params: map[string]any{"Group": group, "Model": modelName},
+	}
+}
+
 func pinnedTaskPluginIdentities(c *gin.Context, expected string) ([]int, []string) {
 	if c == nil || expected == "" {
 		return nil, nil

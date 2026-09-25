@@ -127,6 +127,32 @@ type ChannelOtherSettings struct {
 	// rejection. Empty follows the default allow policy. Accepted values:
 	// "", "allow", "safe", "strict".
 	ToolLossPolicy string `json:"tool_loss_policy,omitempty"`
+	// ConcurrencyLimit caps the number of in-flight relay requests per channel
+	// credential. A multi-key channel budgets every key independently, so the
+	// effective channel-wide ceiling is ConcurrencyLimit times the number of
+	// enabled keys. 0 means unlimited.
+	ConcurrencyLimit int `json:"concurrency_limit,omitempty"`
+	// RpmLimit caps relay requests per minute per channel credential. It follows
+	// the same per-key accounting as ConcurrencyLimit. 0 means unlimited.
+	RpmLimit int `json:"rpm_limit,omitempty"`
+}
+
+// MaxChannelAdmissionLimit bounds the configurable per-credential admission
+// limits so a stored setting cannot size an unbounded in-memory semaphore.
+const MaxChannelAdmissionLimit = 1_000_000
+
+// ValidateAdmissionLimits rejects admission limits outside the supported range.
+func (s *ChannelOtherSettings) ValidateAdmissionLimits() error {
+	if s == nil {
+		return nil
+	}
+	if s.ConcurrencyLimit < 0 || s.ConcurrencyLimit > MaxChannelAdmissionLimit {
+		return fmt.Errorf("concurrency_limit must be between 0 and %d", MaxChannelAdmissionLimit)
+	}
+	if s.RpmLimit < 0 || s.RpmLimit > MaxChannelAdmissionLimit {
+		return fmt.Errorf("rpm_limit must be between 0 and %d", MaxChannelAdmissionLimit)
+	}
+	return nil
 }
 
 func (s *ChannelOtherSettings) IsOpenRouterEnterprise() bool {

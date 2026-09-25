@@ -39,6 +39,10 @@ const (
 	FilterRequestPath        ChannelFilterKind = "request_path"
 	FilterTaskPluginIdentity ChannelFilterKind = "task_plugin_identity"
 	FilterResponsesWebSocket ChannelFilterKind = "responses_websocket"
+	// FilterExcludedChannelIds is a request-local exclusion produced by the
+	// channel limit gate: candidates already found saturated are removed from
+	// the pool before the next pick.
+	FilterExcludedChannelIds ChannelFilterKind = "excluded_channel_ids"
 )
 
 type ChannelFilter struct {
@@ -47,6 +51,7 @@ type ChannelFilter struct {
 	TaskPluginKey          string
 	TaskPluginKeys         []string
 	TaskPluginChannelTypes []int
+	ExcludedChannelIds     []int
 }
 
 type ChannelConstraints struct {

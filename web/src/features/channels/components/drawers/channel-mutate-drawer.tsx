@@ -2159,6 +2159,61 @@ export function ChannelMutateDrawer({
     />
   )
 
+  const rateLimitFields = (
+    <div className='grid gap-4 sm:grid-cols-2'>
+      <FormField
+        control={form.control}
+        name='concurrency_limit'
+        render={({ field }) => (
+          <FormItem>
+            <FormLabel>{t('Concurrency Limit')}</FormLabel>
+            <FormControl>
+              <Input
+                type='number'
+                min={0}
+                max={1000000}
+                placeholder='0'
+                {...field}
+                onChange={(e) => field.onChange(Number(e.target.value))}
+              />
+            </FormControl>
+            <FormDescription>
+              {t(
+                'Maximum simultaneous in-flight requests per key of this channel, 0 means unlimited.'
+              )}
+            </FormDescription>
+            <FormMessage />
+          </FormItem>
+        )}
+      />
+      <FormField
+        control={form.control}
+        name='rpm_limit'
+        render={({ field }) => (
+          <FormItem>
+            <FormLabel>{t('Requests Per Minute Limit')}</FormLabel>
+            <FormControl>
+              <Input
+                type='number'
+                min={0}
+                max={1000000}
+                placeholder='0'
+                {...field}
+                onChange={(e) => field.onChange(Number(e.target.value))}
+              />
+            </FormControl>
+            <FormDescription>
+              {t(
+                'Maximum requests per minute per key of this channel, 0 means unlimited.'
+              )}
+            </FormDescription>
+            <FormMessage />
+          </FormItem>
+        )}
+      />
+    </div>
+  )
+
   const routingFields = (
     <div
       role='group'
@@ -4690,6 +4745,7 @@ export function ChannelMutateDrawer({
                 {proxyFields}
                 {httpProtocolFields}
                 {httpShardsFields}
+                {rateLimitFields}
               </fieldset>
             </div>
             {upstreamModelDetectionFields}

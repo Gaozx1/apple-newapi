@@ -44,6 +44,14 @@ const (
 	// Set only by the manual batch key test: it keeps probing each key from
 	// advancing MultiKeyPollingIndex, which would disturb live traffic.
 	ContextKeyChannelForceMultiKeyIndex ContextKey = "channel_force_multi_key_index"
+	// ContextKeyChannelSlot holds the limit slot acquired for the current relay
+	// attempt; it is released when the attempt finishes.
+	ContextKeyChannelSlot ContextKey = "channel_limit_slot"
+	// ContextKeyChannelSkipAdmission marks a diagnostic probe that must reach
+	// upstream even when the channel is at its configured limits. Set only by the
+	// channel test: a health check must report whether the credential works, not
+	// whether live traffic currently keeps it busy.
+	ContextKeyChannelSkipAdmission ContextKey = "channel_skip_admission"
 
 	ContextKeyAutoGroup           ContextKey = "auto_group"
 	ContextKeyAutoGroupIndex      ContextKey = "auto_group_index"
