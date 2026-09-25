@@ -16,7 +16,7 @@
 
 - `compileBillingExpression(source)`：返回 `ready`（源文本、AST、依赖、规则位置）或带诊断的失败结果。
 - `evaluateBillingExpression(sourceOrCompiled, context)`：返回 `success`（`cost`、`matchedTier`、`requestRules`），或 `invalid` / `unsupported` / `missing_context`。
-- `display.ts`：只识别完整的标准 token 阶梯、schema 支持的任务枚举阶梯，以及标准阶梯外层的时间分支。
+- `display.ts`：只识别完整的标准 token 阶梯、schema 支持的任务枚举阶梯，以及标准阶梯外层的时间分支。任务阶梯中引用 schema 未声明枚举值的分支视为不可达并跳过，其余档位照常识别；`task-display.ts` 对这类比较按恒不成立处理。
 - `structure.ts`：无损拆分顶层表达式；字符串内的括号、运算符和转义不作为表达式结构。
 - `condition-display.ts`：从 AST 将星期范围、小时区间、条件组合及补集转换为本地化说明。详情、分组表、日志和模拟规则共用；原始源码只在无法识别的条件上回退。
 - `visual.ts`：`parseVisualBillingDocument(source)` 将 AST 转为条件分支与价格叶子；`serializeVisualBillingDocument(document)` 返回完整源码或字段错误，不返回残缺表达式。文档保留源码、节点身份、来源区间、变量是否存在及字符串草稿；通过与来源节点比较识别修改并局部替换。
@@ -136,6 +136,7 @@ Token 编辑器优先使用原有阶梯表单；旧表单无法承载时使用�
 ## 回归验证
 
 - Go 与浏览器读取 `pkg/billingexpr/testdata/frontend_simulation.json` 同一组契约样例。
+- 音频转换样例通过 `conversion` 绑定后端生成输入，通过 `displayTiers` 同时验证分支与价格展示；转换模板变更必须同步更新契约。有限的等价 AST 变体（括号、`max` 参数顺序、价格乘法左右顺序、音频 OR 顺序）保持相同展示。
 - 时间测试固定绝对时间，覆盖高峰边界、周末、午夜跨月及夏令时。
 - 原有价格、分组、任务、日志、编辑器、同步测试的业务预期保持不变。
 - 组件测试覆盖请求面板的显式开启、JSON/时间错误、倍率结果、单位、配置不变，以及卡片时间刷新。

@@ -33,6 +33,8 @@ export type TokenTierCondition = {
   value: number
 }
 export type TokenTier = {
+  conditionText?: string
+  imageCount?: boolean
   billingUnit?: 'token' | 'request'
   fixedPrice?: number
   label: string
@@ -126,17 +128,54 @@ function tokenTier(
     }
   }
   for (const term of flattenBinary(node.args[1], '+')) {
-    if (
-      term.kind !== 'binary' ||
-      term.operator !== '*' ||
-      term.left.kind !== 'variable' ||
-      term.left.name === 'len' ||
-      nonnegativePriceLiteral(term.right) === null ||
-      Object.hasOwn(prices, term.left.name)
-    ) {
+    if (term.kind !== 'binary' || term.operator !== '*') {
       return null
     }
-    prices[term.left.name] = nonnegativePriceLiteral(term.right) ?? 0
+    let input = term.left
+    let price = nonnegativePriceLiteral(term.right)
+    if (price === null) {
+      price = nonnegativePriceLiteral(term.left)
+      if (price === null) return null
+      input = term.right
+    }
+    let variable: TokenVariable
+    if (
+      input.kind === 'variable' &&
+      input.name !== 'len' &&
+      input.name !== 'image_count'
+    ) {
+      variable = input.name
+    } else {
+      if (
+        input.kind !== 'call' ||
+        input.name !== 'max' ||
+        input.args.length !== 2
+      ) {
+        return null
+      }
+      let remainder = input.args[0]
+      if (remainder.kind === 'literal' && remainder.value === 0) {
+        remainder = input.args[1]
+      } else if (
+        input.args[1].kind !== 'literal' ||
+        input.args[1].value !== 0
+      ) {
+        return null
+      }
+      if (
+        remainder.kind !== 'binary' ||
+        remainder.operator !== '-' ||
+        remainder.left.kind !== 'variable' ||
+        remainder.left.name !== 'len' ||
+        remainder.right.kind !== 'variable' ||
+        remainder.right.name !== 'ai'
+      ) {
+        return null
+      }
+      variable = 'p'
+    }
+    if (Object.hasOwn(prices, variable)) return null
+    prices[variable] = price
   }
   if (Object.keys(prices).length === 0) return null
   return { label: node.args[0].value, conditions, prices }
@@ -144,6 +183,51 @@ function tokenTier(
 
 /** Legacy token summary contract: ordered linear chain, never a minimum or partial price extraction. */
 export function readTokenTierChain(node: ExpressionNode): TokenTier[] | null {
+  if (
+    node.kind === 'conditional' &&
+    node.condition.kind === 'binary' &&
+    node.condition.operator === '||'
+  ) {
+    const inputs = [node.condition.left, node.condition.right]
+    const present = new Set<string>()
+    for (const part of inputs) {
+      if (
+        part.kind === 'binary' &&
+        part.operator === '>' &&
+        part.left.kind === 'variable' &&
+        (part.left.name === 'ai' || part.left.name === 'ao') &&
+        part.right.kind === 'literal' &&
+        part.right.value === 0
+      ) {
+        present.add(part.left.name)
+      }
+    }
+    if (present.size === 2) {
+      const audio = tokenTier(node.yes, [])
+      const text = tokenTier(node.no, [])
+      if (audio && text) {
+        return [
+          { ...audio, conditionText: 'Audio requests' },
+          { ...text, conditionText: 'Text-only requests' },
+        ]
+      }
+    }
+  }
+  if (node.kind === 'binary' && node.operator === '*') {
+    for (const [factor, pricing] of [
+      [node.left, node.right],
+      [node.right, node.left],
+    ]) {
+      if (factor.kind === 'variable' && factor.name === 'image_count') {
+        return (
+          readTokenTierChain(pricing)?.map((tier) => ({
+            ...tier,
+            imageCount: true,
+          })) ?? null
+        )
+      }
+    }
+  }
   const tiers: TokenTier[] = []
   let remaining = node
   while (remaining.kind === 'conditional') {
@@ -229,18 +313,22 @@ export function readTimeTokenPricing(
 }
 
 export type TaskTier = {
+  conditionText?: string
   label: string
   conditions: { field: string; value: string }[]
   constant: number
   unitPrices: Record<string, number>
 }
 
+/** `unreachable` marks a branch on an enum value the schema no longer declares:
+ * it can never match a request, so callers skip it instead of rejecting the chain. */
 function taskConditions(
   node: ExpressionNode,
   schema: BillingUsageSchema,
   includeBoolean: boolean
-): TaskTier['conditions'] | null {
+): TaskTier['conditions'] | 'unreachable' | null {
   const conditions: TaskTier['conditions'] = []
+  let reachable = true
   for (const term of flattenBinary(node, '&&')) {
     if (
       term.kind !== 'binary' ||
@@ -258,15 +346,14 @@ function taskConditions(
     const value = term.right.value
     if (definition?.type === 'boolean') {
       if (!includeBoolean || typeof value !== 'boolean') return null
-    } else if (
-      typeof value !== 'string' ||
-      !definition?.enum?.includes(value)
-    ) {
+    } else if (typeof value !== 'string' || !definition?.enum) {
       return null
+    } else if (!definition.enum.includes(value)) {
+      reachable = false
     }
     conditions.push({ field, value: String(value) })
   }
-  return conditions
+  return reachable ? conditions : 'unreachable'
 }
 
 function taskTier(
@@ -327,7 +414,9 @@ function taskTier(
   return { label: node.args[0].value, conditions, constant, unitPrices }
 }
 
-/** Keep task summaries limited to schema-backed enum tiers and canonical scaled units. */
+/** Keep task summaries limited to schema-backed enum tiers and canonical scaled units.
+ * A branch on an enum value the schema no longer declares is unreachable and dropped,
+ * so a narrowed plugin schema keeps the remaining tiers editable. */
 export function readTaskTierChain(
   node: ExpressionNode,
   schema: BillingUsageSchema,
@@ -341,10 +430,12 @@ export function readTaskTierChain(
       schema,
       includeBoolean
     )
-    if (!conditions) return null
-    const tier = taskTier(remaining.yes, conditions, schema)
-    if (!tier) return null
-    tiers.push(tier)
+    if (conditions === null) return null
+    if (conditions !== 'unreachable') {
+      const tier = taskTier(remaining.yes, conditions, schema)
+      if (!tier) return null
+      tiers.push(tier)
+    }
     remaining = remaining.no
   }
   const fallback = taskTier(remaining, [], schema)

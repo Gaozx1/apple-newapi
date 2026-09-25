@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -29,6 +30,11 @@ type Route struct {
 	Decode      string    `json:"decode,omitempty"`
 	Render      string    `json:"render,omitempty"`
 	TaskIDParam string    `json:"taskIdParam,omitempty"`
+	// RetainResult, when explicitly false on a submit or dynamic route, tells
+	// the host not to persist the upstream snapshot of an immediate terminal
+	// result and to treat the task as not found on every retrieval surface
+	// afterwards. nil means the route did not declare it (retain).
+	RetainResult *bool `json:"retainResult,omitempty"`
 	// Models restricts this route to the listed models. The host matches the
 	// canonical top-level "model" body field before any JS hook runs; empty
 	// means unrestricted. Must be a subset of meta.models.
@@ -88,7 +94,18 @@ var hostProtocols = []HostProtocolDefinition{
 		{Name: "retrieve", Methods: []string{http.MethodGet}, Path: "/v1/videos/:task_id", BodyKinds: []BodyKind{BodyNone}, RequiredProtocolMembers: []string{"render"}},
 		{Name: "content", Methods: []string{http.MethodGet, http.MethodHead}, Path: "/v1/videos/:task_id/content", BodyKinds: []BodyKind{BodyNone}, RequiredDriverHooks: []string{"listArtifacts", "buildContentRequest"}},
 	}},
+	// The OpenAI Images API is synchronous: both operations create a task and
+	// the host answers with the rendered image response once the task is
+	// terminal, so there is no retrieve operation and no request modes.
+	{Name: ProtocolOpenAIImage, Operations: []HostProtocolOperation{
+		{Name: "generate", Methods: []string{http.MethodPost}, Path: "/v1/images/generations", BodyKinds: []BodyKind{BodyJSON}, ModelField: "model", RequiredProtocolMembers: []string{"decodeRequest", "render"}},
+		{Name: "edit", Methods: []string{http.MethodPost}, Path: "/v1/images/edits", BodyKinds: []BodyKind{BodyJSON, BodyMultipart}, ModelField: "model", RequiredProtocolMembers: []string{"decodeRequest", "render"}},
+	}},
 }
+
+// ProtocolOpenAIImage is the host protocol that serves the OpenAI Images API
+// (`POST /v1/images/generations` and `POST /v1/images/edits`) from a plugin.
+const ProtocolOpenAIImage = "openai_image"
 
 func HostProtocol(name string) (HostProtocolDefinition, bool) {
 	for _, definition := range hostProtocols {
@@ -228,6 +245,38 @@ type PinnedEndpoint struct {
 	Candidates  []ProtocolBinding
 }
 
+// FileReference returns the opaque ref of the index-th uploaded file in a
+// multipart field. The first file keeps the historical `request_file:<field>`
+// spelling; later files in the same repeated field (`image[]`, `image[]`)
+// append `#<index>` so a plugin can address each of them.
+func FileReference(field string, index int) string {
+	if index <= 0 {
+		return "request_file:" + field
+	}
+	return "request_file:" + field + "#" + strconv.Itoa(index)
+}
+
+// ParseFileReference resolves a ref produced by FileReference back to the
+// multipart field and the zero-based file index within that field.
+func ParseFileReference(ref string) (field string, index int, ok bool) {
+	rest, found := strings.CutPrefix(ref, "request_file:")
+	if !found || rest == "" {
+		return "", 0, false
+	}
+	field, suffix, hasIndex := strings.Cut(rest, "#")
+	if field == "" {
+		return "", 0, false
+	}
+	if !hasIndex {
+		return field, 0, true
+	}
+	parsed, err := strconv.Atoi(suffix)
+	if err != nil || parsed < 0 || strconv.Itoa(parsed) != suffix {
+		return "", 0, false
+	}
+	return field, parsed, true
+}
+
 // RouteRequestContext is the canonical request view exposed to declarative
 // routing hooks. RequestBody contains decoded JSON or multipart text fields;
 // raw binary and multipart file bytes remain host-owned.
@@ -326,6 +375,7 @@ type RoutingGeneration struct {
 
 	byKey                map[string]*LoadedPlugin
 	byModel              map[string]*LoadedPlugin
+	modelPlugins         map[string][]*LoadedPlugin
 	canonicalModelByFold map[string]string
 	byChannelType        map[int]*LoadedPlugin
 	routeIndex           map[string]RouteBinding
@@ -416,6 +466,20 @@ func (g *RoutingGeneration) GetByModel(model string) (*LoadedPlugin, bool) {
 	return plugin, ok
 }
 
+// PluginsByModel returns all plugins declaring model, in ascending key order.
+func (g *RoutingGeneration) PluginsByModel(model string) []*LoadedPlugin {
+	if g == nil {
+		return nil
+	}
+	return slices.Clone(g.modelPlugins[model])
+}
+
+// SharedModel reports whether multiple plugins declare a model without copying
+// its provider list on the relay hot path.
+func (g *RoutingGeneration) SharedModel(model string) bool {
+	return g != nil && len(g.modelPlugins[model]) >= 2
+}
+
 // CanonicalModel returns the declared spelling for model. An exact byModel
 // hit wins and returns the input unchanged; otherwise the ASCII-folded
 // index is consulted. Miss and nil-receiver return ("", false).
@@ -463,9 +527,8 @@ func (g *RoutingGeneration) LookupEndpoint(method, path, model string) (Protocol
 	return bindings[0], true
 }
 
-// LookupEndpointCandidates returns every legacy provider implementation that
-// can serve one shared model endpoint. Candidate order is deterministic and
-// the first binding is the parser used before channel distribution.
+// LookupEndpointCandidates returns every plugin that can serve a shared model
+// endpoint, in ascending key order. Each candidate decodes before distribution.
 func (g *RoutingGeneration) LookupEndpointCandidates(method, path, model string) []ProtocolBinding {
 	if g == nil {
 		return nil
@@ -698,6 +761,9 @@ func validateRoute(route *Route) error {
 		if route.Action != "" {
 			return fmt.Errorf("query route %s %s must not declare action", route.Method, route.Path)
 		}
+		if route.RetainResult != nil {
+			return fmt.Errorf("query route %s %s must not declare retainResult", route.Method, route.Path)
+		}
 		if route.TaskIDParam == "" {
 			route.TaskIDParam = "task_id"
 		}
@@ -859,6 +925,7 @@ func buildRoutingGenerationFromPlugins(effective map[string]*LoadedPlugin, numbe
 		PublishedAt:          time.Now(),
 		byKey:                make(map[string]*LoadedPlugin, len(effective)),
 		byModel:              make(map[string]*LoadedPlugin),
+		modelPlugins:         make(map[string][]*LoadedPlugin),
 		canonicalModelByFold: make(map[string]string),
 		byChannelType:        make(map[int]*LoadedPlugin),
 		routeIndex:           make(map[string]RouteBinding),
@@ -870,6 +937,7 @@ func buildRoutingGenerationFromPlugins(effective map[string]*LoadedPlugin, numbe
 		generation.byKey[key] = plugin
 		generation.plugins = append(generation.plugins, plugin)
 		for _, model := range plugin.Meta.Models {
+			generation.modelPlugins[model] = append(generation.modelPlugins[model], plugin)
 			if _, exists := generation.byModel[model]; !exists {
 				generation.byModel[model] = plugin
 			}
@@ -927,8 +995,7 @@ func buildRoutingGenerationFromPlugins(effective map[string]*LoadedPlugin, numbe
 						bindings := generation.protocolIndex[indexKey]
 						if len(bindings) > 0 {
 							other := bindings[0]
-							legacyProviders := len(plugin.Meta.ChannelTypes) > 0 && len(other.Plugin.Meta.ChannelTypes) > 0
-							if !legacyProviders || claim.Name != other.Protocol {
+							if claim.Name != other.Protocol {
 								return nil, fmt.Errorf("plugin %s protocol %s %s model %q conflicts with plugin %s", plugin.Meta.Key, method, operation.Path, model, other.Plugin.Meta.Key)
 							}
 						}

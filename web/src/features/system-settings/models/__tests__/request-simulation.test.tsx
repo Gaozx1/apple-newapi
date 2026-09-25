@@ -31,6 +31,53 @@ const requestExpression =
 afterEach(() => vi.useRealTimers())
 
 describe('request simulation', () => {
+  test('explains absent task usage instead of showing a token estimator syntax error', () => {
+    render(
+      <TieredPricingEditor
+        billingExpr='tier("standard", u("seconds") * 0.09)'
+        requestRuleExpr=''
+        onBillingExprChange={vi.fn()}
+        onRequestRuleExprChange={vi.fn()}
+      />
+    )
+    expect(
+      screen.getByText(
+        "Task usage data is required to estimate this expression. Check the model's task plugin configuration."
+      )
+    ).toBeVisible()
+    expect(screen.queryByText('Token estimator')).not.toBeInTheDocument()
+    expect(screen.queryByText(/Expression error:/)).not.toBeInTheDocument()
+  })
+  test('simulates billable image count separately from requested n and rejects invalid quantities', async () => {
+    render(
+      <RequestSimulation
+        expression='tier("image", fixed(0.04)) * image_count'
+        mode='token'
+        currency={USD_PRICING_CURRENCY}
+      />
+    )
+    await userEvent
+      .setup()
+      .click(screen.getByRole('button', { name: 'Request simulation' }))
+    fireEvent.input(
+      screen.getByRole('textbox', { name: 'Simulated request body' }),
+      { target: { value: '{"n":3}' } }
+    )
+    fireEvent.change(
+      screen.getByRole('spinbutton', { name: 'Billable image count' }),
+      { target: { value: '2' } }
+    )
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Simulated request cost: $0.08'
+    )
+    fireEvent.change(
+      screen.getByRole('spinbutton', { name: 'Billable image count' }),
+      { target: { value: '129' } }
+    )
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'image_count must be between 1 and 128'
+    )
+  })
   test('simulates schema boolean usage without changing public task matrix rules', async () => {
     const user = userEvent.setup()
     render(
