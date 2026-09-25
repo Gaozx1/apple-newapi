@@ -199,3 +199,31 @@ func TestScopedLimitSkipsWhenScopeMissing(t *testing.T) {
 			"无可用的账号作用域时应放行，由端点自身校验返回错误")
 	}
 }
+
+// TestScopedLimitLeavesRequestBodyReadable is the regression test for the login
+// outage: the limiter reads the JSON body to find the account, and every later
+// middleware and the endpoint handler must still be able to read it.
+func TestScopedLimitLeavesRequestBodyReadable(t *testing.T) {
+	setupScopedLimitTest(t)
+
+	router := gin.New()
+	router.POST("/login", AccountLoginRateLimit(), func(c *gin.Context) {
+		var payload struct {
+			Username string `json:"username"`
+		}
+		if err := common.DecodeJson(c.Request.Body, &payload); err != nil {
+			c.Status(http.StatusBadRequest)
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"username": payload.Username})
+	})
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/login",
+		strings.NewReader(`{"username":"body-probe-user","password":"guess"}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code, "限流中间件读体后，端点仍须能读到请求体")
+	assert.Contains(t, rec.Body.String(), "body-probe-user")
+}

@@ -108,10 +108,10 @@ func memoryScopedRateLimiter(c *gin.Context, maxRequestNum int, duration int64, 
 // AccountLoginRateLimit throttles authentication attempts per account name
 // instead of per client IP.
 //
-// The username is read from the JSON body via common.GetRequestBody, which
-// caches and rewinds the body, so the login handler still reads it normally.
-// When the body carries no usable username the check is skipped and the
-// endpoint's own validation produces the error response.
+// The username is read from the JSON body and the cached payload is handed back
+// to c.Request.Body, so the login handler still binds it normally. When the body
+// carries no usable username the check is skipped and the endpoint's own
+// validation produces the error response.
 //
 // Intended for unauthenticated endpoints such as /api/user/login and
 // /api/user/register. Order it before the handler; it does not require auth.
@@ -134,25 +134,37 @@ func accountScopeFromBody(c *gin.Context) string {
 	if c.Request == nil || c.Request.Body == nil {
 		return ""
 	}
-	body, err := common.GetRequestBody(c)
-	if err != nil {
-		return ""
-	}
-	reader, ok := body.(io.Reader)
-	if !ok {
-		return ""
-	}
 	var payload struct {
 		Username string `json:"username"`
 		Email    string `json:"email"`
 	}
-	if err := common.DecodeJson(reader, &payload); err != nil {
+	if err := readScopedBody(c, &payload); err != nil {
 		return ""
 	}
 	if scope := normalizeRateLimitScope(payload.Username); scope != "" {
 		return scope
 	}
 	return normalizeRateLimitScope(payload.Email)
+}
+
+// readScopedBody decodes the JSON request body for scope extraction and leaves
+// the payload readable through c.Request.Body.
+//
+// common.GetRequestBody caches the payload but consumes and closes the original
+// body, so a limiter that reads it without restoring leaves every later
+// middleware and the endpoint handler with an empty request: the anonymous body
+// limit aborts with 400 and the endpoint never sees its own input.
+func readScopedBody(c *gin.Context, payload any) error {
+	storage, err := common.GetBodyStorage(c)
+	if err != nil {
+		return err
+	}
+	decodeErr := common.DecodeJson(storage, payload)
+	if _, seekErr := storage.Seek(0, io.SeekStart); seekErr != nil {
+		return decodeErr
+	}
+	c.Request.Body = io.NopCloser(storage)
+	return decodeErr
 }
 
 // EmailTargetRateLimit limits how many mails may be sent to one recipient, keyed
@@ -186,11 +198,9 @@ func EmailTargetFromBodyRateLimit() gin.HandlerFunc {
 			Email string `json:"email"`
 		}
 		scope := ""
-		if body, err := common.GetRequestBody(c); err == nil {
-			if reader, ok := body.(io.Reader); ok {
-				if err := common.DecodeJson(reader, &payload); err == nil {
-					scope = normalizeRateLimitScope(payload.Email)
-				}
+		if c.Request != nil && c.Request.Body != nil {
+			if err := readScopedBody(c, &payload); err == nil {
+				scope = normalizeRateLimitScope(payload.Email)
 			}
 		}
 		maxRequests, duration := emailTargetLimit()
