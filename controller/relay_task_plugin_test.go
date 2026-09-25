@@ -612,7 +612,7 @@ export function buildQueryRequest(){throw new Error("completed submissions must 
 				assert.Equal(t, tc.count, other["usage_facts"].(map[string]any)["units"])
 			}
 			assert.False(t, c.Writer.Written(), "presentation must follow persistence and settlement")
-			require.NoError(t, info.Billing.Settle(want))
+			require.NoError(t, info.Billing.Settle(want, 0))
 			info.Billing.Refund(c)
 			require.NoError(t, db.First(&updated, user.Id).Error)
 			assert.Equal(t, initial-want, updated.Quota, "terminal settlement is idempotent")

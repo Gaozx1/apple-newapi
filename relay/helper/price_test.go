@@ -740,7 +740,7 @@ func TestInputPreConsumeMultiplierLegacyAndRequestPrices(t *testing.T) {
 // priceTestReservation observes the reservation requested before image submission.
 type priceTestReservation struct{ held int }
 
-func (s *priceTestReservation) Settle(int) error         { return nil }
+func (s *priceTestReservation) Settle(int, int) error    { return nil }
 func (s *priceTestReservation) Refund(*gin.Context)      {}
 func (s *priceTestReservation) NeedsRefund() bool        { return false }
 func (s *priceTestReservation) GetPreConsumedQuota() int { return s.held }

@@ -38,7 +38,7 @@ func (s *imageReservation) Reserve(quota int) error {
 	return nil
 }
 func (s *imageReservation) GetPreConsumedQuota() int { return s.held }
-func (*imageReservation) Settle(int) error           { return nil }
+func (*imageReservation) Settle(int, int) error      { return nil }
 func (*imageReservation) Refund(*gin.Context)        {}
 func (*imageReservation) NeedsRefund() bool          { return false }
 

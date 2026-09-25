@@ -291,8 +291,8 @@ func TestPreConsumePolicyDatabaseMatrix(t *testing.T) {
 					}
 					_, actual, _ := service.TryTieredSettle(info, billingexpr.TokenParams{P: 1000, C: 100, Len: 1000})
 					assert.Equal(t, 2250, actual)
-					require.NoError(t, info.Billing.Settle(actual))
-					require.NoError(t, info.Billing.Settle(actual))
+					require.NoError(t, info.Billing.Settle(actual, 0))
+					require.NoError(t, info.Billing.Settle(actual, 0))
 					require.NoError(t, db.First(&user, user.Id).Error)
 					assert.Equal(t, tc.wallet-actual, user.Quota)
 					if !tc.unlimited {
