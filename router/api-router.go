@@ -176,6 +176,10 @@ func SetApiRouter(router *gin.Engine) {
 				adminRoute.DELETE("/:id", controller.DeleteUser)
 				adminRoute.DELETE("/:id/reset_passkey", controller.AdminResetPasskey)
 				adminRoute.POST("/lottery/grant", controller.AdminGrantLotteryChances)
+				// Inviter back-fill: preview reports the rebate a binding would
+				// credit, bind applies it (and the optional rebate) atomically.
+				adminRoute.POST("/:id/inviter/preview", controller.AdminPreviewInviterRebate)
+				adminRoute.POST("/:id/inviter", controller.AdminBindInviter)
 
 				// Lottery prize table (admin-configurable prizes + probabilities)
 				lotteryPrizeRoute := adminRoute.Group("/lottery/prizes")

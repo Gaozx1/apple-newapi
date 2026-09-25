@@ -66,7 +66,7 @@ func setupManageUserTestDB(t *testing.T) *gorm.DB {
 			}
 		}
 	})
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.UserSession{}, &model.CasbinRule{}, &model.AuthzRole{}))
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.UserSession{}, &model.CasbinRule{}, &model.AuthzRole{}, &model.TopUp{}, &model.Redemption{}))
 	require.NoError(t, logDB.AutoMigrate(&model.Log{}, &model.AuditLog{}))
 	versionQuery := "SELECT version()"
 	if dialect == "sqlite" {
@@ -605,4 +605,112 @@ func TestManageUserQuotaCacheUsesCommittedIntegerDifference(t *testing.T) {
 			}
 		})
 	}
+}
+
+func performInviterRequest(t *testing.T, handler gin.HandlerFunc, targetID int, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/user/%d/inviter", targetID), strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Params = gin.Params{{Key: "id", Value: strconv.Itoa(targetID)}}
+	c.Set("id", 9999)
+	c.Set("role", common.RoleRootUser)
+	c.Set("username", "root-operator")
+	c.Set(common.RequestIdKey, "invite-binding-request")
+	handler(c)
+	return recorder
+}
+
+// The admin back-fill reports the rebate before writing it, then credits exactly
+// the amount the preview showed for the invitee's historical recharges.
+func TestAdminInviterRebatePreviewMatchesCreditedAmount(t *testing.T) {
+	db := setupManageUserTestDB(t)
+	previousRate := common.InviterRechargeRebateRate
+	common.InviterRechargeRebateRate = 10
+	t.Cleanup(func() { common.InviterRechargeRebateRate = previousRate })
+
+	inviter := model.User{Username: "preview-inviter", Role: common.RoleCommonUser, Status: common.UserStatusEnabled, AuthVersion: 1, AffCode: "preview-inviter-aff"}
+	invitee := model.User{Username: "preview-invitee", Role: common.RoleCommonUser, Status: common.UserStatusEnabled, AuthVersion: 1, AffCode: "preview-invitee-aff"}
+	require.NoError(t, db.Create(&inviter).Error)
+	require.NoError(t, db.Create(&invitee).Error)
+	createQuotaTestOperator(t, db, common.RoleRootUser)
+
+	require.NoError(t, db.Create(&model.TopUp{
+		UserId: invitee.Id, Amount: 3, Money: 3, TradeNo: "preview-topup",
+		PaymentProvider: model.PaymentProviderEpay, Status: common.TopUpStatusSuccess,
+	}).Error)
+	require.NoError(t, db.Create(&model.Redemption{
+		UserId: 1, Key: "preview-code", Status: common.RedemptionCodeStatusUsed,
+		Quota: 2 * int(common.QuotaPerUnit), Type: model.RedemptionTypeQuota, UsedUserId: invitee.Id,
+	}).Error)
+
+	recorder := performInviterRequest(t, AdminPreviewInviterRebate, invitee.Id, `{"inviter":"preview-inviter"}`)
+	require.Equal(t, http.StatusOK, recorder.Code)
+	var preview struct {
+		Success bool `json:"success"`
+		Data    struct {
+			BaseQuota   int `json:"base_quota"`
+			RebateQuota int `json:"rebate_quota"`
+			InviterId   int `json:"inviter_id"`
+		} `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &preview))
+	require.True(t, preview.Success)
+	assert.Equal(t, 5*int(common.QuotaPerUnit), preview.Data.BaseQuota)
+	assert.Equal(t, 5*int(common.QuotaPerUnit)*10/100, preview.Data.RebateQuota)
+	assert.Equal(t, inviter.Id, preview.Data.InviterId)
+
+	// A preview must not write anything.
+	require.NoError(t, db.First(&invitee, invitee.Id).Error)
+	assert.Zero(t, invitee.InviterId)
+
+	recorder = performInviterRequest(t, AdminBindInviter, invitee.Id, fmt.Sprintf(`{"inviter":"%s","apply_rebate":true}`, inviter.AffCode))
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Contains(t, recorder.Body.String(), `"success":true`)
+
+	require.NoError(t, db.First(&invitee, invitee.Id).Error)
+	assert.Equal(t, inviter.Id, invitee.InviterId)
+	var credited model.User
+	require.NoError(t, db.First(&credited, inviter.Id).Error)
+	assert.Equal(t, preview.Data.RebateQuota, credited.AffQuota)
+	assert.Equal(t, preview.Data.RebateQuota, credited.AffHistoryQuota)
+	assert.Equal(t, 1, credited.AffCount)
+
+	var audits []model.AuditLog
+	require.NoError(t, model.LOG_DB.Where("action = ?", "user.bind_inviter").Find(&audits).Error)
+	require.Len(t, audits, 1)
+	// Management audits belong to the operator; the target is kept in the params.
+	assert.Equal(t, 9999, audits[0].UserId)
+	assert.True(t, audits[0].Success)
+	require.NotNil(t, audits[0].Other.Op)
+	params, err := common.Marshal(audits[0].Other.Op.Params)
+	require.NoError(t, err)
+	assert.Contains(t, string(params), fmt.Sprintf(`"target_user_id":%d`, invitee.Id))
+	assert.Contains(t, string(params), fmt.Sprintf(`"inviter_id":%d`, inviter.Id))
+	assert.Contains(t, string(params), `"previous_inviter_id":0`)
+	assert.Contains(t, string(params), fmt.Sprintf(`"rebate_quota":%d`, preview.Data.RebateQuota))
+}
+
+func TestAdminBindInviterRejectsSelfAndUnknownInviter(t *testing.T) {
+	db := setupManageUserTestDB(t)
+	invitee := model.User{Username: "bind-reject-invitee", Role: common.RoleCommonUser, Status: common.UserStatusEnabled, AuthVersion: 1, AffCode: "bind-reject-aff"}
+	require.NoError(t, db.Create(&invitee).Error)
+	createQuotaTestOperator(t, db, common.RoleRootUser)
+
+	recorder := performInviterRequest(t, AdminBindInviter, invitee.Id, fmt.Sprintf(`{"inviter":"%d"}`, invitee.Id))
+	require.Equal(t, http.StatusOK, recorder.Code)
+	assert.Contains(t, recorder.Body.String(), "cannot be their own inviter")
+
+	recorder = performInviterRequest(t, AdminBindInviter, invitee.Id, `{"inviter":"no-such-user"}`)
+	require.Equal(t, http.StatusOK, recorder.Code)
+	assert.Contains(t, recorder.Body.String(), "inviter does not exist")
+
+	recorder = performInviterRequest(t, AdminBindInviter, invitee.Id, `{"inviter":"   "}`)
+	require.Equal(t, http.StatusOK, recorder.Code)
+	assert.Contains(t, recorder.Body.String(), `"success":false`)
+
+	require.NoError(t, db.First(&invitee, invitee.Id).Error)
+	assert.Zero(t, invitee.InviterId)
 }

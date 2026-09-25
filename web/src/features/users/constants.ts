@@ -136,4 +136,6 @@ export const ERROR_MESSAGES = {
 export const SUCCESS_MESSAGES = {
   USER_CREATED: 'User created successfully',
   USER_UPDATED: 'User updated successfully',
+  INVITER_BOUND: 'Inviter bound successfully',
+  INVITER_BOUND_WITH_REBATE: 'Inviter bound, rebate credited: {{amount}}',
 } as const

@@ -598,6 +598,112 @@ func inviteUser(inviterId int) error {
 	return nil
 }
 
+// Inviter binding errors surfaced to the admin API so it can report a precise
+// reason instead of a generic failure.
+var (
+	ErrInviterSelfBinding = errors.New("a user cannot be their own inviter")
+	ErrInviterCycle       = errors.New("inviter chain would form a cycle")
+)
+
+// maxInviterChainDepth bounds the walk that rejects inviter cycles. Real invite
+// chains are far shorter; the bound only keeps a corrupted chain from spinning.
+const maxInviterChainDepth = 64
+
+// FindInviterByIdentifier resolves an administrator supplied inviter reference:
+// a numeric value is a user id, anything else is matched against the username
+// and then the invite code (aff_code).
+func FindInviterByIdentifier(identifier string) (*User, error) {
+	identifier = strings.TrimSpace(identifier)
+	if identifier == "" {
+		return nil, errors.New("inviter is empty")
+	}
+	query := DB.Select("id", "username", "aff_code", "role")
+	if id, err := strconv.Atoi(identifier); err == nil && id > 0 {
+		query = query.Where("id = ?", id)
+	} else {
+		query = query.Where("username = ? OR aff_code = ?", identifier, identifier)
+	}
+	user := User{}
+	if err := query.First(&user).Error; err != nil {
+		return nil, err
+	}
+	return &user, nil
+}
+
+// ValidateInviterBinding rejects bindings that would corrupt the invite graph: a
+// user cannot invite themselves, and the target must not already sit above the
+// candidate inviter in the chain.
+func ValidateInviterBinding(userId, inviterId int) error {
+	if userId <= 0 || inviterId <= 0 {
+		return errors.New("invalid inviter binding")
+	}
+	if userId == inviterId {
+		return ErrInviterSelfBinding
+	}
+	current := inviterId
+	for depth := 0; current > 0 && depth < maxInviterChainDepth; depth++ {
+		if current == userId {
+			return ErrInviterCycle
+		}
+		var next int
+		if err := DB.Model(&User{}).Select("inviter_id").Where("id = ?", current).Scan(&next).Error; err != nil {
+			return err
+		}
+		current = next
+	}
+	return nil
+}
+
+// BindInviter records inviterId as the inviter of userId and, when rebateQuota is
+// positive, credits that back-filled rebate to the inviter in the same
+// transaction. Callers validate the binding first and compute the rebate
+// server-side (see HistoricalInviteRebateBase). The invite count moves with the
+// binding: the new inviter is counted, and a previous inviter loses one (never
+// below zero, since older data may not have counted it). It returns the inviter
+// the user had before the call so the caller can audit the change.
+func BindInviter(userId, inviterId int, rebateQuota int) (int, error) {
+	if userId <= 0 || inviterId <= 0 {
+		return 0, errors.New("invalid inviter binding")
+	}
+	previousInviterId := 0
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		var user User
+		if err := lockForUpdate(tx).Select("id", "inviter_id").First(&user, userId).Error; err != nil {
+			return err
+		}
+		previousInviterId = user.InviterId
+		if previousInviterId != inviterId {
+			if err := tx.Model(&User{}).Where("id = ?", userId).Update("inviter_id", inviterId).Error; err != nil {
+				return err
+			}
+			result := tx.Model(&User{}).Where("id = ?", inviterId).Updates(map[string]interface{}{
+				"aff_count": gorm.Expr("aff_count + ?", 1),
+			})
+			if result.Error != nil {
+				return result.Error
+			}
+			if result.RowsAffected == 0 {
+				return ErrInviterNotFound
+			}
+			if previousInviterId > 0 {
+				if err := tx.Model(&User{}).
+					Where("id = ? AND aff_count > 0", previousInviterId).
+					Update("aff_count", gorm.Expr("aff_count - ?", 1)).Error; err != nil {
+					return err
+				}
+			}
+		}
+		if rebateQuota <= 0 {
+			return nil
+		}
+		return creditInviterRebate(tx, inviterId, rebateQuota)
+	})
+	if err != nil {
+		return 0, err
+	}
+	return previousInviterId, nil
+}
+
 func (user *User) TransferAffQuotaToQuota(quota int) error {
 	// 检查quota是否小于最小额度
 	if float64(quota) < common.QuotaPerUnit {

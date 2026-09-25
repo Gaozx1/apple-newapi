@@ -31,6 +31,8 @@ import type {
   ManageUserAction,
   ManageUserQuotaPayload,
   ApiResponse,
+  InviterRebatePreview,
+  BindInviterResult,
 } from './types'
 
 // ============================================================================
@@ -256,6 +258,42 @@ export async function grantLotteryChances(
   const res = await api.post('/api/user/lottery/grant', {
     user_id: userId,
     count,
+  })
+  return res.data
+}
+
+// ============================================================================
+// Admin Inviter Back-fill APIs
+// ============================================================================
+
+/**
+ * Preview the rebate an inviter back-fill would credit for a user's
+ * historical recharges (admin only). `inviter` accepts a user id, a username
+ * or an invite code.
+ */
+export async function previewInviterRebate(
+  userId: number,
+  inviter: string
+): Promise<ApiResponse<InviterRebatePreview>> {
+  const res = await api.post(`/api/user/${userId}/inviter/preview`, {
+    inviter,
+  })
+  return res.data
+}
+
+/**
+ * Record (or replace) a user's inviter and, when requested, credit the
+ * back-filled rebate for the user's historical recharges (admin only). The
+ * rebate amount is always recomputed by the server.
+ */
+export async function bindInviter(
+  userId: number,
+  inviter: string,
+  applyRebate: boolean
+): Promise<ApiResponse<BindInviterResult>> {
+  const res = await api.post(`/api/user/${userId}/inviter`, {
+    inviter,
+    apply_rebate: applyRebate,
   })
   return res.data
 }

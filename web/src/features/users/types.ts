@@ -78,6 +78,27 @@ export interface ApiResponse<T = unknown> {
   data?: T
 }
 
+/** Rebate an admin inviter back-fill would credit for a user's recharges. */
+export interface InviterRebatePreview {
+  user_id: number
+  username: string
+  current_inviter_id: number
+  inviter_id: number
+  inviter_username: string
+  topup_quota: number
+  redemption_quota: number
+  base_quota: number
+  rebate_rate: number
+  rebate_quota: number
+}
+
+/** Result of applying an inviter back-fill. */
+export interface BindInviterResult {
+  inviter_id: number
+  inviter_username: string
+  rebate_quota: number
+}
+
 export type UserSortBy =
   | 'id'
   | 'username'
@@ -85,7 +106,6 @@ export type UserSortBy =
   | 'group'
   | 'created_at'
   | 'last_login_at'
-
 export type UserSortOrder = 'asc' | 'desc'
 
 export interface GetUsersParams {

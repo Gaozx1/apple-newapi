@@ -1103,6 +1103,142 @@ type ManageRequest struct {
 	Mode   string `json:"mode"`
 }
 
+// InviteBindingRequest is the admin payload for previewing or applying an
+// inviter back-fill. Inviter accepts a user id, a username or an invite code.
+type InviteBindingRequest struct {
+	Inviter     string `json:"inviter"`
+	ApplyRebate bool   `json:"apply_rebate"`
+}
+
+// resolveInviteBinding decodes an inviter back-fill request and resolves both
+// sides of the binding. It writes the error response itself and reports whether
+// the caller may continue.
+func resolveInviteBinding(c *gin.Context) (*model.User, *model.User, InviteBindingRequest, bool) {
+	var req InviteBindingRequest
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil || id <= 0 {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return nil, nil, req, false
+	}
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return nil, nil, req, false
+	}
+	target, err := model.GetUserById(id, false)
+	if err != nil {
+		common.ApiErrorI18n(c, i18n.MsgUserNotExists)
+		return nil, nil, req, false
+	}
+	if !canManageTargetRole(c.GetInt("role"), target.Role) {
+		common.ApiErrorI18n(c, i18n.MsgUserNoPermissionHigherLevel)
+		return nil, nil, req, false
+	}
+	if strings.TrimSpace(req.Inviter) == "" {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return nil, nil, req, false
+	}
+	inviter, err := model.FindInviterByIdentifier(req.Inviter)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			common.ApiErrorI18n(c, i18n.MsgUserInviterNotExists)
+			return nil, nil, req, false
+		}
+		common.ApiError(c, err)
+		return nil, nil, req, false
+	}
+	if err := model.ValidateInviterBinding(target.Id, inviter.Id); err != nil {
+		switch {
+		case errors.Is(err, model.ErrInviterSelfBinding):
+			common.ApiErrorI18n(c, i18n.MsgUserInviterSelfBinding)
+		case errors.Is(err, model.ErrInviterCycle):
+			common.ApiErrorI18n(c, i18n.MsgUserInviterCycle)
+		default:
+			common.ApiError(c, err)
+		}
+		return nil, nil, req, false
+	}
+	return target, inviter, req, true
+}
+
+// AdminPreviewInviterRebate reports the rebate an inviter back-fill would credit
+// for the invitee's historical recharges, so the administrator can confirm the
+// amount before it is written.
+func AdminPreviewInviterRebate(c *gin.Context) {
+	target, inviter, _, ok := resolveInviteBinding(c)
+	if !ok {
+		return
+	}
+	preview, err := model.PreviewInviteRebate(target.Id)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data": gin.H{
+			"user_id":            target.Id,
+			"username":           target.Username,
+			"current_inviter_id": target.InviterId,
+			"inviter_id":         inviter.Id,
+			"inviter_username":   inviter.Username,
+			"topup_quota":        preview.TopUpQuota,
+			"redemption_quota":   preview.RedemptionQuota,
+			"base_quota":         preview.TotalQuota,
+			"rebate_rate":        preview.RebateRate,
+			"rebate_quota":       preview.RebateQuota,
+		},
+	})
+}
+
+// AdminBindInviter records the inviter relationship and, when the administrator
+// asked for it, credits the back-filled rebate for the invitee's historical
+// recharges. The rebate is recomputed server-side: the request only carries the
+// intent to apply it.
+func AdminBindInviter(c *gin.Context) {
+	target, inviter, req, ok := resolveInviteBinding(c)
+	if !ok {
+		return
+	}
+	baseQuota := 0
+	rebateQuota := 0
+	if req.ApplyRebate {
+		preview, err := model.PreviewInviteRebate(target.Id)
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		baseQuota = preview.TotalQuota
+		rebateQuota = preview.RebateQuota
+	}
+	previousInviterId, err := model.BindInviter(target.Id, inviter.Id, rebateQuota)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if rebateQuota > 0 {
+		model.RecordLog(inviter.Id, model.LogTypeSystem, fmt.Sprintf("管理员补绑定邀请关系并补发返利 %s (被邀请用户: %s, 历史充值基数: %s)", logger.LogQuota(rebateQuota), target.Username, logger.LogQuota(baseQuota)))
+	}
+	recordManageAuditFor(c, target.Id, "user.bind_inviter", map[string]any{
+		"username":            target.Username,
+		"id":                  target.Id,
+		"inviter_id":          inviter.Id,
+		"inviter_username":    inviter.Username,
+		"previous_inviter_id": previousInviterId,
+		"rebate_base_quota":   baseQuota,
+		"rebate_quota":        rebateQuota,
+	})
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data": gin.H{
+			"inviter_id":       inviter.Id,
+			"inviter_username": inviter.Username,
+			"rebate_quota":     rebateQuota,
+		},
+	})
+}
+
 // ManageUser Only admin user can do this
 func ManageUser(c *gin.Context) {
 	var req ManageRequest

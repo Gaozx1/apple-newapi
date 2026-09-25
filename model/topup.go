@@ -117,6 +117,28 @@ func creditTopUpQuota(tx *gorm.DB, userId int, creditedQuota int, updates map[st
 	return ErrTopUpQuotaLimitExceeded
 }
 
+// ErrInviterNotFound reports that the inviter row disappeared while a rebate was
+// being credited. The automatic recharge path ignores it (the inviter may have
+// been deleted); admin back-fills surface it to the operator.
+var ErrInviterNotFound = errors.New("inviter not found")
+
+// creditInviterRebate adds a rebate to the inviter's rebate wallet (aff_quota)
+// and to its lifetime total (aff_history). Both columns hold wallet-bounded
+// quota, so callers pass an already converted positive amount.
+func creditInviterRebate(tx *gorm.DB, inviterId int, rebate int) error {
+	result := tx.Model(&User{}).Where("id = ?", inviterId).Updates(map[string]interface{}{
+		"aff_quota":   gorm.Expr("aff_quota + ?", rebate),
+		"aff_history": gorm.Expr("aff_history + ?", rebate),
+	})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return ErrInviterNotFound
+	}
+	return nil
+}
+
 // applyRechargeRebate credits the inviter a percentage of the invited user's
 // recharge as a rebate. The rebate goes into the inviter's aff_quota (rebate
 // wallet) and aff_history (total historical rebate). The inviter can transfer
@@ -129,7 +151,8 @@ func creditTopUpQuota(tx *gorm.DB, userId int, creditedQuota int, updates map[st
 // Must be called after the user's quota has been credited, inside the same
 // transaction so the rebate is atomic with the recharge.
 func applyRechargeRebate(tx *gorm.DB, userId int, creditedQuota int) error {
-	if common.InviterRechargeRebateRate <= 0 || creditedQuota <= 0 {
+	rebate := inviteRebateQuota(creditedQuota)
+	if rebate <= 0 {
 		return nil
 	}
 	// Look up the user's inviter.
@@ -140,28 +163,135 @@ func applyRechargeRebate(tx *gorm.DB, userId int, creditedQuota int) error {
 	if inviterId == 0 {
 		return nil
 	}
-	// rebate = creditedQuota * rate / 100, saturated to int32 (quota columns).
-	rebateFloat := float64(creditedQuota) * common.InviterRechargeRebateRate / 100.0
-	rebate, clamp := common.QuotaFromFloatChecked(rebateFloat)
-	if clamp != nil {
-		logger.LogWarn(nil, fmt.Sprintf("recharge rebate clamped user=%d inviter=%d rebate_float=%.2f", userId, inviterId, rebateFloat))
-	}
-	if rebate <= 0 {
-		return nil
-	}
-	result := tx.Model(&User{}).Where("id = ?", inviterId).Updates(map[string]interface{}{
-		"aff_quota":   gorm.Expr("aff_quota + ?", rebate),
-		"aff_history": gorm.Expr("aff_history + ?", rebate),
-	})
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected == 0 {
-		return nil // inviter no longer exists; ignore silently
+	if err := creditInviterRebate(tx, inviterId, rebate); err != nil {
+		if errors.Is(err, ErrInviterNotFound) {
+			return nil // inviter no longer exists; ignore silently
+		}
+		return err
 	}
 	// Log the rebate for the inviter.
 	RecordLog(inviterId, LogTypeSystem, fmt.Sprintf("邀请用户充值返利 %s (充值额度: %s, 返利比例: %s%%)", logger.LogQuota(rebate), logger.LogQuota(creditedQuota), strconv.FormatFloat(common.InviterRechargeRebateRate, 'f', -1, 64)))
 	return nil
+}
+
+// inviteRebateQuota converts a rebate base into the rebate amount at the current
+// InviterRechargeRebateRate. Every rebate path (automatic recharge rebate and
+// admin back-fill) shares this conversion so the two stay consistent.
+func inviteRebateQuota(baseQuota int) int {
+	if common.InviterRechargeRebateRate <= 0 || baseQuota <= 0 {
+		return 0
+	}
+	// rebate = base * rate / 100, saturated to int32 (quota columns).
+	rebateFloat := float64(baseQuota) * common.InviterRechargeRebateRate / 100.0
+	rebate, clamp := common.QuotaFromFloatChecked(rebateFloat)
+	if clamp != nil {
+		logger.LogWarn(nil, fmt.Sprintf("invite rebate clamped base=%d rebate_float=%.2f", baseQuota, rebateFloat))
+	}
+	return rebate
+}
+
+// InviteRebateBase is the recharge quota that bears an inviter rebate, split by
+// source so an administrator can review it before a back-fill is applied.
+type InviteRebateBase struct {
+	TopUpQuota      int `json:"topup_quota"`
+	RedemptionQuota int `json:"redemption_quota"`
+	TotalQuota      int `json:"total_quota"`
+}
+
+// creditedQuotaForTopUp reproduces the quota a completed payment order credited.
+// It mirrors the per-provider conversion of the recharge paths: creem stores the
+// credited quota directly in amount, stripe stores a money amount in money, and
+// the remaining providers store a money amount in amount. Orders created by an
+// older schema can carry an empty provider with only money filled in, so the
+// fallback also accepts a money-only row.
+func creditedQuotaForTopUp(topUp *TopUp) (int, error) {
+	switch topUp.PaymentProvider {
+	case PaymentProviderCreem:
+		return common.WalletQuotaFromDecimalStrict(decimal.NewFromInt(topUp.Amount))
+	case PaymentProviderStripe:
+		return common.WalletQuotaFromDecimalStrict(decimal.NewFromFloat(topUp.Money).Mul(decimal.NewFromFloat(common.QuotaPerUnit)))
+	}
+	if topUp.Amount > 0 {
+		return common.WalletQuotaFromDecimalStrict(decimal.NewFromInt(topUp.Amount).Mul(decimal.NewFromFloat(common.QuotaPerUnit)))
+	}
+	return common.WalletQuotaFromDecimalStrict(decimal.NewFromFloat(topUp.Money).Mul(decimal.NewFromFloat(common.QuotaPerUnit)))
+}
+
+// HistoricalInviteRebateBase sums every recharge that bears an inviter rebate:
+// completed payment orders and used quota redemption codes. Redemption codes are
+// included because redeeming quota credits a rebate too (see Redeem).
+//
+// The per-order conversion mirrors the recharge paths, so the back-filled rebate
+// uses the same base the automatic rebate would have used. Orders whose stored
+// amount cannot be converted are skipped and logged rather than failing the
+// whole preview, and the caller sees only the convertible remainder.
+func HistoricalInviteRebateBase(userId int) (InviteRebateBase, error) {
+	base := InviteRebateBase{}
+	if userId <= 0 {
+		return base, errors.New("user id is empty")
+	}
+
+	topUps := make([]TopUp, 0, 8)
+	if err := DB.Where("user_id = ? AND status = ?", userId, common.TopUpStatusSuccess).Find(&topUps).Error; err != nil {
+		return base, err
+	}
+	topUpTotal := decimal.Zero
+	for i := range topUps {
+		quota, err := creditedQuotaForTopUp(&topUps[i])
+		if err != nil || quota <= 0 {
+			logger.LogWarn(nil, fmt.Sprintf("invite rebate base: skipped topup order=%d user=%d provider=%q err=%v", topUps[i].Id, userId, topUps[i].PaymentProvider, err))
+			continue
+		}
+		topUpTotal = topUpTotal.Add(decimal.NewFromInt(int64(quota)))
+	}
+	topUpQuota, err := common.WalletQuotaFromDecimalStrict(topUpTotal)
+	if err != nil {
+		return base, err
+	}
+
+	var redemptionQuota int64
+	if err := DB.Model(&Redemption{}).
+		Where("used_user_id = ? AND type = ? AND status = ?", userId, RedemptionTypeQuota, common.RedemptionCodeStatusUsed).
+		Select("COALESCE(SUM(quota), 0)").
+		Scan(&redemptionQuota).Error; err != nil {
+		return base, err
+	}
+	redeemedQuota, err := common.WalletQuotaFromDecimalStrict(decimal.NewFromInt(redemptionQuota))
+	if err != nil {
+		return base, err
+	}
+
+	total, err := common.WalletQuotaFromDecimalStrict(
+		decimal.NewFromInt(int64(topUpQuota)).Add(decimal.NewFromInt(int64(redeemedQuota))),
+	)
+	if err != nil {
+		return base, err
+	}
+	base.TopUpQuota = topUpQuota
+	base.RedemptionQuota = redeemedQuota
+	base.TotalQuota = total
+	return base, nil
+}
+
+// InviteRebatePreview is the review payload for an admin inviter back-fill.
+type InviteRebatePreview struct {
+	InviteRebateBase
+	RebateRate  float64 `json:"rebate_rate"`
+	RebateQuota int     `json:"rebate_quota"`
+}
+
+// PreviewInviteRebate reports the rebate a back-fill would credit for the user's
+// historical recharges at the current rebate rate.
+func PreviewInviteRebate(userId int) (InviteRebatePreview, error) {
+	base, err := HistoricalInviteRebateBase(userId)
+	if err != nil {
+		return InviteRebatePreview{}, err
+	}
+	return InviteRebatePreview{
+		InviteRebateBase: base,
+		RebateRate:       common.InviterRechargeRebateRate,
+		RebateQuota:      inviteRebateQuota(base.TotalQuota),
+	}, nil
 }
 
 // applyRechargeBonus settles every recharge-time bonus for the user inside the

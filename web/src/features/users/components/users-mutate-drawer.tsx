@@ -94,6 +94,7 @@ import {
   transformUserToFormDefaults,
 } from '../lib'
 import type { User } from '../types'
+import { InviteRelationshipSection } from './invite-relationship-section'
 import { UserQuotaDialog } from './user-quota-dialog'
 import { useUsers } from './users-provider'
 
@@ -564,6 +565,16 @@ export function UsersMutateDrawer({
                     ))}
                   </div>
                 </SideDrawerSection>
+              )}
+
+              {/* Invite relationship (admin back-fill) */}
+              {isUpdate && currentRow && (
+                <InviteRelationshipSection
+                  userId={currentRow.id}
+                  username={currentRow.username}
+                  currentInviterId={currentRow.inviter_id ?? 0}
+                  onBound={refreshUserData}
+                />
               )}
             </form>
           </Form>
