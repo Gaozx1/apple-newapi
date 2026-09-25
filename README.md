@@ -53,6 +53,21 @@
 
 </div>
 
+---
+
+## 🍎 二改说明 / Fork notice
+
+| | 项目 | 镜像 |
+| --- | --- | --- |
+| **原本的**（上游） | New API | `calciumion/new-api` |
+| **二改**（本站） | apple-newapi · [api.mcapple.top](https://api.mcapple.top) | `mcappleapi/apple-newapi` |
+
+本仓库是 **New API** 的二改版本，由苹果社区维护。上游的项目名称、作者与组织署名、许可证（AGPL-3.0）、徽章与文档链接**全部原样保留**；二改后的构建只发布在本仓库自己的镜像 `mcappleapi/apple-newapi` 中。
+
+This repository is a modified fork of **New API**, maintained by 苹果社区. All upstream naming, authorship, attribution, license and documentation links are preserved unchanged; the modified build is published only as `mcappleapi/apple-newapi`.
+
+---
+
 ## 📝 Project Description
 
 > [!IMPORTANT]
