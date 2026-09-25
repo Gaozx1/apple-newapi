@@ -21,14 +21,21 @@ import (
 // OAuth 2.0 authorization server.
 //
 // This lets third-party applications (registered as OAuthClients) obtain
-// access tokens on behalf of new-api users via the authorization-code grant,
-// and lets first-party/trusted services exchange client credentials directly
-// (client_credentials grant). Issued access tokens are accepted as bearer
-// credentials at /oauth2/userinfo and can be validated by other services.
+// access tokens on behalf of new-api users via the authorization-code grant.
+// Every issued token is therefore bound to a user who authenticated through
+// the browser and explicitly approved the request, and it can be validated by
+// other services at /oauth2/userinfo.
+//
+// The client_credentials grant is deliberately NOT implemented. This server
+// owns no resource that belongs to a client itself — userinfo, pricing and
+// api-key all act on a user's account — so the grant could only ever mint a
+// token impersonating the client owner directly from the client secret. That
+// would make the secret equivalent to the owner's password and would bypass
+// the owner's password, second factor and consent (CWE-287, ASVS V10).
 //
 // Endpoints:
 //   - GET  /oauth2/authorize  (user login + consent, then redirect with code)
-//   - POST /oauth2/token      (exchange code / client_credentials for a token)
+//   - POST /oauth2/token      (exchange an authorization code for a token)
 //   - GET  /oauth2/userinfo    (returns the authorized user's profile)
 
 const oauthAuthorizationCodeTTL = 10 * time.Minute
@@ -118,8 +125,9 @@ func OAuthAuthorize(c *gin.Context) {
 // Token endpoint
 // ----------------------------------------------------------------------------
 
-// OAuthToken exchanges an authorization code (or client credentials) for an
-// access token. Implements RFC 6749 §4.1.3 and §4.4.
+// OAuthToken exchanges an authorization code for an access token. Implements
+// RFC 6749 §4.1.3. The client_credentials grant (§4.4) is rejected on purpose:
+// see the package comment above.
 func OAuthToken(c *gin.Context) {
 	// Support both Basic auth (client_id:client_secret) and body params.
 	clientId, clientSecret := clientCredentialsFromRequest(c)
@@ -142,8 +150,6 @@ func OAuthToken(c *gin.Context) {
 	switch grantType {
 	case "authorization_code":
 		handleAuthorizationCodeGrant(c, client)
-	case "client_credentials":
-		handleClientCredentialsGrant(c, client)
 	default:
 		oauthTokenError(c, http.StatusBadRequest, "unsupported_grant_type", "不支持的授权类型")
 	}
@@ -166,12 +172,6 @@ func handleAuthorizationCodeGrant(c *gin.Context, client *model.OAuthClient) {
 		return
 	}
 	issueAccessToken(c, client, authCode.UserId, authCode.Scopes)
-}
-
-func handleClientCredentialsGrant(c *gin.Context, client *model.OAuthClient) {
-	// Client credentials act on behalf of the client owner (the admin who
-	// registered the client). This is intended for first-party services.
-	issueAccessToken(c, client, client.UserId, c.PostForm("scope"))
 }
 
 func issueAccessToken(c *gin.Context, client *model.OAuthClient, userId int, scopes string) {
