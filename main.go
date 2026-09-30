@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -211,8 +212,16 @@ func main() {
 		port = strconv.Itoa(*common.Port)
 	}
 
+	// A backup node that only serves this machine (and a local reverse proxy)
+	// can bind loopback instead of every interface, so it is never reachable
+	// from the LAN or the internet by accident.
+	host := os.Getenv("HOST")
+	if host == "" {
+		host = "0.0.0.0"
+	}
+
 	srv := &http.Server{
-		Addr:    ":" + port,
+		Addr:    net.JoinHostPort(host, port),
 		Handler: server,
 	}
 
