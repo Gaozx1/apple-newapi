@@ -90,3 +90,8 @@ dsh/
 astrbot_plugin_newapi_tx/
 astrbot_plugin_newapi_tx.zip
 deepseekreg/
+
+.dsh-ssh/
+.whale-craft/
+.ops/
+CHANGELOG_v*.md
