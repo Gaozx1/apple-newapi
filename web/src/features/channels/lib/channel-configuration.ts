@@ -61,9 +61,21 @@ const CONFIGURATION_BLOCKS = {
       'thinking_to_content',
       'pass_through_body_enabled',
       'responses_websocket_enabled',
+      'image_edit_json',
       'ollama_openai_chat',
       'system_prompt',
+      'system_prompt_role',
       'system_prompt_override',
+    ],
+  },
+  antiJailbreak: {
+    section: 'request',
+    fields: [
+      'anti_jailbreak_enabled',
+      'anti_jailbreak_base_url',
+      'anti_jailbreak_key',
+      'anti_jailbreak_model',
+      'anti_jailbreak_prompt',
     ],
   },
   fieldPassthrough: {
@@ -161,6 +173,12 @@ export function getChannelConfigurationState(
       (values.type === CHANNEL_TYPE_OLLAMA && values.ollama_openai_chat) ||
       values.system_prompt?.trim() ||
       values.system_prompt_override
+    ),
+    antiJailbreak: Boolean(
+      values.anti_jailbreak_enabled ||
+      values.anti_jailbreak_base_url?.trim() ||
+      values.anti_jailbreak_model?.trim() ||
+      values.anti_jailbreak_prompt?.trim()
     ),
     fieldPassthrough: Boolean(
       ((openaiPassthrough || claudePassthrough) &&

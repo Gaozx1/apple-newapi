@@ -17,16 +17,19 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { Plus, Trash2 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
 import { useUpdateOption } from '@/features/system-settings/hooks/use-update-option'
 import { api } from '@/lib/api'
+
+import { DraftNumberInput } from './draft-number-input'
 
 // ============================================================================
 // 图片按分辨率计费编辑器（按模型配置 1K/2K/4K 按次价格）
@@ -63,6 +66,94 @@ function parseTierConfig(raw: string | undefined): ModelTierRow[] {
   }
 }
 
+const TIER_FIELDS = [
+  { key: 'price_1k', tier: '1K' },
+  { key: 'price_2k', tier: '2K' },
+  { key: 'price_4k', tier: '4K' },
+] as const
+
+function ImageTierPriceRow({
+  row,
+  saving,
+  onModelChange,
+  onPriceChange,
+  onEnabledChange,
+  onRemove,
+}: {
+  row: ModelTierRow
+  saving: boolean
+  onModelChange: (model: string) => void
+  onPriceChange: (
+    key: 'price_1k' | 'price_2k' | 'price_4k',
+    value: number
+  ) => void
+  onEnabledChange: (enabled: boolean) => void
+  onRemove: () => void
+}) {
+  const { t } = useTranslation()
+  const rowId = useId()
+
+  return (
+    <div className='rounded-lg border p-3'>
+      <div className='flex items-center gap-2'>
+        <Input
+          className='h-8 min-w-0 flex-1 sm:max-w-72'
+          value={row.model}
+          placeholder={t('Model name')}
+          aria-label={t('Model name')}
+          onChange={(event) => onModelChange(event.target.value)}
+        />
+        <div className='ms-auto flex shrink-0 items-center gap-2'>
+          <Switch
+            checked={row.enabled}
+            onCheckedChange={onEnabledChange}
+            aria-label={t('Enabled')}
+          />
+          <span className='text-muted-foreground text-xs'>{t('Enabled')}</span>
+          <Button
+            type='button'
+            size='icon'
+            variant='ghost'
+            className='size-8'
+            aria-label={t('Delete')}
+            disabled={saving}
+            onClick={onRemove}
+          >
+            <Trash2 className='size-4' />
+          </Button>
+        </div>
+      </div>
+
+      <div className='mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3'>
+        {TIER_FIELDS.map((field) => {
+          const labelId = `${rowId}-${field.tier}`
+          return (
+            <div key={field.tier} className='space-y-1.5'>
+              <Label
+                id={labelId}
+                className='text-muted-foreground text-xs font-normal'
+              >
+                {field.tier}
+                <span className='text-muted-foreground/70 font-normal'>
+                  {t('Per image')}
+                </span>
+              </Label>
+              <DraftNumberInput
+                min={0}
+                step={0.001}
+                value={row[field.key]}
+                aria-labelledby={labelId}
+                placeholder='0'
+                onValueChange={(value) => onPriceChange(field.key, value)}
+              />
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 export function ImageTierPricingEditor() {
   const { t } = useTranslation()
   const updateOption = useUpdateOption()
@@ -71,20 +162,22 @@ export function ImageTierPricingEditor() {
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    api
-      .get('/api/option/')
-      .then((res) => {
+    const load = async () => {
+      try {
+        const res = await api.get('/api/option/')
         const items = (res.data?.data ?? []) as Array<{
           key: string
           value: string
         }>
         const entry = items.find((item) => item.key === 'ImageTierPrice')
         setRows(parseTierConfig(entry?.value))
-      })
-      .catch(() => {
+      } catch {
         toast.error(t('Failed to load configuration'))
-      })
-      .finally(() => setLoaded(true))
+      } finally {
+        setLoaded(true)
+      }
+    }
+    void load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -153,88 +246,15 @@ export function ImageTierPricingEditor() {
       ) : (
         <div className='space-y-3'>
           {rows.map((row, index) => (
-            <div
+            <ImageTierPriceRow
               key={row.model || `row-${index}`}
-              className='rounded-lg border p-3'
-            >
-              <div className='flex flex-wrap items-center gap-2'>
-                <Input
-                  className='h-8 w-44 min-w-[140px] flex-1'
-                  value={row.model}
-                  placeholder={t('Model name')}
-                  onChange={(e) => updateRow(index, { model: e.target.value })}
-                />
-                <div className='flex items-center gap-1'>
-                  <span className='text-muted-foreground text-xs'>1K</span>
-                  <Input
-                    className='h-8 w-20'
-                    type='number'
-                    min={0}
-                    step='0.001'
-                    value={row.price_1k}
-                    aria-label='1K'
-                    onChange={(e) =>
-                      updateRow(index, {
-                        price_1k: Number.parseFloat(e.target.value) || 0,
-                      })
-                    }
-                  />
-                  <span className='text-muted-foreground text-xs'>$</span>
-                </div>
-                <div className='flex items-center gap-1'>
-                  <span className='text-muted-foreground text-xs'>2K</span>
-                  <Input
-                    className='h-8 w-20'
-                    type='number'
-                    min={0}
-                    step='0.001'
-                    value={row.price_2k}
-                    aria-label='2K'
-                    onChange={(e) =>
-                      updateRow(index, {
-                        price_2k: Number.parseFloat(e.target.value) || 0,
-                      })
-                    }
-                  />
-                  <span className='text-muted-foreground text-xs'>$</span>
-                </div>
-                <div className='flex items-center gap-1'>
-                  <span className='text-muted-foreground text-xs'>4K</span>
-                  <Input
-                    className='h-8 w-20'
-                    type='number'
-                    min={0}
-                    step='0.001'
-                    value={row.price_4k}
-                    aria-label='4K'
-                    onChange={(e) =>
-                      updateRow(index, {
-                        price_4k: Number.parseFloat(e.target.value) || 0,
-                      })
-                    }
-                  />
-                  <span className='text-muted-foreground text-xs'>$</span>
-                </div>
-                <Switch
-                  checked={row.enabled}
-                  onCheckedChange={(checked) =>
-                    updateRow(index, { enabled: checked })
-                  }
-                  aria-label={t('Enabled')}
-                />
-                <Button
-                  type='button'
-                  size='icon'
-                  variant='ghost'
-                  className='h-8 w-8'
-                  aria-label={t('Delete')}
-                  disabled={saving}
-                  onClick={() => removeRow(index)}
-                >
-                  <Trash2 className='h-4 w-4' />
-                </Button>
-              </div>
-            </div>
+              row={row}
+              saving={saving}
+              onModelChange={(model) => updateRow(index, { model })}
+              onPriceChange={(key, value) => updateRow(index, { [key]: value })}
+              onEnabledChange={(enabled) => updateRow(index, { enabled })}
+              onRemove={() => removeRow(index)}
+            />
           ))}
         </div>
       )}

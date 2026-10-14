@@ -17,7 +17,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { Crown, RefreshCw, Sparkles, Check } from 'lucide-react'
-import { useState, useEffect, useMemo, useCallback, type ReactNode } from 'react'
+import {
+  useState,
+  useEffect,
+  useMemo,
+  useCallback,
+  type ReactNode,
+} from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
@@ -51,6 +57,7 @@ import {
   updateBillingPreference,
 } from '@/features/subscriptions/api'
 import { SubscriptionPurchaseDialog } from '@/features/subscriptions/components/dialogs/subscription-purchase-dialog'
+import { SubscriptionWindowUsage } from '@/features/subscriptions/components/subscription-window-usage'
 import { formatDuration, formatResetPeriod } from '@/features/subscriptions/lib'
 import type {
   PlanRecord,
@@ -533,6 +540,10 @@ export function SubscriptionPlansCard({
                           </span>
                         )}
                       </div>
+                      <SubscriptionWindowUsage
+                        window5h={sub.window_5h}
+                        window7d={sub.window_7d}
+                      />
                       {totalAmount > 0 && isActive && (
                         <Progress value={usagePercent} className='mt-2 h-1.5' />
                       )}
@@ -680,6 +691,12 @@ export function SubscriptionPlansCard({
                   ? `${t('Quota Reset')}: ${formatResetPeriod(plan, t)}`
                   : null,
                 quotaLine,
+                Number(plan.window_5h_amount || 0) > 0
+                  ? `${t('5-hour limit')}: ${formatQuota(Number(plan.window_5h_amount))}`
+                  : null,
+                Number(plan.window_7d_amount || 0) > 0
+                  ? `${t('7-day limit')}: ${formatQuota(Number(plan.window_7d_amount))}`
+                  : null,
                 planGroups.length > 0
                   ? `${t('Usable Groups')}: ${planGroups.join(', ')}`
                   : null,

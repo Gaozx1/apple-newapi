@@ -14,6 +14,7 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
+	"github.com/QuantumNous/new-api/setting/user_level_setting"
 	"github.com/QuantumNous/new-api/types"
 
 	"github.com/bytedance/gopkg/util/gopool"
@@ -118,6 +119,12 @@ func PreWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usag
 	if ok {
 		actualGroupRatio = userGroupRatio
 	}
+	// 用户等级：与分组倍率冲突时取更优惠（更低）的一个
+	actualGroupRatio = user_level_setting.EffectiveGroupRatio(
+		model.GetContextUserRechargeAmount(ctx),
+		relayInfo.UsingGroup,
+		actualGroupRatio,
+	)
 
 	quotaInfo := QuotaInfo{
 		InputDetails: TokenDetails{

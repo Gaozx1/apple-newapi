@@ -16,6 +16,7 @@ import (
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	hostreasoning "github.com/QuantumNous/new-api/setting/reasoning"
+	"github.com/QuantumNous/new-api/setting/user_level_setting"
 	hosttypes "github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
@@ -64,6 +65,14 @@ func HandleGroupRatio(ctx *gin.Context, relayInfo *relaycommon.RelayInfo) hostty
 		// normal group ratio
 		groupRatioInfo.GroupRatio = ratio_setting.GetGroupRatio(relayInfo.UsingGroup)
 	}
+
+	// A level grant is applied per group; when it conflicts with the group's
+	// configured ratio the more favorable (lower) one is billed.
+	groupRatioInfo.GroupRatio = user_level_setting.EffectiveGroupRatio(
+		model.GetContextUserRechargeAmount(ctx),
+		relayInfo.UsingGroup,
+		groupRatioInfo.GroupRatio,
+	)
 
 	return groupRatioInfo
 }

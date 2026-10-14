@@ -38,7 +38,11 @@ import {
 } from '../lib/dynamic-price'
 import { parseTags } from '../lib/filters'
 import { isTokenBasedModel } from '../lib/model-helpers'
-import { formatImageTierPrices, formatPrice, formatRequestPrice } from '../lib/price'
+import {
+  formatImageTierPrices,
+  formatPrice,
+  formatRequestPrice,
+} from '../lib/price'
 import { taskPriceLabel, taskUsageUnitLabel } from '../lib/task-price-display'
 import type { PricingModel, PriceType, TokenUnit } from '../types'
 import { ModelBillingModeBadge } from './model-billing-mode-badge'
@@ -110,7 +114,7 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
   if (dynamicSummary) {
     if (dynamicSummary.isSpecialExpression) {
       priceSummary = (
-        <div className='col-span-full min-w-0'>
+        <div className='min-w-0'>
           <span className='text-warning'>
             {t('Special billing expression')}
           </span>
@@ -146,7 +150,7 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
                   key={entry.key}
                   className={cn(
                     'flex min-w-0 flex-col gap-1',
-                    dynamicSummary.isTaskUsage && 'col-span-full'
+                    dynamicSummary.isTaskUsage ? 'w-full' : 'flex-1 basis-20'
                   )}
                 >
                   {label && (
@@ -165,17 +169,17 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
               )
             })}
           {dynamicSummary.isTimePricing && (
-            <span className='text-muted-foreground col-span-full text-xs'>
+            <span className='text-muted-foreground w-full text-xs'>
               {t('Current period price')}
             </span>
           )}
           {dynamicSummary.isMixedBilling && (
-            <span className='text-muted-foreground col-span-full text-xs'>
+            <span className='text-muted-foreground w-full text-xs'>
               {t('Token or per-call pricing')}
             </span>
           )}
           {cardExamplePrice && (
-            <span className='text-muted-foreground col-span-full text-xs break-words'>
+            <span className='text-muted-foreground w-full text-xs break-words'>
               {cardExamplePrice.label} ≈ {cardExamplePrice.formatted}
             </span>
           )}
@@ -184,7 +188,7 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
             !dynamicSummary.primaryEntries.some(
               (entry) => entry.formattedRange
             ) && (
-              <span className='text-muted-foreground col-span-full text-xs break-words'>
+              <span className='text-muted-foreground w-full text-xs break-words'>
                 ({dynamicSummary.tier.label})
               </span>
             )}
@@ -192,7 +196,7 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
       )
     } else {
       priceSummary = (
-        <span className='text-muted-foreground col-span-full'>
+        <span className='text-muted-foreground w-full'>
           {dynamicSummary.hasUnconfiguredProviders
             ? t('Usage-based billing · price not configured')
             : t('Dynamic Pricing')}
@@ -201,7 +205,7 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
     }
   } else if (isUnconfiguredTaskUsage) {
     priceSummary = (
-      <span className='text-muted-foreground col-span-full'>
+      <span className='text-muted-foreground w-full'>
         {t('Usage-based billing · price not configured')}
       </span>
     )
@@ -214,7 +218,11 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
         : []),
     ]
     const tokenPriceSummary = prices.map((price) => (
-      <div key={price.type} className='flex min-w-0 flex-col gap-1'>
+      <div
+        key={price.type}
+        data-price-cell
+        className='flex min-w-0 flex-1 basis-20 flex-col gap-1'
+      >
         <span className='text-muted-foreground text-xs'>{price.label}</span>
         <span className='font-mono text-sm font-semibold tabular-nums'>
           {formatPrice(
@@ -242,23 +250,37 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
       usdExchangeRate,
       props.selectedGroup
     )
-    priceSummary = [
-      ...tokenPriceSummary,
-      ...imageTierPrices.map((tier) => (
-        <div key={tier.tier} className='flex min-w-0 flex-col gap-1'>
-          <span className='text-muted-foreground text-xs'>
-            {t('Image')} {tier.tier}
-          </span>
-          <span className='font-mono text-sm font-semibold tabular-nums'>
-            {tier.formatted}
-            <span className='text-muted-foreground text-xs font-normal'>
-              {' '}
-              / {t('request')}
-            </span>
-          </span>
+    // Image requests bill per call, so the flat tiers are listed under the
+    // token prices they override.
+    priceSummary = (
+      <>
+        <div className='flex w-full flex-wrap gap-x-3 gap-y-2'>
+          {tokenPriceSummary}
         </div>
-      )),
-    ]
+        {imageTierPrices.length > 0 && (
+          <div className='flex w-full flex-wrap gap-x-3 gap-y-2'>
+            {imageTierPrices.map((tier) => (
+              <div
+                key={tier.tier}
+                data-price-cell
+                className='flex min-w-0 flex-1 basis-20 flex-col gap-1'
+              >
+                <span className='text-muted-foreground text-xs whitespace-nowrap'>
+                  {t('Image')} {tier.tier}
+                </span>
+                <span className='font-mono text-sm font-semibold tabular-nums'>
+                  {tier.formatted}
+                  <span className='text-muted-foreground text-xs font-normal'>
+                    {' '}
+                    / {t('request')}
+                  </span>
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </>
+    )
   } else {
     const imageTierPrices = formatImageTierPrices(
       props.model,
@@ -270,11 +292,15 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
     if (imageTierPrices.length > 0) {
       // Image tier billing overrides the flat per-call price.
       priceSummary = (
-        <>
+        <div className='flex w-full flex-wrap gap-x-3 gap-y-2'>
           {imageTierPrices.map((tier) => (
-            <div key={tier.tier} className='flex min-w-0 flex-col gap-1'>
-              <span className='text-muted-foreground text-xs'>
-                {tier.tier}
+            <div
+              key={tier.tier}
+              data-price-cell
+              className='flex min-w-0 flex-1 basis-20 flex-col gap-1'
+            >
+              <span className='text-muted-foreground text-xs whitespace-nowrap'>
+                {t('Image')} {tier.tier}
               </span>
               <span className='font-mono text-sm font-semibold tabular-nums'>
                 {tier.formatted}
@@ -285,11 +311,11 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
               </span>
             </div>
           ))}
-        </>
+        </div>
       )
     } else {
       priceSummary = (
-        <div className='col-span-full flex min-w-0 flex-col gap-1'>
+        <div data-price-cell className='flex min-w-0 flex-col gap-1'>
           <span className='font-mono text-sm font-semibold tabular-nums'>
             {formatRequestPrice(
               props.model,
@@ -382,7 +408,7 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
                 ` · ${t('Not configured for some providers')}`}
             </span>
           )}
-          <div className='grid grid-cols-[repeat(auto-fit,minmax(88px,1fr))] gap-x-3 gap-y-2'>
+          <div className='flex min-w-0 flex-wrap gap-x-3 gap-y-2'>
             {priceSummary}
           </div>
         </div>

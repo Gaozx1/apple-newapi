@@ -19,6 +19,11 @@ For commercial licensing, please contact support@quantumnous.com
 // Static translation keys that don't get picked up by the t('...') regex.
 // These cover dynamic labels (e.g. constants, configs) that are passed into t at runtime.
 export const STATIC_I18N_KEYS = [
+  // Anti-jailbreak handling labels, resolved from the stored action value.
+  'Account banned',
+  'Account already banned',
+  'Administrator, not banned',
+  'Recorded',
   'Task usage metadata is unavailable. Pricing details cannot be displayed.',
   'This expression cannot be expanded into a price table. View the original expression below.',
   'This operation is only supported for vLLM or SGLang channels',
@@ -896,4 +901,32 @@ export const STATIC_I18N_KEYS = [
   'Verification method',
   'Admin permissions updated',
   'Provider ID',
+  // User level ladder labels, validation messages and dynamic row labels.
+  'Group ratios',
+  'Ratio',
+  'Add group ratio',
+  'Remove group ratio',
+  'Save user levels',
+  'No levels configured. Click "Add level" to get started.',
+  'Every level needs a name',
+  'Every level needs a unique cumulative recharge threshold',
+  // Group region labels and dynamic summary counts.
+  'Save group regions',
+  '{{count}} overseas',
+  // Offline image generation: task status labels, form validation messages and
+  // the system task type label, all resolved from stored values.
+  'Queued',
+  'Generating',
+  'Completed',
+  'Failed',
+  'Please choose a group',
+  'Please choose a model',
+  'Prompt is required',
+  'Prompt is too long',
+  'Invalid size',
+  'Invalid quality',
+  'At least one image',
+  'Requested count exceeds the limit',
+  '{{count}} task(s)',
+  'Offline image generation',
 ] as const

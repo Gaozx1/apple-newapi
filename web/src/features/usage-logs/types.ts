@@ -237,6 +237,8 @@ export interface LogOtherData {
   image_generation_call_price?: number
   image_generation_call_count?: number
   is_system_prompt_overwritten?: boolean
+  /** The channel prompt was prefixed to the first user message. */
+  channel_prompt_injected_as_user?: boolean
   po?: string[]
   billing_source?: string
   group?: string

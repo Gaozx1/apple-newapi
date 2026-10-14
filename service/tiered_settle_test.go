@@ -10,6 +10,7 @@ import (
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
+	billingsetting "github.com/QuantumNous/new-api/setting/billing_setting"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 	"github.com/shopspring/decimal"
@@ -1088,4 +1089,37 @@ func TestSamePriceCacheReadsRemainInInput(t *testing.T) {
 			assert.Equal(t, separateParams.Len, params.Len, "tier conditions keep the full context length")
 		})
 	}
+}
+
+// TestTryTieredSettle_MinimumChargeFloorsRoundedToZero guards the minimum charge:
+// a small priced request inside a discounted group must not settle at zero just
+// because the discounted amount rounded down. Production case: a 13/28-token
+// playground request on a group with ratio 0.05.
+func TestTryTieredSettle_MinimumChargeFloorsRoundedToZero(t *testing.T) {
+	const cheapExpr = `p <= 272000 ? tier("Short context", p * 0.1 + c * 0.5) : tier("long", p * 0.2 + c * 0.75)`
+	info := makeRelayInfo(cheapExpr, 0.05, 13, 28)
+
+	ok, quota, result := TryTieredSettle(info, billingexpr.TokenParams{P: 13, C: 28})
+	require.True(t, ok)
+	require.NotNil(t, result)
+	// 13*0.1 + 28*0.5 = 15.3 -> 7.65 quota before the group ratio, 0.38 after.
+	assert.InDelta(t, 7.65, result.ActualQuotaBeforeGroup, 0.001)
+	assert.Zero(t, result.ActualQuotaAfterGroup)
+	assert.Equal(t, billingsetting.MinimumChargeQuota(), quota)
+	assert.Greater(t, quota, 0)
+}
+
+// A free group (ratio 0) and an expression that prices the request at zero stay
+// free: the floor only replaces a positive amount that rounded away.
+func TestTryTieredSettle_MinimumChargeKeepsZeroPricedRequestsFree(t *testing.T) {
+	freeGroup := makeRelayInfo(flatExpr, 0, 13, 28)
+	ok, quota, _ := TryTieredSettle(freeGroup, billingexpr.TokenParams{P: 13, C: 28})
+	require.True(t, ok)
+	assert.Zero(t, quota)
+
+	const freeExpr = `tier("base", fixed(0))`
+	freeModel := makeRelayInfo(freeExpr, 1, 13, 28)
+	ok, quota, _ = TryTieredSettle(freeModel, billingexpr.TokenParams{P: 13, C: 28})
+	require.True(t, ok)
+	assert.Zero(t, quota)
 }

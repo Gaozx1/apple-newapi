@@ -270,8 +270,11 @@ export type ModelSettings = {
   MaxTokenAutoGroups: number
   DefaultUseAutoGroup: boolean
   'group_ratio_setting.group_special_usable_group': string
+  'group_region_setting.groups': string
   'model_deployment.ionet.api_key': string
   'model_deployment.ionet.enabled': boolean
+  'user_level_setting.enabled': boolean
+  'user_level_setting.levels': string
 }
 
 export type BillingSettings = {

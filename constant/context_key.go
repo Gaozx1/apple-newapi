@@ -66,10 +66,23 @@ const (
 	ContextKeyUserGroup   ContextKey = "user_group"
 	ContextKeyUsingGroup  ContextKey = "group"
 	ContextKeyUserName    ContextKey = "username"
+	// ContextKeyUserRechargeAmount carries the user's lifetime paid amount, the
+	// basis for user levels (setting/user_level_setting). It is written together
+	// with the other user fields so billing and rate limiting do not re-read the
+	// user on the request path.
+	ContextKeyUserRechargeAmount ContextKey = "user_recharge_amount"
+	// ContextKeyUserOverseasConfirmed carries the user's foreign-user
+	// declaration (setting/group_region_setting). Groups serving overseas models
+	// require it, so the relay path reads it from the context.
+	ContextKeyUserOverseasConfirmed ContextKey = "user_overseas_confirmed"
 
 	ContextKeyLocalCountTokens ContextKey = "local_count_tokens"
 
 	ContextKeySystemPromptOverride ContextKey = "system_prompt_override"
+
+	// ContextKeyChannelPromptInjectedAsUser marks a request whose channel prompt
+	// was prefixed to the first user message (system_prompt_role = "user").
+	ContextKeyChannelPromptInjectedAsUser ContextKey = "channel_prompt_injected_as_user"
 
 	// ContextKeyFileSourcesToCleanup stores file sources that need cleanup when request ends
 	ContextKeyFileSourcesToCleanup ContextKey = "file_sources_to_cleanup"

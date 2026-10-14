@@ -42,11 +42,13 @@ import { Route as AuthenticatedChatChatIdRouteImport } from './routes/_authentic
 import { Route as AuthenticatedDashboardIndexRouteImport } from './routes/_authenticated/dashboard/index'
 import { Route as AuthenticatedDashboardSectionRouteImport } from './routes/_authenticated/dashboard/$section'
 import { Route as AuthenticatedErrorsErrorRouteImport } from './routes/_authenticated/errors/$error'
+import { Route as AuthenticatedJailbreakRecordsIndexRouteImport } from './routes/_authenticated/jailbreak-records/index'
 import { Route as AuthenticatedKeysIndexRouteImport } from './routes/_authenticated/keys/index'
 import { Route as AuthenticatedLotteryIndexRouteImport } from './routes/_authenticated/lottery/index'
 import { Route as AuthenticatedModelsIndexRouteImport } from './routes/_authenticated/models/index'
 import { Route as AuthenticatedModelsSectionRouteImport } from './routes/_authenticated/models/$section'
 import { Route as AuthenticatedOauth2ClientsIndexRouteImport } from './routes/_authenticated/oauth2-clients/index'
+import { Route as AuthenticatedOfflineImageIndexRouteImport } from './routes/_authenticated/offline-image/index'
 import { Route as AuthenticatedPlaygroundIndexRouteImport } from './routes/_authenticated/playground/index'
 import { Route as AuthenticatedProfileIndexRouteImport } from './routes/_authenticated/profile/index'
 import { Route as AuthenticatedRedemptionCodesIndexRouteImport } from './routes/_authenticated/redemption-codes/index'
@@ -249,6 +251,12 @@ const AuthenticatedErrorsErrorRoute =
     path: '/errors/$error',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedJailbreakRecordsIndexRoute =
+  AuthenticatedJailbreakRecordsIndexRouteImport.update({
+    id: '/jailbreak-records/',
+    path: '/jailbreak-records/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedKeysIndexRoute = AuthenticatedKeysIndexRouteImport.update({
   id: '/keys/',
   path: '/keys/',
@@ -276,6 +284,12 @@ const AuthenticatedOauth2ClientsIndexRoute =
   AuthenticatedOauth2ClientsIndexRouteImport.update({
     id: '/oauth2-clients/',
     path: '/oauth2-clients/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedOfflineImageIndexRoute =
+  AuthenticatedOfflineImageIndexRouteImport.update({
+    id: '/offline-image/',
+    path: '/offline-image/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedPlaygroundIndexRoute =
@@ -498,10 +512,12 @@ export interface FileRoutesByFullPath {
   '/admin-tickets/': typeof AuthenticatedAdminTicketsIndexRoute
   '/channels/': typeof AuthenticatedChannelsIndexRoute
   '/dashboard/': typeof AuthenticatedDashboardIndexRoute
+  '/jailbreak-records/': typeof AuthenticatedJailbreakRecordsIndexRoute
   '/keys/': typeof AuthenticatedKeysIndexRoute
   '/lottery/': typeof AuthenticatedLotteryIndexRoute
   '/models/': typeof AuthenticatedModelsIndexRoute
   '/oauth2-clients/': typeof AuthenticatedOauth2ClientsIndexRoute
+  '/offline-image/': typeof AuthenticatedOfflineImageIndexRoute
   '/playground/': typeof AuthenticatedPlaygroundIndexRoute
   '/profile/': typeof AuthenticatedProfileIndexRoute
   '/redemption-codes/': typeof AuthenticatedRedemptionCodesIndexRoute
@@ -566,10 +582,12 @@ export interface FileRoutesByTo {
   '/admin-tickets': typeof AuthenticatedAdminTicketsIndexRoute
   '/channels': typeof AuthenticatedChannelsIndexRoute
   '/dashboard': typeof AuthenticatedDashboardIndexRoute
+  '/jailbreak-records': typeof AuthenticatedJailbreakRecordsIndexRoute
   '/keys': typeof AuthenticatedKeysIndexRoute
   '/lottery': typeof AuthenticatedLotteryIndexRoute
   '/models': typeof AuthenticatedModelsIndexRoute
   '/oauth2-clients': typeof AuthenticatedOauth2ClientsIndexRoute
+  '/offline-image': typeof AuthenticatedOfflineImageIndexRoute
   '/playground': typeof AuthenticatedPlaygroundIndexRoute
   '/profile': typeof AuthenticatedProfileIndexRoute
   '/redemption-codes': typeof AuthenticatedRedemptionCodesIndexRoute
@@ -638,10 +656,12 @@ export interface FileRoutesById {
   '/_authenticated/admin-tickets/': typeof AuthenticatedAdminTicketsIndexRoute
   '/_authenticated/channels/': typeof AuthenticatedChannelsIndexRoute
   '/_authenticated/dashboard/': typeof AuthenticatedDashboardIndexRoute
+  '/_authenticated/jailbreak-records/': typeof AuthenticatedJailbreakRecordsIndexRoute
   '/_authenticated/keys/': typeof AuthenticatedKeysIndexRoute
   '/_authenticated/lottery/': typeof AuthenticatedLotteryIndexRoute
   '/_authenticated/models/': typeof AuthenticatedModelsIndexRoute
   '/_authenticated/oauth2-clients/': typeof AuthenticatedOauth2ClientsIndexRoute
+  '/_authenticated/offline-image/': typeof AuthenticatedOfflineImageIndexRoute
   '/_authenticated/playground/': typeof AuthenticatedPlaygroundIndexRoute
   '/_authenticated/profile/': typeof AuthenticatedProfileIndexRoute
   '/_authenticated/redemption-codes/': typeof AuthenticatedRedemptionCodesIndexRoute
@@ -709,10 +729,12 @@ export interface FileRouteTypes {
     | '/admin-tickets/'
     | '/channels/'
     | '/dashboard/'
+    | '/jailbreak-records/'
     | '/keys/'
     | '/lottery/'
     | '/models/'
     | '/oauth2-clients/'
+    | '/offline-image/'
     | '/playground/'
     | '/profile/'
     | '/redemption-codes/'
@@ -777,10 +799,12 @@ export interface FileRouteTypes {
     | '/admin-tickets'
     | '/channels'
     | '/dashboard'
+    | '/jailbreak-records'
     | '/keys'
     | '/lottery'
     | '/models'
     | '/oauth2-clients'
+    | '/offline-image'
     | '/playground'
     | '/profile'
     | '/redemption-codes'
@@ -848,10 +872,12 @@ export interface FileRouteTypes {
     | '/_authenticated/admin-tickets/'
     | '/_authenticated/channels/'
     | '/_authenticated/dashboard/'
+    | '/_authenticated/jailbreak-records/'
     | '/_authenticated/keys/'
     | '/_authenticated/lottery/'
     | '/_authenticated/models/'
     | '/_authenticated/oauth2-clients/'
+    | '/_authenticated/offline-image/'
     | '/_authenticated/playground/'
     | '/_authenticated/profile/'
     | '/_authenticated/redemption-codes/'
@@ -1136,6 +1162,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedErrorsErrorRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/jailbreak-records/': {
+      id: '/_authenticated/jailbreak-records/'
+      path: '/jailbreak-records'
+      fullPath: '/jailbreak-records/'
+      preLoaderRoute: typeof AuthenticatedJailbreakRecordsIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/keys/': {
       id: '/_authenticated/keys/'
       path: '/keys'
@@ -1169,6 +1202,13 @@ declare module '@tanstack/react-router' {
       path: '/oauth2-clients'
       fullPath: '/oauth2-clients/'
       preLoaderRoute: typeof AuthenticatedOauth2ClientsIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/offline-image/': {
+      id: '/_authenticated/offline-image/'
+      path: '/offline-image'
+      fullPath: '/offline-image/'
+      preLoaderRoute: typeof AuthenticatedOfflineImageIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/playground/': {
@@ -1493,10 +1533,12 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedAdminTicketsIndexRoute: typeof AuthenticatedAdminTicketsIndexRoute
   AuthenticatedChannelsIndexRoute: typeof AuthenticatedChannelsIndexRoute
   AuthenticatedDashboardIndexRoute: typeof AuthenticatedDashboardIndexRoute
+  AuthenticatedJailbreakRecordsIndexRoute: typeof AuthenticatedJailbreakRecordsIndexRoute
   AuthenticatedKeysIndexRoute: typeof AuthenticatedKeysIndexRoute
   AuthenticatedLotteryIndexRoute: typeof AuthenticatedLotteryIndexRoute
   AuthenticatedModelsIndexRoute: typeof AuthenticatedModelsIndexRoute
   AuthenticatedOauth2ClientsIndexRoute: typeof AuthenticatedOauth2ClientsIndexRoute
+  AuthenticatedOfflineImageIndexRoute: typeof AuthenticatedOfflineImageIndexRoute
   AuthenticatedPlaygroundIndexRoute: typeof AuthenticatedPlaygroundIndexRoute
   AuthenticatedProfileIndexRoute: typeof AuthenticatedProfileIndexRoute
   AuthenticatedRedemptionCodesIndexRoute: typeof AuthenticatedRedemptionCodesIndexRoute
@@ -1524,10 +1566,13 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAdminTicketsIndexRoute: AuthenticatedAdminTicketsIndexRoute,
   AuthenticatedChannelsIndexRoute: AuthenticatedChannelsIndexRoute,
   AuthenticatedDashboardIndexRoute: AuthenticatedDashboardIndexRoute,
+  AuthenticatedJailbreakRecordsIndexRoute:
+    AuthenticatedJailbreakRecordsIndexRoute,
   AuthenticatedKeysIndexRoute: AuthenticatedKeysIndexRoute,
   AuthenticatedLotteryIndexRoute: AuthenticatedLotteryIndexRoute,
   AuthenticatedModelsIndexRoute: AuthenticatedModelsIndexRoute,
   AuthenticatedOauth2ClientsIndexRoute: AuthenticatedOauth2ClientsIndexRoute,
+  AuthenticatedOfflineImageIndexRoute: AuthenticatedOfflineImageIndexRoute,
   AuthenticatedPlaygroundIndexRoute: AuthenticatedPlaygroundIndexRoute,
   AuthenticatedProfileIndexRoute: AuthenticatedProfileIndexRoute,
   AuthenticatedRedemptionCodesIndexRoute:

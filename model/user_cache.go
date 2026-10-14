@@ -11,19 +11,25 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-const userCacheSchemaVersion = 2
+const userCacheSchemaVersion = 4
 
 type UserBase struct {
-	Id          int    `json:"id"`
-	Group       string `json:"group"`
-	Email       string `json:"email"`
-	Quota       int    `json:"quota"`
-	Status      int    `json:"status"`
-	Role        int    `json:"role"`
-	Username    string `json:"username"`
-	Setting     string `json:"setting"`
-	AuthVersion int64  `json:"-"`
-	CacheSchema int    `json:"-"`
+	Id       int    `json:"id"`
+	Group    string `json:"group"`
+	Email    string `json:"email"`
+	Quota    int    `json:"quota"`
+	Status   int    `json:"status"`
+	Role     int    `json:"role"`
+	Username string `json:"username"`
+	Setting  string `json:"setting"`
+	// RechargeAmount is the lifetime paid amount, used to resolve user levels on
+	// the relay and rate-limit paths without an extra read.
+	RechargeAmount float64 `json:"recharge_amount"`
+	// OverseasConfirmedAt is when the user declared themselves a foreign user;
+	// it gates groups that serve overseas models.
+	OverseasConfirmedAt int64 `json:"overseas_confirmed_at"`
+	AuthVersion         int64 `json:"-"`
+	CacheSchema         int   `json:"-"`
 }
 
 func (user *UserBase) WriteContext(c *gin.Context) {
@@ -33,6 +39,34 @@ func (user *UserBase) WriteContext(c *gin.Context) {
 	common.SetContextKey(c, constant.ContextKeyUserEmail, user.Email)
 	common.SetContextKey(c, constant.ContextKeyUserName, user.Username)
 	common.SetContextKey(c, constant.ContextKeyUserSetting, user.GetSetting())
+	common.SetContextKey(c, constant.ContextKeyUserRechargeAmount, user.RechargeAmount)
+	common.SetContextKey(c, constant.ContextKeyUserOverseasConfirmed, user.OverseasConfirmedAt > 0)
+}
+
+// GetContextUserRechargeAmount returns the lifetime paid amount written into the
+// request context together with the other user fields. User levels resolve from
+// it, so billing and rate limiting do not re-read the user on the request path.
+// It returns 0 when the request carries no authenticated user.
+func GetContextUserRechargeAmount(c *gin.Context) float64 {
+	if c == nil {
+		return 0
+	}
+	amount, ok := common.GetContextKeyType[float64](c, constant.ContextKeyUserRechargeAmount)
+	if !ok {
+		return 0
+	}
+	return amount
+}
+
+// GetContextUserOverseasConfirmed reports whether the request's user already
+// declared themselves a foreign user. It returns false when the request carries
+// no authenticated user, which keeps the overseas-model gate fail-closed.
+func GetContextUserOverseasConfirmed(c *gin.Context) bool {
+	if c == nil {
+		return false
+	}
+	confirmed, ok := common.GetContextKeyType[bool](c, constant.ContextKeyUserOverseasConfirmed)
+	return ok && confirmed
 }
 
 func (user *UserBase) GetSetting() dto.UserSetting {

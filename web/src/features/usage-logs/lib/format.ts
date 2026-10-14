@@ -340,6 +340,34 @@ export function hasAnyCacheTokens(
   )
 }
 
+/**
+ * Share of a request's input tokens that came from the prompt cache, as a
+ * percentage. Anthropic reports the uncached remainder in prompt_tokens and the
+ * cache buckets separately, so those are added back to form the full input;
+ * OpenAI-style usage already counts them inside prompt_tokens. Returns null
+ * when the request read nothing from the cache, so callers can omit the value.
+ */
+export function getCacheReadPercent(
+  other: LogOtherData | null | undefined,
+  promptTokens: number
+): number | null {
+  const cacheRead = other?.cache_tokens || 0
+  if (cacheRead <= 0) return null
+
+  const cacheWrite =
+    (other?.cache_creation_tokens_5m || 0) +
+      (other?.cache_creation_tokens_1h || 0) ||
+    other?.cache_creation_tokens ||
+    0
+  const inputTokens =
+    other?.claude === true
+      ? promptTokens + cacheRead + cacheWrite
+      : promptTokens
+  if (inputTokens <= 0) return null
+
+  return (cacheRead / inputTokens) * 100
+}
+
 export function getTieredBillingSummary(
   other: LogOtherData | null
 ): TieredBillingSummary | null {

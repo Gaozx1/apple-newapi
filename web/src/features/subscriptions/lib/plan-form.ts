@@ -46,6 +46,9 @@ export function getPlanFormSchema(t: TFunction) {
     max_purchase_per_user: z.coerce.number().min(0),
     // -1 = no shared pool (per-model buckets only); 0 = unlimited.
     total_amount: z.coerce.number().min(-1),
+    // Sliding-window caps in dollars (0 = the window is not limited).
+    window_5h_amount: z.coerce.number().min(0),
+    window_7d_amount: z.coerce.number().min(0),
     model_quotas: z.array(
       z.object({
         model: z.string().min(1, t('Please enter the model name')),
@@ -84,6 +87,8 @@ export const PLAN_FORM_DEFAULTS: PlanFormValues = {
   allow_wallet_overflow: true,
   max_purchase_per_user: 0,
   total_amount: 0,
+  window_5h_amount: 0,
+  window_7d_amount: 0,
   model_quotas: [],
   model_token_quotas: [],
   usable_groups: [],
@@ -184,6 +189,8 @@ export function planToFormValues(plan: SubscriptionPlan): PlanFormValues {
       Number(plan.total_amount || 0) === -1
         ? -1
         : quotaUnitsToDollars(Number(plan.total_amount || 0)),
+    window_5h_amount: quotaUnitsToDollars(Number(plan.window_5h_amount || 0)),
+    window_7d_amount: quotaUnitsToDollars(Number(plan.window_7d_amount || 0)),
     model_quotas: parseModelQuotasJson(plan.model_quotas),
     model_token_quotas: parseModelTokenQuotasJson(plan.model_token_quotas),
     usable_groups: (plan.usable_groups || '')
@@ -217,6 +224,12 @@ export function formValuesToPlanPayload(values: PlanFormValues): PlanPayload {
         Number(values.total_amount) === -1
           ? -1
           : parseQuotaFromDollars(Number(values.total_amount || 0)),
+      window_5h_amount: parseQuotaFromDollars(
+        Number(values.window_5h_amount || 0)
+      ),
+      window_7d_amount: parseQuotaFromDollars(
+        Number(values.window_7d_amount || 0)
+      ),
       model_quotas: serializeModelQuotas(values.model_quotas),
       model_token_quotas: serializeModelTokenQuotas(values.model_token_quotas),
       usable_groups: (values.usable_groups || []).join(','),

@@ -23,7 +23,9 @@ import { ClaudeSettingsCard } from './claude-settings-card'
 import { GeminiSettingsCard } from './gemini-settings-card'
 import { GlobalSettingsCard } from './global-settings-card'
 import { GrokSettingsCard } from './grok-settings-card'
+import { GroupRegionSettingsSection } from './group-region-settings-section'
 import { ToolInjectionSettings } from './tool-injection-settings'
+import { UserLevelSettingsSection } from './user-level-settings-section'
 
 function formatJsonForEditor(value: string, fallback: string) {
   const raw = (value ?? '').toString().trim()
@@ -140,15 +142,40 @@ const MODELS_SECTIONS = [
     build: (settings: ModelSettings) => (
       <ToolInjectionSettings
         defaultEnabled={settings['tool_injection.enabled']}
-        defaultTools={
-          safeParseToolList(settings['tool_injection.tools']) ?? []
-        }
+        defaultTools={safeParseToolList(settings['tool_injection.tools']) ?? []}
+      />
+    ),
+  },
+  {
+    id: 'group-regions',
+    titleKey: 'Group Regions',
+    build: (settings: ModelSettings) => (
+      <GroupRegionSettingsSection
+        defaultValues={{
+          groupRatio: settings.GroupRatio,
+          regions: settings['group_region_setting.groups'],
+        }}
+      />
+    ),
+  },
+  {
+    id: 'user-levels',
+    titleKey: 'User Levels',
+    build: (settings: ModelSettings) => (
+      <UserLevelSettingsSection
+        defaultValues={{
+          enabled: settings['user_level_setting.enabled'],
+          levels: settings['user_level_setting.levels'],
+          groupRatio: settings.GroupRatio,
+        }}
       />
     ),
   },
 ] as const
 
-function safeParseToolList(raw: string | boolean | number | undefined): string[] | null {
+function safeParseToolList(
+  raw: string | boolean | number | undefined
+): string[] | null {
   if (typeof raw !== 'string' || raw.trim() === '') return null
   try {
     const parsed = JSON.parse(raw)

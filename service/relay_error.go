@@ -48,7 +48,10 @@ func DecideRelayRetry(c *gin.Context, err *types.NewAPIError, retryTimes int) Po
 	if code < 100 || code > 599 {
 		return PolicyDecision{Action: "retry", Reason: "unrecognized_status", Source: "system"}
 	}
-	if operation_setting.IsAlwaysSkipRetryCode(err.GetErrorCode()) || operation_setting.IsAlwaysSkipRetryStatusCode(code) {
+	// Only an error-code exclusion stops here. Status codes are decided by the
+	// configured ranges below, so listing 504/524 in AutomaticRetryStatusCodes
+	// is enough to retry a gateway timeout.
+	if operation_setting.IsAlwaysSkipRetryCode(err.GetErrorCode()) {
 		return PolicyDecision{Action: "stop", Reason: "system_retry_exclusion", Source: "system"}
 	}
 	if operation_setting.ShouldRetryByStatusCode(code) {

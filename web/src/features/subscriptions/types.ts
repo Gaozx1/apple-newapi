@@ -39,6 +39,9 @@ export const subscriptionPlanSchema = z.object({
   allow_wallet_overflow: z.boolean().optional().default(true),
   max_purchase_per_user: z.number(),
   total_amount: z.number(),
+  // Sliding-window caps in quota units (0 = the window is not limited).
+  window_5h_amount: z.number().optional(),
+  window_7d_amount: z.number().optional(),
   // JSON string {"model": quota} — per-model buckets (empty = shared pool).
   model_quotas: z.string().optional(),
   // JSON string {"model": tokens} — token-denominated per-model buckets.
@@ -77,6 +80,16 @@ export const userSubscriptionSchema = z.object({
 
 export type UserSubscription = z.infer<typeof userSubscriptionSchema>
 
+// One sliding window of a subscription: the plan's cap and the usage booked
+// against it. The server omits windows the plan does not limit.
+export interface SubscriptionWindowUsage {
+  limit: number
+  used: number
+  remaining: number
+  // Unix seconds when the oldest booked usage leaves the window.
+  reset_at: number
+}
+
 export interface UserSubscriptionRecord {
   subscription: UserSubscription
   // Present when the plan defines per-model buckets (keys match model names).
@@ -85,6 +98,9 @@ export interface UserSubscriptionRecord {
   // Token-denominated per-model buckets and their usage in raw token counts.
   model_token_quotas?: Record<string, number>
   token_used?: Record<string, number>
+  // Present when the plan caps the rolling 5-hour / 7-day window.
+  window_5h?: SubscriptionWindowUsage
+  window_7d?: SubscriptionWindowUsage
 }
 
 // ============================================================================

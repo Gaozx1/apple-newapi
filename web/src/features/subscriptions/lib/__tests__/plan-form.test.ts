@@ -16,15 +16,20 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 
+import {
+  DEFAULT_CURRENCY_CONFIG,
+  useSystemConfigStore,
+} from '@/stores/system-config-store'
+
+import type { SubscriptionPlan } from '../../types'
 import {
   formValuesToPlanPayload,
   parseModelTokenQuotasJson,
   planToFormValues,
   serializeModelTokenQuotas,
 } from '../plan-form'
-import type { SubscriptionPlan } from '../../types'
 
 function makePlan(overrides: Partial<SubscriptionPlan>): SubscriptionPlan {
   return {
@@ -94,5 +99,34 @@ describe('plan-form total_amount -1 round trip', () => {
     })
     expect(payload.plan.total_amount).toBe(-1)
     expect(payload.plan.model_token_quotas).toBe('{"deepseek-chat":100000000}')
+  })
+})
+
+describe('plan-form sliding window limits round trip', () => {
+  beforeEach(() => {
+    // Pin the display currency so the dollar conversions are deterministic.
+    useSystemConfigStore
+      .getState()
+      .setConfig({ currency: { ...DEFAULT_CURRENCY_CONFIG } })
+  })
+
+  it('loads stored window caps as dollars and saves them back as quota units', () => {
+    // 500000 quota units = $1 with the default quota-per-unit setting.
+    const values = planToFormValues(
+      makePlan({ window_5h_amount: 1_000_000, window_7d_amount: 5_000_000 })
+    )
+    expect(values.window_5h_amount).toBe(2)
+    expect(values.window_7d_amount).toBe(10)
+
+    const payload = formValuesToPlanPayload(values)
+    expect(payload.plan.window_5h_amount).toBe(1_000_000)
+    expect(payload.plan.window_7d_amount).toBe(5_000_000)
+  })
+
+  it('keeps 0 for a window the plan does not limit', () => {
+    const values = planToFormValues(makePlan({ total_amount: 1_000_000 }))
+    expect(values.window_5h_amount).toBe(0)
+    expect(values.window_7d_amount).toBe(0)
+    expect(formValuesToPlanPayload(values).plan.window_7d_amount).toBe(0)
   })
 })

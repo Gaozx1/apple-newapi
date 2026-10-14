@@ -1,14 +1,17 @@
 package service
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
-	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
+	billingsetting "github.com/QuantumNous/new-api/setting/billing_setting"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
 )
 
@@ -239,7 +242,20 @@ func TryTieredSettle(relayInfo *relaycommon.RelayInfo, params billingexpr.TokenP
 	// (text, audio, WSS) consumes the returned quota. First non-nil wins.
 	noteQuotaClamp(relayInfo, tr.Clamp)
 
-	return true, tr.ActualQuotaAfterGroup, &tr
+	quota = tr.ActualQuotaAfterGroup
+	if quota == 0 && tr.ActualQuotaBeforeGroup > 0 && snap.GroupRatio > 0 {
+		// A discounted group can round a real charge down to zero. Charge the
+		// configured minimum instead of giving the request away; an expression
+		// that priced it at zero, or a free group (ratio 0), stays free.
+		if minimum := billingsetting.MinimumChargeQuota(); minimum > 0 {
+			logger.LogInfo(nil, fmt.Sprintf(
+				"tiered settle: quota rounded to zero (before group %.4f, group ratio %.4f), charging minimum %d",
+				tr.ActualQuotaBeforeGroup, snap.GroupRatio, minimum))
+			quota = minimum
+		}
+	}
+
+	return true, quota, &tr
 }
 
 // A failed evaluation retains the reservation and its estimated billing unit.

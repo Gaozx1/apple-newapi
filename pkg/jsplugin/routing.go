@@ -72,11 +72,29 @@ type HostProtocolOperation struct {
 	Name                    string
 	Methods                 []string
 	Path                    string
+	AliasPaths              []string
 	BodyKinds               []BodyKind
 	ModelField              string
 	RequiredProtocolMembers []string
 	Modes                   []ProtocolMode
 	RequiredDriverHooks     []string
+}
+
+// Paths returns every client-facing binding of the operation, Path first.
+// AliasPaths let one registry entry answer a vendor's own path so the two
+// cannot drift apart the way a duplicated entry would.
+func (o HostProtocolOperation) Paths() []string {
+	if len(o.AliasPaths) == 0 {
+		return []string{o.Path}
+	}
+	paths := make([]string, 0, 1+len(o.AliasPaths))
+	paths = append(paths, o.Path)
+	return append(paths, o.AliasPaths...)
+}
+
+// MatchesPath reports whether path is a binding of the operation.
+func (o HostProtocolOperation) MatchesPath(path string) bool {
+	return o.Path == path || slices.Contains(o.AliasPaths, path)
 }
 
 type HostProtocolDefinition struct {
@@ -90,7 +108,12 @@ var hostProtocols = []HostProtocolDefinition{
 		{Name: "retrieve", Methods: []string{http.MethodGet}, Path: "/v1/responses/:response_id", BodyKinds: []BodyKind{BodyNone}},
 	}},
 	{Name: "openai_video", Operations: []HostProtocolOperation{
-		{Name: "create", Methods: []string{http.MethodPost}, Path: "/v1/videos", BodyKinds: []BodyKind{BodyJSON, BodyMultipart}, ModelField: "model", RequiredProtocolMembers: []string{"decodeRequest"}},
+		// `/v1/videos/generations` is the path xAI and several other vendors
+		// publish for the same operation. Binding it here keeps the whole chain
+		// Grok-native: a client written against the vendor API reaches the
+		// plugin's decoder unchanged, and a plugin already chosen for the model
+		// serves both paths with no second registry entry to keep in sync.
+		{Name: "create", Methods: []string{http.MethodPost}, Path: "/v1/videos", AliasPaths: []string{"/v1/videos/generations"}, BodyKinds: []BodyKind{BodyJSON, BodyMultipart}, ModelField: "model", RequiredProtocolMembers: []string{"decodeRequest"}},
 		{Name: "retrieve", Methods: []string{http.MethodGet}, Path: "/v1/videos/:task_id", BodyKinds: []BodyKind{BodyNone}, RequiredProtocolMembers: []string{"render"}},
 		{Name: "content", Methods: []string{http.MethodGet, http.MethodHead}, Path: "/v1/videos/:task_id/content", BodyKinds: []BodyKind{BodyNone}, RequiredDriverHooks: []string{"listArtifacts", "buildContentRequest"}},
 	}},
@@ -124,6 +147,7 @@ func HostProtocols() []HostProtocolDefinition {
 		for operationIndex := range definitions[index].Operations {
 			operation := &definitions[index].Operations[operationIndex]
 			operation.Methods = append([]string(nil), operation.Methods...)
+			operation.AliasPaths = append([]string(nil), operation.AliasPaths...)
 			operation.BodyKinds = append([]BodyKind(nil), operation.BodyKinds...)
 			operation.RequiredProtocolMembers = append([]string(nil), operation.RequiredProtocolMembers...)
 			operation.Modes = append([]ProtocolMode(nil), operation.Modes...)
@@ -189,7 +213,7 @@ func LookupHostProtocolOperation(method, path string) (string, HostProtocolOpera
 	method = strings.ToUpper(strings.TrimSpace(method))
 	for _, definition := range hostProtocols {
 		for _, operation := range definition.Operations {
-			if operation.Path != path || operation.ModelField == "" {
+			if operation.ModelField == "" || !operation.MatchesPath(path) {
 				continue
 			}
 			if slices.Contains(operation.Methods, method) {
@@ -962,16 +986,18 @@ func buildRoutingGenerationFromPlugins(effective map[string]*LoadedPlugin, numbe
 					continue
 				}
 				for _, method := range operation.Methods {
-					for _, model := range boundModels {
-						indexKey := endpointIndexKey(method, operation.Path, model)
-						bindings := generation.protocolIndex[indexKey]
-						if len(bindings) > 0 {
-							other := bindings[0]
-							if claim.Name != other.Protocol {
-								return nil, fmt.Errorf("plugin %s protocol %s %s model %q conflicts with plugin %s", plugin.Meta.Key, method, operation.Path, model, other.Plugin.Meta.Key)
+					for _, path := range operation.Paths() {
+						for _, model := range boundModels {
+							indexKey := endpointIndexKey(method, path, model)
+							bindings := generation.protocolIndex[indexKey]
+							if len(bindings) > 0 {
+								other := bindings[0]
+								if claim.Name != other.Protocol {
+									return nil, fmt.Errorf("plugin %s protocol %s route %s %s model %q conflicts with plugin %s", plugin.Meta.Key, claim.Name, method, path, model, other.Plugin.Meta.Key)
+								}
 							}
+							generation.protocolIndex[indexKey] = append(bindings, ProtocolBinding{Plugin: plugin, Protocol: claim.Name, Operation: operation, Model: model})
 						}
-						generation.protocolIndex[indexKey] = append(bindings, ProtocolBinding{Plugin: plugin, Protocol: claim.Name, Operation: operation, Model: model})
 					}
 				}
 			}

@@ -57,6 +57,9 @@ export interface AuthUser {
   stripe_customer?: string
   sidebar_modules?: string
   permissions?: UserPermissions
+  /** Whether the user declared themselves a foreign user (overseas groups). */
+  overseas_confirmed?: boolean
+  overseas_confirmed_at?: number
 }
 
 export interface LoginSession {

@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
@@ -17,6 +19,7 @@ import (
 	"github.com/QuantumNous/new-api/setting/model_setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
+	"github.com/QuantumNous/new-api/setting/user_level_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -745,3 +748,73 @@ func (s *priceTestReservation) Refund(*gin.Context)      {}
 func (s *priceTestReservation) NeedsRefund() bool        { return false }
 func (s *priceTestReservation) GetPreConsumedQuota() int { return s.held }
 func (s *priceTestReservation) Reserve(quota int) error  { s.held = max(s.held, quota); return nil }
+
+// installUserLevelGrant publishes a single-rung ladder for one test and restores
+// the previous configuration afterwards.
+func installUserLevelGrant(t *testing.T, threshold float64, groupRatios map[string]float64) {
+	t.Helper()
+	setting := user_level_setting.GetUserLevelSetting()
+	previousEnabled := setting.Enabled
+	previousLevels := slices.Clone(setting.Levels)
+	t.Cleanup(func() {
+		setting.Enabled = previousEnabled
+		setting.Levels = previousLevels
+		user_level_setting.RebuildLevelIndex()
+	})
+	setting.Enabled = true
+	setting.Levels = []user_level_setting.UserLevel{{
+		Name:        "测试等级",
+		Threshold:   threshold,
+		GroupRatios: groupRatios,
+	}}
+	user_level_setting.RebuildLevelIndex()
+}
+
+// A level grant is billed only when it is more favorable than the group's
+// configured ratio, so a user never pays more than their group's ratio.
+func TestModelPriceHelperAppliesUserLevelGroupRatio(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	savedModelRatios := ratio_setting.ModelRatio2JSONString()
+	savedGroupRatios := ratio_setting.GroupRatio2JSONString()
+	t.Cleanup(func() {
+		require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(savedModelRatios))
+		require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(savedGroupRatios))
+	})
+
+	modelRatios, err := common.Marshal(map[string]float64{"level-ratio-model": 15})
+	require.NoError(t, err)
+	require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(string(modelRatios)))
+	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"default":1,"vip":0.5,"nogrant":0.4}`))
+
+	installUserLevelGrant(t, 100, map[string]float64{"default": 0.6, "vip": 0.8})
+
+	for _, tc := range []struct {
+		name      string
+		group     string
+		amount    float64
+		wantRatio float64
+		wantQuota int
+	}{
+		{"a lower grant wins", "default", 100, 0.6, 9000},
+		{"a higher grant is ignored", "vip", 100, 0.5, 7500},
+		{"a group without a grant keeps its ratio", "nogrant", 100, 0.4, 6000},
+		{"below the threshold keeps the group ratio", "default", 99.99, 1, 15000},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+			ctx.Set("group", tc.group)
+			common.SetContextKey(ctx, constant.ContextKeyUserRechargeAmount, tc.amount)
+			info := &relaycommon.RelayInfo{
+				OriginModelName: "level-ratio-model",
+				UserGroup:       tc.group,
+				UsingGroup:      tc.group,
+			}
+
+			price, err := ModelPriceHelper(ctx, info, 1000, &types.TokenCountMeta{})
+			require.NoError(t, err)
+			assert.Equal(t, tc.wantRatio, price.GroupRatioInfo.GroupRatio)
+			assert.Equal(t, tc.wantQuota, price.QuotaToPreConsume)
+		})
+	}
+}

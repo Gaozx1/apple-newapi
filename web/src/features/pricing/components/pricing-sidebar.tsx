@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { ChevronDown, RotateCcw } from 'lucide-react'
+import { ChevronDown, Globe, RotateCcw } from 'lucide-react'
 import { memo, useMemo, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -27,6 +27,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible'
+import { isOverseasRegion, type GroupRegion } from '@/lib/group-regions'
 import { getLobeIcon } from '@/lib/lobe-icon'
 import { cn } from '@/lib/utils'
 
@@ -49,6 +50,8 @@ type FilterOption = {
   icon?: ReactNode
 }
 
+const EMPTY_GROUP_REGIONS: Record<string, GroupRegion> = {}
+
 type FilterSectionProps = {
   title: string
   value: string
@@ -69,6 +72,8 @@ export interface PricingSidebarProps {
   onTagChange: (value: string) => void
   vendors: PricingVendor[]
   groups: string[]
+  /** Group region classification; groups serving overseas models are marked. */
+  groupRegions?: Record<string, GroupRegion>
   groupRatios?: Record<string, number>
   tags: string[]
   models: PricingModel[]
@@ -152,6 +157,7 @@ export const PricingSidebar = memo(function PricingSidebar(
   props: PricingSidebarProps
 ) {
   const { t } = useTranslation()
+  const groupRegions = props.groupRegions ?? EMPTY_GROUP_REGIONS
   const counts = useMemo(() => {
     const vendors = new Map<string, number>()
     const tags = new Map<string, number>()
@@ -210,6 +216,15 @@ export const PricingSidebar = memo(function PricingSidebar(
       value: group,
       label: group,
       suffix: formatGroupRatio(props.groupRatios?.[group]),
+      // Groups serving overseas models need the user's foreign-user
+      // declaration before they can be used.
+      icon: isOverseasRegion(groupRegions[group]) ? (
+        <Globe
+          role='img'
+          aria-label={t('Overseas')}
+          className='text-warning size-3.5'
+        />
+      ) : undefined,
     })),
   ]
 

@@ -18,8 +18,30 @@ type ChannelSettings struct {
 	Proxy                     string `json:"proxy"`
 	PassThroughBodyEnabled    bool   `json:"pass_through_body_enabled,omitempty"`
 	ResponsesWebSocketEnabled bool   `json:"responses_websocket_enabled,omitempty"`
-	SystemPrompt              string `json:"system_prompt,omitempty"`
-	SystemPromptOverride      bool   `json:"system_prompt_override,omitempty"`
+	// ImageEditJSON submits /v1/images/edits as an application/json body with
+	// each reference image inlined as a data URI, for upstreams that reject the
+	// standard multipart image edit form.
+	ImageEditJSON        bool   `json:"image_edit_json,omitempty"`
+	SystemPrompt         string `json:"system_prompt,omitempty"`
+	SystemPromptOverride bool   `json:"system_prompt_override,omitempty"`
+	// SystemPromptRole selects where SystemPrompt is injected. Empty and
+	// "system" inject it as a system prompt; "user" prefixes it to the first
+	// user message, which always applies (SystemPromptOverride is not consulted
+	// in that mode because the client's system prompt is left untouched).
+	SystemPromptRole string `json:"system_prompt_role,omitempty"`
+	// AntiJailbreakEnabled turns on this channel's anti-jailbreak guard: every
+	// relay request routed to the channel is judged asynchronously by
+	// AntiJailbreakModel, and a confirmed hit disables the caller's account.
+	AntiJailbreakEnabled bool `json:"anti_jailbreak_enabled,omitempty"`
+	// AntiJailbreakBaseURL / AntiJailbreakKey / AntiJailbreakModel address the
+	// classifier. Any OpenAI-compatible chat completions endpoint works; the base
+	// URL may already include /chat/completions.
+	AntiJailbreakBaseURL string `json:"anti_jailbreak_base_url,omitempty"`
+	AntiJailbreakKey     string `json:"anti_jailbreak_key,omitempty"`
+	AntiJailbreakModel   string `json:"anti_jailbreak_model,omitempty"`
+	// AntiJailbreakPrompt lists the behaviour the classifier must intercept and
+	// is sent as its system prompt. A hit bans an account, so keep it precise.
+	AntiJailbreakPrompt string `json:"anti_jailbreak_prompt,omitempty"`
 	// TaskExtendPluginKeys lists the task plugins a New API channel (type 60)
 	// is extended with. The upstream gateway may host many plugins, so the
 	// channel serves every listed plugin's models while the request still pins
@@ -65,6 +87,32 @@ const (
 	MaxHTTP2ConnectionShards = 8
 )
 
+const (
+	// ChannelPromptRoleSystem injects the channel prompt as a system prompt.
+	ChannelPromptRoleSystem = "system"
+	// ChannelPromptRoleUser prefixes the channel prompt to the first user
+	// message of the request.
+	ChannelPromptRoleUser = "user"
+)
+
+// InjectsPromptAsUserMessage reports whether the channel prompt belongs in the
+// first user message instead of a system prompt. That mode always injects, so
+// SystemPromptOverride — which decides whether an existing system prompt may be
+// extended — is not consulted.
+func (s ChannelSettings) InjectsPromptAsUserMessage() bool {
+	return s.SystemPromptRole == ChannelPromptRoleUser
+}
+
+// PrefixPrompt joins the channel prompt in front of an existing message body,
+// separated by a blank line so the injected instruction stays readable as its
+// own paragraph.
+func PrefixPrompt(prompt, existing string) string {
+	if strings.TrimSpace(existing) == "" {
+		return prompt
+	}
+	return prompt + "\n\n" + existing
+}
+
 // ValidateHTTPTransport validates save-time HTTP transport channel settings.
 func (s *ChannelSettings) ValidateHTTPTransport() error {
 	if s == nil {
@@ -81,6 +129,28 @@ func (s *ChannelSettings) ValidateHTTPTransport() error {
 	}
 	if protocol == HTTPProtocolHTTP1 && s.HTTP2ConnectionShards > 1 {
 		return fmt.Errorf("http2_connection_shards must be 1 when http_protocol is http1")
+	}
+	return nil
+}
+
+// ValidateAntiJailbreak rejects save-time anti-jailbreak settings that could not
+// reach a classifier: an enabled guard without endpoint, key, model or criteria
+// would silently never judge anything.
+func (s *ChannelSettings) ValidateAntiJailbreak() error {
+	if s == nil || !s.AntiJailbreakEnabled {
+		return nil
+	}
+	if strings.TrimSpace(s.AntiJailbreakBaseURL) == "" {
+		return fmt.Errorf("anti_jailbreak_base_url is required when the anti-jailbreak guard is enabled")
+	}
+	if strings.TrimSpace(s.AntiJailbreakKey) == "" {
+		return fmt.Errorf("anti_jailbreak_key is required when the anti-jailbreak guard is enabled")
+	}
+	if strings.TrimSpace(s.AntiJailbreakModel) == "" {
+		return fmt.Errorf("anti_jailbreak_model is required when the anti-jailbreak guard is enabled")
+	}
+	if strings.TrimSpace(s.AntiJailbreakPrompt) == "" {
+		return fmt.Errorf("anti_jailbreak_prompt is required when the anti-jailbreak guard is enabled")
 	}
 	return nil
 }

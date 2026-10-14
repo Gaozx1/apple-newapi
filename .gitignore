@@ -90,6 +90,10 @@ dsh/
 astrbot_plugin_newapi_tx/
 astrbot_plugin_newapi_tx.zip
 deepseekreg/
+# The QQ bot (qq-group-management-bot + its vendored qq-bot-sdk) lives in this
+# tree but is its own project: it is not part of new-api and must never be
+# committed here.
+qqbot/
 
 .dsh-ssh/
 .whale-craft/

@@ -67,8 +67,11 @@ const defaultModelSettings: ModelSettings = {
   MaxTokenAutoGroups: 5,
   DefaultUseAutoGroup: false,
   'group_ratio_setting.group_special_usable_group': '{}',
+  'group_region_setting.groups': '{}',
   'model_deployment.ionet.api_key': '',
   'model_deployment.ionet.enabled': false,
+  'user_level_setting.enabled': false,
+  'user_level_setting.levels': '[]',
 }
 
 export function ModelSettings() {

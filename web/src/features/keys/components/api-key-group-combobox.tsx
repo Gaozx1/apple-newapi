@@ -16,10 +16,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Check, ChevronsUpDown } from 'lucide-react'
+import { Check, ChevronsUpDown, Globe } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { OverseasDeclarationDialog } from '@/components/overseas-declaration-dialog'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   Command,
@@ -36,6 +38,7 @@ import {
 } from '@/components/ui/popover'
 import { useMediaQuery } from '@/hooks'
 import { cn } from '@/lib/utils'
+import { useAuthStore } from '@/stores/auth-store'
 
 import {
   AUTO_GROUP_FRAME_CLASS_NAME,
@@ -48,6 +51,8 @@ export type ApiKeyGroupOption = {
   label: string
   desc?: string
   ratio?: number | string
+  /** "overseas" when the group serves overseas models and needs a declaration. */
+  region?: string
 }
 
 type ApiKeyGroupComboboxProps = {
@@ -56,6 +61,22 @@ type ApiKeyGroupComboboxProps = {
   onValueChange: (value: string) => void
   placeholder?: string
   disabled?: boolean
+}
+
+function isOverseasGroup(option: ApiKeyGroupOption | undefined): boolean {
+  return option?.region === 'overseas'
+}
+
+// Marks a group that serves overseas models, so the declaration requirement is
+// visible before the user picks it.
+function OverseasGroupBadge() {
+  const { t } = useTranslation()
+  return (
+    <Badge variant='warning' className='shrink-0'>
+      <Globe data-icon='inline-start' />
+      {t('Overseas')}
+    </Badge>
+  )
 }
 
 export function ApiKeyGroupCombobox({
@@ -68,6 +89,12 @@ export function ApiKeyGroupCombobox({
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const [searchValue, setSearchValue] = useState('')
+  const [pendingOverseasGroup, setPendingOverseasGroup] = useState<
+    string | null
+  >(null)
+  const overseasConfirmed = useAuthStore(
+    (state) => state.auth.user?.overseas_confirmed === true
+  )
   const shouldReduceMotion = useMediaQuery('(prefers-reduced-motion: reduce)')
   const selectedOption = options.find((option) => option.value === value)
   const isAutoSelected = selectedOption?.value === 'auto'
@@ -88,9 +115,17 @@ export function ApiKeyGroupCombobox({
   }, [options, searchValue])
 
   const handleSelect = (selectedValue: string) => {
-    onValueChange(selectedValue)
+    const option = options.find((item) => item.value === selectedValue)
     setOpen(false)
     setSearchValue('')
+    // A group serving overseas models stays locked until the user declares
+    // themselves a foreign user; the declaration is recorded, then the pick
+    // is applied.
+    if (isOverseasGroup(option) && !overseasConfirmed) {
+      setPendingOverseasGroup(selectedValue)
+      return
+    }
+    onValueChange(selectedValue)
   }
 
   return (
@@ -120,8 +155,11 @@ export function ApiKeyGroupCombobox({
         )}
         <span className='flex min-w-0 flex-1 items-center justify-between gap-2 sm:gap-3'>
           <span className='min-w-0'>
-            <span className='block truncate font-medium'>
-              {selectedOption?.label || placeholder || t('Select a group')}
+            <span className='flex min-w-0 items-center gap-1.5'>
+              <span className='block truncate font-medium'>
+                {selectedOption?.label || placeholder || t('Select a group')}
+              </span>
+              {isOverseasGroup(selectedOption) && <OverseasGroupBadge />}
             </span>
             {selectedOption?.desc && (
               <span className='text-muted-foreground block truncate text-[11px] sm:text-xs'>
@@ -188,8 +226,11 @@ export function ApiKeyGroupCombobox({
                       )}
                     />
                     <span className='min-w-0 flex-1'>
-                      <span className='block truncate font-medium'>
-                        {option.label}
+                      <span className='flex min-w-0 items-center gap-1.5'>
+                        <span className='block truncate font-medium'>
+                          {option.label}
+                        </span>
+                        {isOverseasGroup(option) && <OverseasGroupBadge />}
                       </span>
                       {option.desc && (
                         <span className='text-muted-foreground block truncate text-xs'>
@@ -209,6 +250,18 @@ export function ApiKeyGroupCombobox({
           </CommandList>
         </Command>
       </PopoverContent>
+      <OverseasDeclarationDialog
+        open={pendingOverseasGroup !== null}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) setPendingOverseasGroup(null)
+        }}
+        group={pendingOverseasGroup ?? undefined}
+        onConfirmed={() => {
+          const confirmedGroup = pendingOverseasGroup
+          setPendingOverseasGroup(null)
+          if (confirmedGroup) onValueChange(confirmedGroup)
+        }}
+      />
     </Popover>
   )
 }

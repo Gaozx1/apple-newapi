@@ -29,17 +29,41 @@ const (
 
 // BillingSetting is managed by config.GlobalConfig.Register.
 // DB keys: billing_setting.billing_mode, billing_setting.billing_expr,
-// billing_setting.plugin_billing_expr
+// billing_setting.plugin_billing_expr, billing_setting.minimum_charge_amount
 type BillingSetting struct {
 	BillingMode       map[string]string `json:"billing_mode"`
 	BillingExpr       map[string]string `json:"billing_expr"`
 	PluginBillingExpr map[string]string `json:"plugin_billing_expr"`
+	// MinimumChargeAmount is the smallest amount, in the displayed currency,
+	// that a settled request can be charged when its real cost is positive but
+	// rounds down to zero quota. Zero keeps such requests free.
+	MinimumChargeAmount float64 `json:"minimum_charge_amount"`
 }
 
+// DefaultMinimumChargeAmount is the built-in floor: $0.0001 per settled request.
+const DefaultMinimumChargeAmount = 0.0001
+
 var billingSetting = BillingSetting{
-	BillingMode:       make(map[string]string),
-	BillingExpr:       make(map[string]string),
-	PluginBillingExpr: make(map[string]string),
+	BillingMode:         make(map[string]string),
+	BillingExpr:         make(map[string]string),
+	PluginBillingExpr:   make(map[string]string),
+	MinimumChargeAmount: DefaultMinimumChargeAmount,
+}
+
+// MinimumChargeQuota converts the configured minimum charge into quota. The
+// floor only applies to a request whose real cost is positive, so a model that
+// is free by configuration still settles at zero.
+func MinimumChargeQuota() int {
+	amount := billingSetting.MinimumChargeAmount
+	if amount <= 0 {
+		return 0
+	}
+	quota, clamp := common.QuotaFromFloatChecked(amount * common.QuotaPerUnit)
+	if clamp != nil {
+		common.SysError(fmt.Sprintf("minimum charge amount %.6f clamped: %s", amount, clamp.Error()))
+		return 0
+	}
+	return quota
 }
 
 func init() {

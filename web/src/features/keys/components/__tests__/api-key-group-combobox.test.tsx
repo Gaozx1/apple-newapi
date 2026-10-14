@@ -16,8 +16,20 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { fireEvent, render, screen, within } from '@testing-library/react'
-import { describe, expect, test } from 'vitest'
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
+import { beforeEach, describe, expect, test, vi } from 'vitest'
+
+const { apiPostMock } = vi.hoisted(() => ({ apiPostMock: vi.fn() }))
+
+vi.mock('@/lib/api', () => ({
+  api: { post: apiPostMock },
+}))
 
 let shouldReduceMotion = false
 const reducedMotionMediaQuery = window.matchMedia('(prefers-reduced-motion)')
@@ -51,6 +63,16 @@ await i18n.use(initReactI18next).init({
         'Search...': 'Search...',
         'No group found.': 'No group found.',
         'Select a group': 'Select a group',
+        Overseas: 'Overseas',
+        'Overseas model declaration': 'Overseas model declaration',
+        'Confirm and continue': 'Confirm and continue',
+        'Declaration recorded': 'Declaration recorded',
+        'Group {{group}} serves overseas models. Declare that you are a foreign user to use it.':
+          'Group {{group}} serves overseas models. Declare that you are a foreign user to use it.',
+        'I confirm that I am a foreign user, not a mainland China user.':
+          'I confirm that I am a foreign user, not a mainland China user.',
+        'I understand that using overseas models is subject to the laws and policies of the model provider region, and I take responsibility for that use.':
+          'I understand that using overseas models is subject to the laws and policies of the model provider region, and I take responsibility for that use.',
       },
     },
   },
@@ -67,13 +89,24 @@ const options = [
   { value: 'vip', label: 'vip', desc: 'Priority group', ratio: 3 },
 ]
 
-function Harness(props: { initialValue: string }) {
+const overseasOptions = [
+  ...options,
+  {
+    value: 'overseas-group',
+    label: 'overseas-group',
+    desc: 'Overseas model routing',
+    ratio: 2,
+    region: 'overseas',
+  },
+]
+
+function Harness(props: { initialValue: string; options?: typeof options }) {
   const [value, setValue] = useState(props.initialValue)
 
   return (
     <I18nextProvider i18n={i18n}>
       <ApiKeyGroupCombobox
-        options={options}
+        options={props.options ?? options}
         value={value}
         onValueChange={setValue}
       />
@@ -220,5 +253,76 @@ describe('API key group combobox Auto effect', () => {
     expect(autoOption.querySelector('[data-auto-group-flow-border]')).toBe(null)
     expect(within(autoOption).getByText('Auto')).toBeInTheDocument()
     setReducedMotion(false)
+  })
+})
+
+describe('API key group combobox overseas declaration', () => {
+  beforeEach(async () => {
+    apiPostMock.mockReset()
+    const { useAuthStore } = await import('@/stores/auth-store')
+    useAuthStore.getState().auth.setUser(null)
+  })
+
+  test('keeps the previous group until the foreign-user declaration is recorded', async () => {
+    apiPostMock.mockResolvedValue({
+      data: { success: true, data: { overseas_confirmed_at: 1 } },
+    })
+    const { container } = render(
+      <Harness initialValue='default' options={overseasOptions} />
+    )
+
+    fireEvent.click(getTrigger())
+    const overseasOption = getCommandItem('overseas-group')
+    // The requirement is visible before the pick.
+    expect(within(overseasOption).getByText('Overseas')).toBeInTheDocument()
+    fireEvent.click(overseasOption)
+
+    // The pick is held back behind the declaration dialog.
+    expect(
+      await screen.findByText('Overseas model declaration')
+    ).toBeInTheDocument()
+    expect(within(container).getByTestId('selected-group')).toHaveTextContent(
+      'default'
+    )
+    expect(apiPostMock).not.toHaveBeenCalled()
+
+    for (const checkbox of screen.getAllByRole('checkbox')) {
+      fireEvent.click(checkbox)
+    }
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Confirm and continue' })
+    )
+
+    await waitFor(() =>
+      expect(within(container).getByTestId('selected-group')).toHaveTextContent(
+        'overseas-group'
+      )
+    )
+    expect(apiPostMock).toHaveBeenCalledWith('/api/user/overseas-confirm')
+  })
+
+  test('applies an overseas pick immediately once the user declared', async () => {
+    const { useAuthStore } = await import('@/stores/auth-store')
+    useAuthStore.getState().auth.setUser({
+      id: 1,
+      username: 'declared-user',
+      role: 1,
+      overseas_confirmed: true,
+    })
+
+    const { container } = render(
+      <Harness initialValue='default' options={overseasOptions} />
+    )
+
+    fireEvent.click(getTrigger())
+    fireEvent.click(getCommandItem('overseas-group'))
+
+    await waitFor(() =>
+      expect(within(container).getByTestId('selected-group')).toHaveTextContent(
+        'overseas-group'
+      )
+    )
+    expect(screen.queryByText('Overseas model declaration')).toBe(null)
+    expect(apiPostMock).not.toHaveBeenCalled()
   })
 })

@@ -11,8 +11,10 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/common/limiter"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/setting"
+	"github.com/QuantumNous/new-api/setting/user_level_setting"
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-redis/redis/v8"
@@ -197,6 +199,14 @@ func ModelRequestRateLimit() func(c *gin.Context) {
 			totalMaxCount = groupTotalCount
 			successMaxCount = groupSuccessCount
 		}
+
+		// 用户等级给出的分组限流与上面的配置取更宽松的一个（0 表示不限）
+		totalMaxCount, successMaxCount = user_level_setting.EffectiveGroupRateLimit(
+			model.GetContextUserRechargeAmount(c),
+			group,
+			totalMaxCount,
+			successMaxCount,
+		)
 
 		// 根据存储类型选择并执行限流处理器
 		if common.RedisEnabled {

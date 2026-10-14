@@ -18,6 +18,8 @@ var AutomaticDisableStatusCodeRanges = []StatusCodeRange{{Start: 401, End: 401}}
 
 // Default behavior matches legacy hardcoded retry rules in controller/relay.go shouldRetry:
 // retry for 1xx, 3xx, 4xx(except 400/408), 5xx(except 504/524), and no retry for 2xx.
+// 504/524 are excluded from the defaults but remain retryable when listed here,
+// so an upstream that times out can be retried without a code change.
 var AutomaticRetryStatusCodeRanges = []StatusCodeRange{
 	{Start: 100, End: 199},
 	{Start: 300, End: 399},
@@ -28,6 +30,11 @@ var AutomaticRetryStatusCodeRanges = []StatusCodeRange{
 	{Start: 525, End: 599},
 }
 
+// alwaysSkipRetryStatusCodes are the gateway-timeout codes that stay out of the
+// default retry ranges. Only task submissions consult this set directly, because
+// resubmitting a timed-out generation task can bill the upstream twice. The
+// relay path follows AutomaticRetryStatusCodeRanges alone, so an administrator
+// who lists these codes there does get relay retries.
 var alwaysSkipRetryStatusCodes = map[int]struct{}{
 	504: {},
 	524: {},
@@ -67,6 +74,9 @@ func AutomaticRetryStatusCodesFromString(s string) error {
 	return nil
 }
 
+// IsAlwaysSkipRetryStatusCode reports whether a status code is excluded from
+// retries regardless of AutomaticRetryStatusCodeRanges. Only task submissions
+// use it; the relay path honors the configured ranges instead.
 func IsAlwaysSkipRetryStatusCode(code int) bool {
 	_, exists := alwaysSkipRetryStatusCodes[code]
 	return exists
@@ -77,10 +87,11 @@ func IsAlwaysSkipRetryCode(errorCode types.ErrorCode) bool {
 	return exists
 }
 
+// ShouldRetryByStatusCode reports whether the configured retry ranges cover the
+// status code. The ranges are the single source of truth for the relay path: an
+// administrator who lists 504/524 there is asking for those retries, so the
+// hard exclusions do not veto them. 504/524 stay absent from the defaults.
 func ShouldRetryByStatusCode(code int) bool {
-	if IsAlwaysSkipRetryStatusCode(code) {
-		return false
-	}
 	return shouldMatchStatusCodeRanges(AutomaticRetryStatusCodeRanges, code)
 }
 

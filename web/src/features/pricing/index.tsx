@@ -46,6 +46,7 @@ export function Pricing() {
     models,
     vendors,
     groupRatio,
+    groupRegions,
     usableGroup,
     endpointMap,
     autoGroups,
@@ -217,6 +218,7 @@ export function Pricing() {
               vendors={vendors || []}
               groups={availableGroups}
               groupRatios={groupRatio}
+              groupRegions={groupRegions}
               tags={availableTags}
               models={models || []}
               hasActiveFilters={hasActiveFilters}

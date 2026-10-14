@@ -223,4 +223,26 @@ describe('pricing controls', () => {
     await user.keyboard('{Escape}')
     expect(await screen.findByRole('button', { name: /Filter/ })).toHaveFocus()
   })
+
+  it('marks a group that serves overseas models and leaves domestic groups unmarked', () => {
+    const props = toolbarProps()
+    render(
+      <PricingSidebar
+        {...props}
+        models={[]}
+        groupRegions={{ premium: 'overseas', default: 'domestic' }}
+      />
+    )
+
+    const overseasChip = screen.getByRole('button', { name: /premium/ })
+    expect(
+      within(overseasChip).getByRole('img', { name: 'Overseas' })
+    ).toBeInTheDocument()
+    expect(overseasChip).toHaveTextContent('x3')
+
+    const domesticChip = screen.getByRole('button', { name: /^default/ })
+    expect(
+      within(domesticChip).queryByRole('img', { name: 'Overseas' })
+    ).toBeNull()
+  })
 })

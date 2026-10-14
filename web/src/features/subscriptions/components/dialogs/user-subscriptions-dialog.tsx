@@ -62,6 +62,7 @@ import {
 import { formatTimestamp } from '../../lib'
 import type { PlanRecord, UserSubscriptionRecord } from '../../types'
 import { SubscriptionModelUsage } from '../subscription-model-usage'
+import { SubscriptionWindowUsage } from '../subscription-window-usage'
 
 interface Props {
   open: boolean
@@ -351,6 +352,10 @@ export function UserSubscriptionsDialog(props: Props) {
                     return (
                       <div className='min-w-0'>
                         <div className='text-sm tabular-nums'>{totalLabel}</div>
+                        <SubscriptionWindowUsage
+                          window5h={record.window_5h}
+                          window7d={record.window_7d}
+                        />
                         <SubscriptionModelUsage record={record} />
                       </div>
                     )

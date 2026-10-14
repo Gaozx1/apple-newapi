@@ -17,6 +17,7 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
+	"github.com/QuantumNous/new-api/setting/user_level_setting"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 )
@@ -394,9 +395,10 @@ func RecalculateTaskQuotaByTokens(ctx context.Context, task *model.Task, totalTo
 
 	// 获取用户和组的倍率信息
 	group := task.Group
-	if group == "" {
-		user, err := model.GetUserById(task.UserId, false)
-		if err == nil {
+	var rechargeAmount float64
+	if user, err := model.GetUserCache(task.UserId); err == nil {
+		rechargeAmount = user.RechargeAmount
+		if group == "" {
 			group = user.Group
 		}
 	}
@@ -413,6 +415,8 @@ func RecalculateTaskQuotaByTokens(ctx context.Context, task *model.Task, totalTo
 	} else {
 		finalGroupRatio = groupRatio
 	}
+	// 用户等级：与分组倍率冲突时取更优惠（更低）的一个
+	finalGroupRatio = user_level_setting.EffectiveGroupRatio(rechargeAmount, group, finalGroupRatio)
 
 	// 计算 OtherRatios 乘积（视频折扣、时长等）
 	otherMultiplier := 1.0

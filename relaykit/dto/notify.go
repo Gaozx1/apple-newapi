@@ -13,6 +13,9 @@ const (
 	NotifyTypeQuotaExceed   = "quota_exceed"
 	NotifyTypeChannelUpdate = "channel_update"
 	NotifyTypeChannelTest   = "channel_test"
+	// NotifyTypeJailbreakBan alerts administrators about an account banned by
+	// the anti-jailbreak guard.
+	NotifyTypeJailbreakBan = "jailbreak_ban"
 )
 
 func NewNotify(t string, title string, content string, values []any) Notify {

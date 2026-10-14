@@ -51,6 +51,22 @@ func TestShouldRetryHonorsPinRetryMode(t *testing.T) {
 	assert.Equal(t, service.PolicyDecision{Action: "stop", Reason: "pinned_channel", Source: "channel_constraint"}, service.DecideRelayRetry(token, openaiErr, 1), "token pin suppresses retry")
 }
 
+// Gateway timeouts stay non-retryable for task submissions even when the relay
+// retry ranges list them: resubmitting a timed-out generation task can bill the
+// upstream twice. The relay path is the one that honors the configured ranges.
+func TestTaskRetryKeepsGatewayTimeoutsNonRetryable(t *testing.T) {
+	previousRanges := operation_setting.AutomaticRetryStatusCodeRanges
+	t.Cleanup(func() { operation_setting.AutomaticRetryStatusCodeRanges = previousRanges })
+	operation_setting.AutomaticRetryStatusCodeRanges = []operation_setting.StatusCodeRange{{Start: 100, End: 599}}
+
+	for _, statusCode := range []int{http.StatusGatewayTimeout, 524} {
+		taskErr := &dto.TaskError{StatusCode: statusCode}
+		assert.Equal(t, service.PolicyDecision{Action: "stop", Reason: "system_retry_exclusion", Source: "system"}, decideTaskRetry(newPinRetryContext(), taskErr, 1),
+			"task submission %d must not retry", statusCode)
+	}
+	assert.Equal(t, service.PolicyDecision{Action: "retry", Reason: "retry_status_matched", Source: "system"}, decideTaskRetry(newPinRetryContext(), &dto.TaskError{StatusCode: http.StatusBadGateway}, 1))
+}
+
 func TestShouldRetryTaskRelayHonorsPinRetryMode(t *testing.T) {
 	taskErr := &dto.TaskError{StatusCode: http.StatusInternalServerError}
 

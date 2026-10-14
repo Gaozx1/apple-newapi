@@ -16,6 +16,8 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting"
+	"github.com/QuantumNous/new-api/setting/group_region_setting"
 	"github.com/QuantumNous/new-api/setting/model_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -364,4 +366,84 @@ func TestSetupContextForSelectedChannelRefusesSaturatedCredential(t *testing.T) 
 	service.ReleaseChannelSlot(c)
 	require.Nil(t, SetupContextForSelectedChannel(c, channel, "gpt-4o"))
 	service.ReleaseChannelSlot(c)
+}
+
+// A group marked as serving overseas models may only be used once the user
+// declared themselves a foreign user. Auto requests fall back to the domestic
+// candidates and are rejected only when every candidate serves overseas models.
+func TestRejectOverseasGroupWithoutDeclaration(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	require.NoError(t, i18n.Init())
+
+	previousUsableGroups := setting.UserUsableGroups2JSONString()
+	previousAutoGroups := setting.AutoGroups2JsonString()
+	previousRegions := group_region_setting.GetGroupRegionSetting().Groups.ReadAll()
+	t.Cleanup(func() {
+		require.NoError(t, setting.UpdateUserUsableGroupsByJSONString(previousUsableGroups))
+		require.NoError(t, setting.UpdateAutoGroupsByJsonString(previousAutoGroups))
+		groups := group_region_setting.GetGroupRegionSetting().Groups
+		groups.Clear()
+		groups.AddAll(previousRegions)
+	})
+	require.NoError(t, setting.UpdateUserUsableGroupsByJSONString(`{"default":"","vip":""}`))
+	require.NoError(t, setting.UpdateAutoGroupsByJsonString(`["vip","default"]`))
+	group_region_setting.GetGroupRegionSetting().Groups.AddAll(map[string]string{
+		"vip": group_region_setting.RegionOverseas,
+	})
+
+	for _, tc := range []struct {
+		name       string
+		usingGroup string
+		confirmed  bool
+		autoGroups string
+		wantReject bool
+	}{
+		{
+			name:       "an overseas group requires the declaration",
+			usingGroup: "vip",
+			wantReject: true,
+		},
+		{
+			name:       "a domestic group needs no declaration",
+			usingGroup: "default",
+		},
+		{
+			name:       "a declared user may use the overseas group",
+			usingGroup: "vip",
+			confirmed:  true,
+		},
+		{
+			name:       "auto keeps a domestic candidate",
+			usingGroup: "auto",
+		},
+		{
+			name:       "auto is rejected when every candidate serves overseas models",
+			usingGroup: "auto",
+			autoGroups: `["vip"]`,
+			wantReject: true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.autoGroups != "" {
+				require.NoError(t, setting.UpdateAutoGroupsByJsonString(tc.autoGroups))
+			}
+			recorder := httptest.NewRecorder()
+			ctx, _ := gin.CreateTestContext(recorder)
+			ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+			common.SetContextKey(ctx, constant.ContextKeyUserGroup, "default")
+			common.SetContextKey(ctx, constant.ContextKeyUsingGroup, tc.usingGroup)
+			common.SetContextKey(ctx, constant.ContextKeyUserOverseasConfirmed, tc.confirmed)
+
+			rejected := rejectOverseasGroupWithoutDeclaration(ctx)
+
+			assert.Equal(t, tc.wantReject, rejected)
+			if !tc.wantReject {
+				assert.False(t, ctx.IsAborted())
+				return
+			}
+			assert.Equal(t, http.StatusForbidden, ctx.Writer.Status())
+			assert.True(t, ctx.IsAborted())
+			assert.Contains(t, recorder.Body.String(), string(types.ErrorCodeOverseasDeclarationRequired))
+		})
+	}
 }

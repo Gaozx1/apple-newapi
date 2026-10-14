@@ -20,6 +20,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useMemo } from 'react'
 
 import { useStatus } from '@/hooks/use-status'
+import { readGroupRegions } from '@/lib/group-regions'
 import { requireServerSuccess } from '@/lib/server-error-message'
 
 import { getPricing } from '../api'
@@ -68,6 +69,7 @@ export function usePricingData(enabled = true) {
     models,
     vendors: data?.vendors ?? [],
     groupRatio: data?.group_ratio ?? {},
+    groupRegions: readGroupRegions(status as Record<string, unknown> | null),
     usableGroup: data?.usable_group ?? {},
     endpointMap: data?.supported_endpoint ?? {},
     autoGroups: data?.auto_groups ?? [],

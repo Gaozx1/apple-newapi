@@ -2,6 +2,7 @@ package openai
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -188,6 +189,11 @@ func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
 
 func (a *Adaptor) SetupRequestHeader(c *gin.Context, header *http.Header, info *relaycommon.RelayInfo) error {
 	channel.SetupApiRequestHeader(info, c, header)
+	if info.RelayMode == relayconstant.RelayModeImagesEdits && usesJSONImageEdit(c, info) {
+		// The image edit body is JSON even when the client sent multipart, so the
+		// upstream must not be told to expect a form.
+		header.Set("Content-Type", "application/json")
+	}
 	if info.ChannelType == constant.ChannelTypeAzure {
 		header.Set("api-key", info.ApiKey)
 		return nil
@@ -552,10 +558,6 @@ func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInf
 			return request, nil
 		}
 
-		var requestBody bytes.Buffer
-		writer := multipart.NewWriter(&requestBody)
-
-		writer.WriteField("model", request.Model)
 		// 使用已解析的 multipart 表单，避免重复解析
 		mf := c.Request.MultipartForm
 		if mf == nil {
@@ -567,106 +569,103 @@ func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInf
 			c.Request.PostForm = url.Values(form.Value)
 			mf = form
 		}
+		if mf == nil {
+			return nil, errors.New("no multipart form data found")
+		}
+
+		// ChannelSetting is promoted through the embedded *ChannelMeta, which
+		// is absent outside a real relay.
+		if info != nil && info.ChannelMeta != nil && info.ChannelSetting.ImageEditJSON {
+			payload, err := buildJSONImageEditRequest(request, mf)
+			if err != nil {
+				return nil, err
+			}
+			// The shared request header is left untouched: a retry re-runs this
+			// conversion, and a poisoned Content-Type would make the retry send
+			// the bare request struct without the image. SetupRequestHeader
+			// labels the outbound request as JSON instead.
+			return payload, nil
+		}
+
+		var requestBody bytes.Buffer
+		writer := multipart.NewWriter(&requestBody)
+
+		writer.WriteField("model", request.Model)
 
 		// 写入所有非文件字段
-		if mf != nil {
-			for key, values := range mf.Value {
-				if key == "model" {
-					continue
-				}
-				for _, value := range values {
-					writer.WriteField(key, value)
-				}
+		for key, values := range mf.Value {
+			if key == "model" {
+				continue
+			}
+			for _, value := range values {
+				writer.WriteField(key, value)
 			}
 		}
 
-		if mf != nil && mf.File != nil {
-			// Check if "image" field exists in any form, including array notation
-			var imageFiles []*multipart.FileHeader
-			var exists bool
+		imageFiles := imageEditFiles(mf)
+		if len(imageFiles) == 0 {
+			return nil, errors.New("image is required")
+		}
 
-			// First check for standard "image" field
-			if imageFiles, exists = mf.File["image"]; !exists || len(imageFiles) == 0 {
-				// If not found, check for "image[]" field
-				if imageFiles, exists = mf.File["image[]"]; !exists || len(imageFiles) == 0 {
-					// If still not found, iterate through all fields to find any that start with "image["
-					foundArrayImages := false
-					for fieldName, files := range mf.File {
-						if strings.HasPrefix(fieldName, "image[") && len(files) > 0 {
-							foundArrayImages = true
-							imageFiles = append(imageFiles, files...)
-						}
-					}
-
-					// If no image fields found at all
-					if !foundArrayImages && (len(imageFiles) == 0) {
-						return nil, errors.New("image is required")
-					}
-				}
+		// Process all image files
+		for i, fileHeader := range imageFiles {
+			file, err := fileHeader.Open()
+			if err != nil {
+				return nil, fmt.Errorf("failed to open image file %d: %w", i, err)
 			}
 
-			// Process all image files
-			for i, fileHeader := range imageFiles {
-				file, err := fileHeader.Open()
-				if err != nil {
-					return nil, fmt.Errorf("failed to open image file %d: %w", i, err)
-				}
-
-				// If multiple images, use image[] as the field name
-				fieldName := "image"
-				if len(imageFiles) > 1 {
-					fieldName = "image[]"
-				}
-
-				// Determine MIME type based on file extension
-				mimeType := detectImageMimeType(fileHeader.Filename)
-
-				// Create a form file with the appropriate content type
-				h := make(textproto.MIMEHeader)
-				h.Set("Content-Disposition", fmt.Sprintf(`form-data; name="%s"; filename="%s"`, fieldName, fileHeader.Filename))
-				h.Set("Content-Type", mimeType)
-
-				part, err := writer.CreatePart(h)
-				if err != nil {
-					return nil, fmt.Errorf("create form part failed for image %d: %w", i, err)
-				}
-
-				if _, err := io.Copy(part, file); err != nil {
-					return nil, fmt.Errorf("copy file failed for image %d: %w", i, err)
-				}
-
-				// 复制完立即关闭，避免在循环内使用 defer 占用资源
-				_ = file.Close()
+			// If multiple images, use image[] as the field name
+			fieldName := "image"
+			if len(imageFiles) > 1 {
+				fieldName = "image[]"
 			}
 
-			// Handle mask file if present
-			if maskFiles, exists := mf.File["mask"]; exists && len(maskFiles) > 0 {
-				maskFile, err := maskFiles[0].Open()
-				if err != nil {
-					return nil, errors.New("failed to open mask file")
-				}
-				// 复制完立即关闭，避免在循环内使用 defer 占用资源
+			// Determine MIME type based on file extension
+			mimeType := detectImageMimeType(fileHeader.Filename)
 
-				// Determine MIME type for mask file
-				mimeType := detectImageMimeType(maskFiles[0].Filename)
+			// Create a form file with the appropriate content type
+			h := make(textproto.MIMEHeader)
+			h.Set("Content-Disposition", fmt.Sprintf(`form-data; name="%s"; filename="%s"`, fieldName, fileHeader.Filename))
+			h.Set("Content-Type", mimeType)
 
-				// Create a form file with the appropriate content type
-				h := make(textproto.MIMEHeader)
-				h.Set("Content-Disposition", fmt.Sprintf(`form-data; name="mask"; filename="%s"`, maskFiles[0].Filename))
-				h.Set("Content-Type", mimeType)
-
-				maskPart, err := writer.CreatePart(h)
-				if err != nil {
-					return nil, errors.New("create form file failed for mask")
-				}
-
-				if _, err := io.Copy(maskPart, maskFile); err != nil {
-					return nil, errors.New("copy mask file failed")
-				}
-				_ = maskFile.Close()
+			part, err := writer.CreatePart(h)
+			if err != nil {
+				return nil, fmt.Errorf("create form part failed for image %d: %w", i, err)
 			}
-		} else {
-			return nil, errors.New("no multipart form data found")
+
+			if _, err := io.Copy(part, file); err != nil {
+				return nil, fmt.Errorf("copy file failed for image %d: %w", i, err)
+			}
+
+			// 复制完立即关闭，避免在循环内使用 defer 占用资源
+			_ = file.Close()
+		}
+
+		// Handle mask file if present
+		if maskFiles, exists := mf.File["mask"]; exists && len(maskFiles) > 0 {
+			maskFile, err := maskFiles[0].Open()
+			if err != nil {
+				return nil, errors.New("failed to open mask file")
+			}
+			// 复制完立即关闭，避免在循环内使用 defer 占用资源
+
+			// Determine MIME type for mask file
+			mimeType := detectImageMimeType(maskFiles[0].Filename)
+
+			// Create a form file with the appropriate content type
+			h := make(textproto.MIMEHeader)
+			h.Set("Content-Disposition", fmt.Sprintf(`form-data; name="mask"; filename="%s"`, maskFiles[0].Filename))
+			h.Set("Content-Type", mimeType)
+
+			maskPart, err := writer.CreatePart(h)
+			if err != nil {
+				return nil, errors.New("create form file failed for mask")
+			}
+
+			if _, err := io.Copy(maskPart, maskFile); err != nil {
+				return nil, errors.New("copy mask file failed")
+			}
+			_ = maskFile.Close()
 		}
 
 		// 关闭 multipart 编写器以设置分界线
@@ -679,11 +678,115 @@ func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInf
 	}
 }
 
+// imageEditFiles returns the reference images of an image edit form, accepting
+// the "image", "image[]" and "image[...]" field spellings OpenAI clients use.
+func imageEditFiles(form *multipart.Form) []*multipart.FileHeader {
+	if form == nil || form.File == nil {
+		return nil
+	}
+	if files := form.File["image"]; len(files) > 0 {
+		return files
+	}
+	if files := form.File["image[]"]; len(files) > 0 {
+		return files
+	}
+	var files []*multipart.FileHeader
+	for fieldName, fieldFiles := range form.File {
+		if strings.HasPrefix(fieldName, "image[") && len(fieldFiles) > 0 {
+			files = append(files, fieldFiles...)
+		}
+	}
+	return files
+}
+
+// maxImageEditJSONBytes bounds the bytes inlined into a JSON image edit so a
+// large upload cannot be expanded into an unbounded data URI.
+const maxImageEditJSONBytes = 32 << 20
+
+// buildJSONImageEditRequest renders a multipart image edit as the JSON payload
+// some upstreams require: each reference image travels inline as a data URI.
+// Only the documented edit fields are forwarded, because these upstreams
+// validate the body strictly.
+func buildJSONImageEditRequest(request dto.ImageRequest, form *multipart.Form) (map[string]any, error) {
+	imageFiles := imageEditFiles(form)
+	if len(imageFiles) == 0 {
+		return nil, errors.New("image is required")
+	}
+
+	payload := map[string]any{
+		"model":  request.Model,
+		"prompt": request.Prompt,
+	}
+	if request.N != nil {
+		payload["n"] = *request.N
+	}
+	if request.Size != "" {
+		payload["size"] = request.Size
+	}
+	if request.Quality != "" {
+		payload["quality"] = request.Quality
+	}
+
+	images := make([]map[string]string, 0, len(imageFiles))
+	for i, fileHeader := range imageFiles {
+		dataURI, err := imageDataURI(fileHeader)
+		if err != nil {
+			return nil, fmt.Errorf("failed to inline image %d: %w", i, err)
+		}
+		images = append(images, map[string]string{"url": dataURI})
+	}
+	if len(images) == 1 {
+		payload["image"] = images[0]
+	} else {
+		payload["images"] = images
+	}
+
+	if maskFiles := form.File["mask"]; len(maskFiles) > 0 {
+		dataURI, err := imageDataURI(maskFiles[0])
+		if err != nil {
+			return nil, fmt.Errorf("failed to inline mask: %w", err)
+		}
+		payload["mask"] = map[string]string{"url": dataURI}
+	}
+
+	return payload, nil
+}
+
+// imageDataURI inlines an uploaded image so a JSON image edit carries the same
+// bytes as the multipart form.
+func imageDataURI(fileHeader *multipart.FileHeader) (string, error) {
+	file, err := fileHeader.Open()
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	data, err := io.ReadAll(io.LimitReader(file, maxImageEditJSONBytes))
+	if err != nil {
+		return "", err
+	}
+	if len(data) == 0 {
+		return "", errors.New("empty image payload")
+	}
+	return "data:" + detectImageMimeType(fileHeader.Filename) + ";base64," + base64.StdEncoding.EncodeToString(data), nil
+}
+
 func isJSONRequest(c *gin.Context) bool {
 	if c == nil || c.Request == nil {
 		return false
 	}
 	return strings.HasPrefix(c.Request.Header.Get("Content-Type"), "application/json")
+}
+
+// usesJSONImageEdit reports whether an image edit request travels upstream as a
+// JSON body: the client already sent JSON, or the channel setting turns the
+// multipart form into one. It stays stable across retries because it reads the
+// channel setting instead of the (possibly rewritten) request header.
+func usesJSONImageEdit(c *gin.Context, info *relaycommon.RelayInfo) bool {
+	if isJSONRequest(c) {
+		return true
+	}
+	return info != nil && info.ChannelMeta != nil && info.ChannelSetting.ImageEditJSON
 }
 
 // detectImageMimeType determines the MIME type based on the file extension
@@ -780,7 +883,7 @@ func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommo
 func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, requestBody io.Reader) (any, error) {
 	if info.RelayMode == relayconstant.RelayModeAudioTranscription ||
 		info.RelayMode == relayconstant.RelayModeAudioTranslation ||
-		(info.RelayMode == relayconstant.RelayModeImagesEdits && !isJSONRequest(c)) {
+		(info.RelayMode == relayconstant.RelayModeImagesEdits && !usesJSONImageEdit(c, info)) {
 		return channel.DoFormRequest(a, c, info, requestBody)
 	} else if info.RelayMode == relayconstant.RelayModeRealtime {
 		return channel.DoWssRequest(a, c, info, requestBody)

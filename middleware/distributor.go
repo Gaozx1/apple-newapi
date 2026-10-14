@@ -98,6 +98,11 @@ func Distribute() func(c *gin.Context) {
 						common.SetContextKey(c, constant.ContextKeyUsingGroup, playgroundRequest.Group)
 					}
 				}
+				// Groups serving overseas models require the user's foreign-user
+				// declaration (settings → group regions).
+				if rejectOverseasGroupWithoutDeclaration(c) {
+					return
+				}
 			}
 		}
 		selectable := pinned || shouldSelectChannel
@@ -153,6 +158,23 @@ func Distribute() func(c *gin.Context) {
 			service.RecordChannelAffinity(c, channel.Id)
 		}
 	}
+}
+
+// rejectOverseasGroupWithoutDeclaration rejects a relay request that can only
+// be served by groups marked as overseas models while the user has not declared
+// themselves a foreign user. It writes the error response itself and reports
+// whether the request was rejected.
+func rejectOverseasGroupWithoutDeclaration(c *gin.Context) bool {
+	usingGroup := common.GetContextKeyString(c, constant.ContextKeyUsingGroup)
+	userGroup := common.GetContextKeyString(c, constant.ContextKeyUserGroup)
+	blocked := service.OverseasDeclarationBlockedGroup(userGroup, usingGroup, model.GetContextUserOverseasConfirmed(c))
+	if blocked == "" {
+		return false
+	}
+	abortWithOpenAiMessage(c, http.StatusForbidden,
+		i18n.T(c, i18n.MsgOverseasDeclarationRequired, map[string]any{"Group": blocked}),
+		types.ErrorCodeOverseasDeclarationRequired)
+	return true
 }
 
 // noAvailableChannelMessage explains a 503 for a task-plugin-claimed model.
@@ -274,6 +296,36 @@ func getModelFromRequest(c *gin.Context) (*ModelRequest, error) {
 		return nil, errors.New(i18n.T(c, i18n.MsgDistributorInvalidRequest, map[string]any{"Error": err.Error()}))
 	}
 	return &modelRequest, nil
+}
+
+// dispatchAntiJailbreakCheck hands this request to the channel's anti-jailbreak
+// classifier. The verdict runs in the background, so the relay is never delayed
+// by the judge model, and the body is only read (the storage stays replayable
+// for the relay itself).
+func dispatchAntiJailbreakCheck(c *gin.Context, channel *model.Channel, modelName string) {
+	settings := channel.GetSetting()
+	if !settings.AntiJailbreakEnabled || c.GetInt("id") <= 0 {
+		return
+	}
+	storage, err := common.GetBodyStorage(c)
+	if err != nil {
+		return
+	}
+	body, err := storage.Bytes()
+	if err != nil || len(body) == 0 {
+		return
+	}
+	service.DispatchJailbreakCheck(service.JailbreakCheckRequest{
+		UserId:      c.GetInt("id"),
+		ChannelId:   channel.Id,
+		ChannelName: channel.Name,
+		ModelName:   modelName,
+		RequestId:   c.GetString(common.RequestIdKey),
+		TokenId:     c.GetInt("token_id"),
+		TokenName:   c.GetString("token_name"),
+		Settings:    settings,
+		Body:        body,
+	})
 }
 
 func getModelFromJSONBody(c *gin.Context) (*ModelRequest, error) {
@@ -616,6 +668,7 @@ func SetupContextForSelectedChannel(c *gin.Context, channel *model.Channel, mode
 	common.SetContextKey(c, constant.ContextKeyChannelCreateTime, channel.CreatedTime)
 	common.SetContextKey(c, constant.ContextKeyChannelSetting, channel.GetSetting())
 	common.SetContextKey(c, constant.ContextKeyChannelOtherSetting, channel.GetOtherSettings())
+	dispatchAntiJailbreakCheck(c, channel, modelName)
 	switch channel.Type {
 	case constant.ChannelTypeTaskPlugin:
 		c.Set("task_plugin_key", channel.GetSetting().TaskPluginKey)
@@ -692,6 +745,7 @@ func SetupContextForSelectedChannel(c *gin.Context, channel *model.Channel, mode
 	common.SetContextKey(c, constant.ContextKeyChannelBaseUrl, channel.GetBaseURL())
 
 	common.SetContextKey(c, constant.ContextKeySystemPromptOverride, false)
+	common.SetContextKey(c, constant.ContextKeyChannelPromptInjectedAsUser, false)
 
 	// TODO: api_version统一
 	switch channel.Type {

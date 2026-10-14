@@ -143,6 +143,9 @@ var accessTokenRouteRules = map[string]accessTokenRouteRule{
 	"POST /api/subscription/admin/user_subscriptions/:id/invalidate": accessTokenScopeRule("billing:write"),
 	"DELETE /api/subscription/admin/user_subscriptions/:id":          accessTokenScopeRule("billing:write"),
 
+	// router/api-router.go: /api/jailbreak (admin review of intercepted prompts)
+	"GET /api/jailbreak/records": accessTokenScopeRule("log:read"),
+
 	// router/api-router.go: /api/option
 	"GET /api/option/":                                           accessTokenScopeRule("option:read"),
 	"GET /api/option/request_policy":                             accessTokenScopeRule("option:read"),
@@ -246,6 +249,16 @@ var accessTokenRouteRules = map[string]accessTokenRouteRule{
 	"GET /api/data/self":                        accessTokenScopeRule("usage:read"),
 	"GET /api/data/flow":                        accessTokenScopeRule("log:read"),
 	"GET /api/data/flow/self":                   accessTokenScopeRule("usage:read"),
+
+	// router/api-router.go: /api/offline-image. Reads follow the owner's own
+	// usage data; queuing a task spends quota like the other wallet writes, and
+	// deleting stays session-only because it also removes stored images.
+	"GET /api/offline-image/options":                 accessTokenScopeRule("profile:read"),
+	"GET /api/offline-image/tasks":                   accessTokenScopeRule("usage:read"),
+	"GET /api/offline-image/tasks/:id/images/:index": accessTokenScopeRule("usage:read"),
+	"GET /api/offline-image/tasks/:id/reference":     accessTokenScopeRule("usage:read"),
+	"POST /api/offline-image/tasks":                  accessTokenScopeRule("wallet:write"),
+	"DELETE /api/offline-image/tasks/:id":            accessTokenSessionRule,
 
 	// router/api-router.go: /api/group, /api/prefill_group
 	"GET /api/group/":               accessTokenScopeRule("group:read"),

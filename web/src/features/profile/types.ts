@@ -32,6 +32,29 @@ export interface ApiResponse<T = unknown> {
 }
 
 /**
+ * User level status resolved from the cumulative recharge amount. The ladder
+ * and its names are configured by the administrator.
+ */
+export interface UserLevelStatus {
+  /** Whether an administrator enabled the level ladder */
+  enabled: boolean
+  /** Whether the user already reached a level */
+  has_level: boolean
+  /** Level number, 1 for the lowest configured threshold */
+  number: number
+  /** Level name */
+  name: string
+  /** Cumulative recharge amount that unlocked the current level */
+  threshold: number
+  /** Whether a higher level exists */
+  has_next: boolean
+  next_number: number
+  next_name: string
+  /** Cumulative recharge amount that unlocks the next level */
+  next_threshold: number
+}
+
+/**
  * User profile data
  */
 export interface UserProfile {
@@ -53,6 +76,10 @@ export interface UserProfile {
   quota: number
   /** Total used quota */
   used_quota: number
+  /** Lifetime paid amount (wallet top-ups, subscriptions and redemption codes) */
+  recharge_amount?: number
+  /** Level status derived from the cumulative recharge amount */
+  user_level?: UserLevelStatus
   /** Total request count */
   request_count: number
   /** Account status (1=启用, 2=禁用, 3=待审核, 4=已删除) */
@@ -89,6 +116,10 @@ export interface UserProfile {
   avatar?: string
   /** Admin-granted free lottery draw chances */
   lottery_chances?: number
+  /** Whether the user declared themselves a foreign user (overseas groups) */
+  overseas_confirmed?: boolean
+  /** When the declaration was recorded */
+  overseas_confirmed_at?: number
 }
 
 /**

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -23,7 +24,13 @@ func applySystemPromptIfNeeded(c *gin.Context, info *relaycommon.RelayInfo, requ
 	if info == nil || request == nil {
 		return
 	}
-	if info.ChannelSetting.SystemPrompt == "" {
+	prompt := info.ChannelSetting.SystemPrompt
+	if prompt == "" {
+		return
+	}
+
+	if info.ChannelSetting.InjectsPromptAsUserMessage() {
+		applyChannelPromptToFirstUserMessage(c, request, prompt)
 		return
 	}
 
@@ -70,6 +77,28 @@ func applySystemPromptIfNeeded(c *gin.Context, info *relaycommon.RelayInfo, requ
 		request.Messages[i].Content = contents
 		return
 	}
+}
+
+// applyChannelPromptToFirstUserMessage prefixes the channel prompt to the first
+// user message. Operators pick this mode when the client sends its own system
+// prompt, because the prompt then travels with the user turn instead of a
+// system role the request may override or the upstream may drop.
+func applyChannelPromptToFirstUserMessage(c *gin.Context, request *dto.GeneralOpenAIRequest, prompt string) {
+	index := slices.IndexFunc(request.Messages, func(message dto.Message) bool {
+		return message.Role == "user"
+	})
+	if index < 0 {
+		request.Messages = append([]dto.Message{{Role: "user", Content: prompt}}, request.Messages...)
+	} else {
+		message := &request.Messages[index]
+		if message.IsStringContent() {
+			message.SetStringContent(dto.PrefixPrompt(prompt, message.StringContent()))
+		} else {
+			contents := message.ParseContent()
+			message.SetMediaContent(append([]dto.MediaContent{{Type: dto.ContentTypeText, Text: prompt}}, contents...))
+		}
+	}
+	common.SetContextKey(c, constant.ContextKeyChannelPromptInjectedAsUser, true)
 }
 
 func textRequestViaResponses(c *gin.Context, info *relaycommon.RelayInfo, adaptor channel.Adaptor, request any) (*dto.Usage, *types.NewAPIError) {

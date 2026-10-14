@@ -71,6 +71,10 @@ const (
 	ErrorCodeReadRequestBodyFailed ErrorCode = "read_request_body_failed"
 	ErrorCodeConvertRequestFailed  ErrorCode = "convert_request_failed"
 	ErrorCodeAccessDenied          ErrorCode = "access_denied"
+	// ErrorCodeOverseasDeclarationRequired is a local compliance decision: the
+	// request can only be served by groups marked as overseas models, and the
+	// user has not declared themselves a foreign user yet.
+	ErrorCodeOverseasDeclarationRequired ErrorCode = "overseas_declaration_required"
 
 	// request error
 	ErrorCodeBadRequestBody ErrorCode = "bad_request_body"

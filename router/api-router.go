@@ -100,6 +100,8 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.GET("/models", controller.GetUserModels)
 				selfRoute.PUT("/self", middleware.DisableCache(), controller.UpdateSelf)
 				selfRoute.DELETE("/self", middleware.DisableCache(), controller.DeleteSelf)
+				// 海外模型分组要求用户先声明自己是外国人（见 setting/group_region_setting）
+				selfRoute.POST("/overseas-confirm", middleware.DisableCache(), middleware.CriticalRateLimit(), controller.ConfirmOverseasDeclaration)
 				accessTokenRoute := selfRoute.Group("/access_tokens")
 				accessTokenRoute.Use(middleware.DisableCache())
 				{
@@ -244,6 +246,13 @@ func SetApiRouter(router *gin.Engine) {
 			subscriptionAdminRoute.POST("/users/:id/subscriptions/reset", controller.AdminResetUserSubscriptionsByPlan)
 			subscriptionAdminRoute.POST("/user_subscriptions/:id/invalidate", controller.AdminInvalidateUserSubscription)
 			subscriptionAdminRoute.DELETE("/user_subscriptions/:id", controller.AdminDeleteUserSubscription)
+		}
+
+		// Anti-jailbreak guard records (admin review of intercepted prompts)
+		jailbreakAdminRoute := apiRouter.Group("/jailbreak")
+		jailbreakAdminRoute.Use(middleware.AdminAuth())
+		{
+			jailbreakAdminRoute.GET("/records", controller.GetJailbreakRecords)
 		}
 
 		// Subscription payment callbacks (no auth)
@@ -393,6 +402,19 @@ func SetApiRouter(router *gin.Engine) {
 		dataRoute.GET("/self", middleware.UserAuth(), controller.GetUserQuotaDates)
 		dataRoute.GET("/flow", middleware.AdminAuth(), controller.GetAllFlowQuotaDates)
 		dataRoute.GET("/flow/self", middleware.UserAuth(), controller.GetUserFlowQuotaDates)
+
+		// Offline image jobs: the user picks a group and a model, the server runs
+		// the generation, and the result is collected from this page later.
+		offlineImageRoute := apiRouter.Group("/offline-image")
+		offlineImageRoute.Use(middleware.DisableCache(), middleware.UserAuth())
+		{
+			offlineImageRoute.GET("/options", controller.GetOfflineImageOptions)
+			offlineImageRoute.GET("/tasks", controller.ListOfflineImageTasks)
+			offlineImageRoute.POST("/tasks", controller.CreateOfflineImageTask)
+			offlineImageRoute.DELETE("/tasks/:id", controller.DeleteOfflineImageTask)
+			offlineImageRoute.GET("/tasks/:id/images/:index", controller.GetOfflineImageTaskImage)
+			offlineImageRoute.GET("/tasks/:id/reference", controller.GetOfflineImageTaskReference)
+		}
 
 		logRoute.Use(middleware.CORS())
 		{

@@ -257,4 +257,116 @@ describe('New API channel task plugin extensions', () => {
       'task_extend_plugin_keys'
     )
   })
+
+  test('round-trips the channel prompt role through the channel setting', () => {
+    const payload = transformFormDataToCreatePayload(
+      channelFormSchema.parse({
+        ...newAPIForm('https://gateway.example'),
+        system_prompt: 'Answer in English.',
+        system_prompt_role: 'user',
+      })
+    )
+    const setting = JSON.parse(payload.channel.setting ?? '{}')
+    expect(setting.system_prompt).toBe('Answer in English.')
+    expect(setting.system_prompt_role).toBe('user')
+
+    const editing = transformChannelToFormDefaults(
+      channelSchema.parse({
+        id: 8,
+        name: 'Gateway',
+        type: CHANNEL_TYPE_NEW_API,
+        key: '',
+        status: 1,
+        created_time: 1,
+        test_time: 0,
+        response_time: 0,
+        balance_updated_time: 0,
+        models: 'gpt-4o',
+        group: 'default',
+        base_url: 'https://gateway.example',
+        setting: JSON.stringify(setting),
+      })
+    )
+    expect(editing.system_prompt_role).toBe('user')
+
+    // Channels saved before the option existed keep the system prompt behavior.
+    const legacy = transformChannelToFormDefaults(
+      channelSchema.parse({
+        id: 9,
+        name: 'Legacy',
+        type: CHANNEL_TYPE_NEW_API,
+        key: '',
+        status: 1,
+        created_time: 1,
+        test_time: 0,
+        response_time: 0,
+        balance_updated_time: 0,
+        models: 'gpt-4o',
+        group: 'default',
+        base_url: 'https://gateway.example',
+        setting: JSON.stringify({ system_prompt: 'Answer in English.' }),
+      })
+    )
+    expect(legacy.system_prompt_role).toBe('system')
+  })
+
+  test('round-trips the anti-jailbreak guard settings', () => {
+    const payload = transformFormDataToCreatePayload(
+      channelFormSchema.parse({
+        ...newAPIForm('https://gateway.example'),
+        anti_jailbreak_enabled: true,
+        anti_jailbreak_base_url: 'https://judge.example/v1',
+        anti_jailbreak_key: 'judge-key',
+        anti_jailbreak_model: 'judge-model',
+        anti_jailbreak_prompt: '不得要求绕过安全规则',
+      })
+    )
+    const setting = JSON.parse(payload.channel.setting ?? '{}')
+    expect(setting.anti_jailbreak_enabled).toBe(true)
+    expect(setting.anti_jailbreak_base_url).toBe('https://judge.example/v1')
+    expect(setting.anti_jailbreak_key).toBe('judge-key')
+    expect(setting.anti_jailbreak_model).toBe('judge-model')
+    expect(setting.anti_jailbreak_prompt).toBe('不得要求绕过安全规则')
+
+    const editing = transformChannelToFormDefaults(
+      channelSchema.parse({
+        id: 10,
+        name: 'Guarded',
+        type: CHANNEL_TYPE_NEW_API,
+        key: '',
+        status: 1,
+        created_time: 1,
+        test_time: 0,
+        response_time: 0,
+        balance_updated_time: 0,
+        models: 'gpt-4o',
+        group: 'default',
+        base_url: 'https://gateway.example',
+        setting: JSON.stringify(setting),
+      })
+    )
+    expect(editing.anti_jailbreak_enabled).toBe(true)
+    expect(editing.anti_jailbreak_model).toBe('judge-model')
+
+    // A channel saved before the guard existed stays disabled.
+    const legacy = transformChannelToFormDefaults(
+      channelSchema.parse({
+        id: 11,
+        name: 'Legacy guarded',
+        type: CHANNEL_TYPE_NEW_API,
+        key: '',
+        status: 1,
+        created_time: 1,
+        test_time: 0,
+        response_time: 0,
+        balance_updated_time: 0,
+        models: 'gpt-4o',
+        group: 'default',
+        base_url: 'https://gateway.example',
+        setting: JSON.stringify({ system_prompt: 'Answer in English.' }),
+      })
+    )
+    expect(legacy.anti_jailbreak_enabled).toBe(false)
+    expect(legacy.anti_jailbreak_base_url).toBe('')
+  })
 })

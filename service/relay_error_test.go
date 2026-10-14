@@ -15,6 +15,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	kitdto "github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/system_setting"
 
 	"github.com/gin-gonic/gin"
@@ -139,7 +140,7 @@ func TestDecideRelayRetryReasons(t *testing.T) {
 		{name: "retry status matched", err: upstream(http.StatusTooManyRequests), retries: 1, want: PolicyDecision{Action: "retry", Reason: "retry_status_matched", Source: "global"}},
 		{name: "status outside retry rules", err: upstream(http.StatusBadRequest), retries: 1, want: PolicyDecision{Action: "stop", Reason: "status_not_retryable", Source: "global"}},
 		{name: "attempt budget exhausted", err: upstream(http.StatusTooManyRequests), retries: 0, want: PolicyDecision{Action: "stop", Reason: "attempt_budget_exhausted", Source: "global"}},
-		{name: "always skipped status", err: upstream(http.StatusGatewayTimeout), retries: 1, want: PolicyDecision{Action: "stop", Reason: "system_retry_exclusion", Source: "system"}},
+		{name: "gateway timeout outside the retry ranges", err: upstream(http.StatusGatewayTimeout), retries: 1, want: PolicyDecision{Action: "stop", Reason: "status_not_retryable", Source: "global"}},
 		{name: "success status never retries", err: upstream(http.StatusOK), retries: 1, want: PolicyDecision{Action: "stop", Reason: "system_retry_exclusion", Source: "system"}},
 		{name: "skip retry error", err: types.NewErrorWithStatusCode(errors.New("local"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry()), retries: 1, want: PolicyDecision{Action: "stop", Reason: "non_retryable_error", Source: "system"}},
 		{name: "channel error retries without budget", err: types.NewError(errors.New("no key"), types.ErrorCodeChannelNoAvailableKey), retries: 0, want: PolicyDecision{Action: "retry", Reason: "channel_error", Source: "system"}},
@@ -162,6 +163,26 @@ func TestDecideRelayRetryReasons(t *testing.T) {
 			assert.Equal(t, tc.want.Action == "retry", ShouldRetryRelayError(c, tc.err, tc.retries))
 		})
 	}
+}
+
+// A gateway timeout is retryable once the administrator lists it in
+// AutomaticRetryStatusCodes. This is the production case that motivated the
+// change: an image upstream answered 524 on roughly half of its requests, and
+// the hard-coded exclusion turned every one of them into a user-visible error.
+func TestDecideRelayRetryHonorsConfiguredGatewayTimeouts(t *testing.T) {
+	previousRanges := operation_setting.AutomaticRetryStatusCodeRanges
+	t.Cleanup(func() { operation_setting.AutomaticRetryStatusCodeRanges = previousRanges })
+
+	const statusGatewayTimeout524 = 524
+	gatewayTimeout := types.NewOpenAIError(errors.New("upstream"), types.ErrorCodeBadResponseStatusCode, statusGatewayTimeout524)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+
+	assert.Equal(t, PolicyDecision{Action: "stop", Reason: "status_not_retryable", Source: "global"}, DecideRelayRetry(c, gatewayTimeout, 1),
+		"524 stays out of the default retry ranges")
+
+	operation_setting.AutomaticRetryStatusCodeRanges = []operation_setting.StatusCodeRange{{Start: 100, End: 599}}
+	assert.Equal(t, PolicyDecision{Action: "retry", Reason: "retry_status_matched", Source: "global"}, DecideRelayRetry(c, gatewayTimeout, 1))
+	assert.True(t, ShouldRetryRelayError(c, gatewayTimeout, 1))
 }
 
 func TestRequestPolicyEventsReachLogAdminInfo(t *testing.T) {

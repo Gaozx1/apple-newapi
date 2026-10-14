@@ -49,7 +49,11 @@ import { taskUsageUnitLabel } from '@/features/pricing/lib/task-price-display'
 import type { BillingUsageSchema } from '@/features/pricing/types'
 import { getUserAvatarFallback, getUserAvatarStyle } from '@/lib/avatar'
 import { formatBillingCurrencyFromUSD } from '@/lib/currency'
-import { formatLogQuota, formatTimestampToDate } from '@/lib/format'
+import {
+  formatLogQuota,
+  formatPercent,
+  formatTimestampToDate,
+} from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { useSystemConfigStore } from '@/stores/system-config-store'
 
@@ -58,6 +62,7 @@ import type { UsageLog } from '../../data/schema'
 import {
   formatModelName,
   decodeBillingExprB64,
+  getCacheReadPercent,
   getTieredBillingSummary,
   hasAnyCacheTokens,
   parseLogOther,
@@ -332,6 +337,12 @@ function buildTypeDetailSegments(
     segments.push({
       text: t('System Prompt Override'),
       danger: true,
+    })
+  }
+
+  if (other.channel_prompt_injected_as_user) {
+    segments.push({
+      text: t('Channel Prompt In User Message'),
     })
   }
 
@@ -736,6 +747,7 @@ export function useCommonLogsColumns(
           const cacheWriteTokens = hasSplitCache
             ? cacheWrite5m + cacheWrite1h
             : other?.cache_creation_tokens || 0
+          const cacheReadPercent = getCacheReadPercent(other, promptTokens)
 
           return (
             <div className='flex flex-col gap-0.5'>
@@ -748,6 +760,8 @@ export function useCommonLogsColumns(
                   {cacheReadTokens > 0 && (
                     <span className='text-muted-foreground/60'>
                       {t('Cache')}↓ {cacheReadTokens.toLocaleString()}
+                      {cacheReadPercent !== null &&
+                        ` (${formatPercent(cacheReadPercent)})`}
                     </span>
                   )}
                   {cacheWriteTokens > 0 && (

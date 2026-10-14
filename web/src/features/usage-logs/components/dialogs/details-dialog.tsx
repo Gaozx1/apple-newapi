@@ -1128,6 +1128,21 @@ export function DetailsDialog(props: DetailsDialogProps) {
           />
         )}
 
+        {/* Channel prompt injected into the first user message */}
+        {other?.channel_prompt_injected_as_user && (
+          <DetailRow
+            label={t('Channel Prompt')}
+            value={
+              <StatusBadge
+                label={t('First user message')}
+                variant='blue'
+                size='sm'
+                copyable={false}
+              />
+            }
+          />
+        )}
+
         {other?.response_model && (
           <DetailSection label={t('Response Model')}>
             <ResponseModelDetails observation={other.response_model} />

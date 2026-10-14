@@ -71,8 +71,8 @@ import {
 } from '@/components/ui/sheet'
 import { Switch } from '@/components/ui/switch'
 import { getCurrencyDisplay, getCurrencyLabel } from '@/lib/currency'
-import { cn } from '@/lib/utils'
 import { handleServerError } from '@/lib/handle-server-error'
+import { cn } from '@/lib/utils'
 
 import {
   createPlan,
@@ -425,6 +425,80 @@ export function SubscriptionsMutateDrawer({
               <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
                 <FormField
                   control={form.control}
+                  name='window_5h_amount'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('5-hour quota limit')}</FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          type='number'
+                          min={0}
+                          step={tokensOnly ? 1 : 0.01}
+                          placeholder={
+                            tokensOnly
+                              ? t('Enter the 5-hour limit in tokens')
+                              : t('Enter the 5-hour limit in {{currency}}', {
+                                  currency: currencyLabel,
+                                })
+                          }
+                          onChange={(e) =>
+                            field.onChange(
+                              Number.parseFloat(e.target.value) || 0
+                            )
+                          }
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        {t(
+                          'Sliding-window limit: usage in the last 5 hours cannot exceed this quota. 0 disables the limit.'
+                        )}
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name='window_7d_amount'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('7-day quota limit')}</FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          type='number'
+                          min={0}
+                          step={tokensOnly ? 1 : 0.01}
+                          placeholder={
+                            tokensOnly
+                              ? t('Enter the 7-day limit in tokens')
+                              : t('Enter the 7-day limit in {{currency}}', {
+                                  currency: currencyLabel,
+                                })
+                          }
+                          onChange={(e) =>
+                            field.onChange(
+                              Number.parseFloat(e.target.value) || 0
+                            )
+                          }
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        {t(
+                          'Sliding-window limit: usage in the last 7 days cannot exceed this quota. 0 disables the limit.'
+                        )}
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
+                <FormField
+                  control={form.control}
                   name='upgrade_group'
                   render={({ field }) => (
                     <FormItem>
@@ -710,7 +784,9 @@ export function SubscriptionsMutateDrawer({
                             <FormControl>
                               <Input
                                 {...modelField}
-                                placeholder={t('Model name, e.g. deepseek-chat')}
+                                placeholder={t(
+                                  'Model name, e.g. deepseek-chat'
+                                )}
                               />
                             </FormControl>
                             <FormMessage />

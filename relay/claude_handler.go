@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -49,7 +50,9 @@ func ClaudeHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 	adaptor.Init(info)
 
 	if info.ChannelSetting.SystemPrompt != "" {
-		if request.System == nil {
+		if info.ChannelSetting.InjectsPromptAsUserMessage() {
+			applyChannelPromptToFirstClaudeUserMessage(c, request, info.ChannelSetting.SystemPrompt)
+		} else if request.System == nil {
 			request.SetStringSystem(info.ChannelSetting.SystemPrompt)
 		} else if info.ChannelSetting.SystemPromptOverride {
 			common.SetContextKey(c, constant.ContextKeySystemPromptOverride, true)
@@ -154,4 +157,27 @@ func ClaudeHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 
 	service.PostTextConsumeQuota(c, info, usage.(*dto.Usage), nil)
 	return nil
+}
+
+// applyChannelPromptToFirstClaudeUserMessage prefixes the channel prompt to the
+// first user turn, leaving the request's system prompt untouched.
+func applyChannelPromptToFirstClaudeUserMessage(c *gin.Context, request *dto.ClaudeRequest, prompt string) {
+	index := slices.IndexFunc(request.Messages, func(message dto.ClaudeMessage) bool {
+		return message.Role == "user"
+	})
+	if index < 0 {
+		request.Messages = append([]dto.ClaudeMessage{{Role: "user", Content: prompt}}, request.Messages...)
+	} else {
+		message := &request.Messages[index]
+		if message.IsStringContent() {
+			message.SetStringContent(dto.PrefixPrompt(prompt, message.GetStringContent()))
+		} else if contents, err := message.ParseContent(); err == nil {
+			promptPart := dto.ClaudeMediaMessage{Type: dto.ContentTypeText}
+			promptPart.SetText(prompt)
+			message.SetContent(append([]dto.ClaudeMediaMessage{promptPart}, contents...))
+		} else {
+			request.Messages = append([]dto.ClaudeMessage{{Role: "user", Content: prompt}}, request.Messages...)
+		}
+	}
+	common.SetContextKey(c, constant.ContextKeyChannelPromptInjectedAsUser, true)
 }

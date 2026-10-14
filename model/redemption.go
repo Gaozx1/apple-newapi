@@ -210,10 +210,15 @@ func Redeem(key string, userId int) (quota int, err error) {
 			if _, serr := CreateUserSubscriptionFromPlanTx(tx, userId, plan, "redemption"); serr != nil {
 				return serr
 			}
-			return nil
+			// 订阅兑换码按其套餐价格计入累计充值（与订阅购买口径一致）
+			return creditRechargeAmount(tx, userId, plan.PriceAmount, 0)
 		default:
 			// 兑换额度：走上游的余额上界校验入账，再叠加邀请返利
 			if err := creditTopUpQuota(tx, userId, redemption.Quota, nil); err != nil {
+				return err
+			}
+			// 兑换码按面值计入累计充值
+			if err := creditRedeemedQuotaAmount(tx, userId, redemption.Quota); err != nil {
 				return err
 			}
 			// 邀请充值返利（兑换码充值同样适用）
@@ -230,10 +235,11 @@ func Redeem(key string, userId int) (quota int, err error) {
 		RecordLog(userId, LogTypeTopup, fmt.Sprintf("通过兑换码获得 %d 次抽奖次数，兑换码ID %d", redemption.Value, redemption.Id))
 		return 0, nil
 	case RedemptionTypeSubscription:
+		syncRechargeCaches(userId, 0, "redemption subscription")
 		RecordLog(userId, LogTypeTopup, fmt.Sprintf("通过兑换码获得订阅套餐 (plan=%d)，兑换码ID %d", redemption.Value, redemption.Id))
 		return 0, nil
 	default:
-		syncCreditUserQuotaCache(userId, redemption.Quota, "redemption")
+		syncRechargeCaches(userId, redemption.Quota, "redemption")
 		RecordLog(userId, LogTypeTopup, fmt.Sprintf("通过兑换码充值 %s，兑换码ID %d", logger.LogQuota(redemption.Quota), redemption.Id))
 		return redemption.Quota, nil
 	}

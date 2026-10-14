@@ -19,6 +19,7 @@ import (
 	"github.com/QuantumNous/new-api/service/authz"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/setting/user_level_setting"
 
 	"github.com/QuantumNous/new-api/constant"
 
@@ -528,6 +529,30 @@ func GetSelf(c *gin.Context) {
 	return
 }
 
+// ConfirmOverseasDeclaration records the user's foreign-user declaration, which
+// groups serving overseas models require (settings → group regions). The
+// declaration is idempotent and answered with the stored timestamp.
+func ConfirmOverseasDeclaration(c *gin.Context) {
+	userId := c.GetInt("id")
+	if userId <= 0 {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	confirmedAt, err := model.ConfirmOverseasDeclaration(userId)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data": gin.H{
+			"overseas_confirmed":    true,
+			"overseas_confirmed_at": confirmedAt,
+		},
+	})
+}
+
 // buildSelfUserData is the single safe dashboard-user DTO used by GetSelf,
 // login and refresh. It intentionally excludes password, management PAT and
 // administrator-only remarks.
@@ -564,6 +589,12 @@ func buildSelfUserData(user *model.User) map[string]any {
 		"stripe_customer":   user.StripeCustomer,
 		"sidebar_modules":   userSetting.SidebarModules, // 正确提取sidebar_modules字段
 		"permissions":       permissions,
+		// 累计充值金额与据此解析出的用户等级（等级名称/门槛由管理员配置）
+		"recharge_amount": user.RechargeAmount,
+		"user_level":      user_level_setting.ResolveStatus(user.RechargeAmount),
+		// 海外模型使用声明状态（海外分组需要）
+		"overseas_confirmed":    user.OverseasConfirmedAt > 0,
+		"overseas_confirmed_at": user.OverseasConfirmedAt,
 	}
 }
 

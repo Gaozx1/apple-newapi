@@ -13,12 +13,14 @@ import (
 func SetTaskPluginProtocolRouter(router *gin.Engine) {
 	for _, protocol := range pluginruntime.HostProtocols() {
 		for _, operation := range protocol.Operations {
+			handlers, err := taskPluginProtocolHandlers(protocol.Name, operation.Name)
+			if err != nil {
+				panic(err)
+			}
 			for _, method := range operation.Methods {
-				handlers, err := taskPluginProtocolHandlers(protocol.Name, operation.Name)
-				if err != nil {
-					panic(err)
+				for _, path := range operation.Paths() {
+					router.Handle(method, path, handlers...)
 				}
-				router.Handle(method, operation.Path, handlers...)
 			}
 		}
 	}

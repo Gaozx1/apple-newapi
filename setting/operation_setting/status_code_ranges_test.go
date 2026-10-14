@@ -62,10 +62,22 @@ func TestShouldRetryByStatusCode(t *testing.T) {
 
 	require.True(t, ShouldRetryByStatusCode(429))
 	require.True(t, ShouldRetryByStatusCode(500))
-	require.False(t, ShouldRetryByStatusCode(504))
-	require.False(t, ShouldRetryByStatusCode(524))
 	require.False(t, ShouldRetryByStatusCode(400))
 	require.False(t, ShouldRetryByStatusCode(200))
+}
+
+// An administrator who lists a gateway timeout in the retry ranges gets those
+// retries. The hard exclusions only keep 504/524 out of the defaults, they do
+// not veto an explicit configuration. The 2xx exclusion lives in the relay
+// decision, not in these ranges.
+func TestShouldRetryByStatusCodeHonorsExplicitGatewayTimeoutRanges(t *testing.T) {
+	orig := AutomaticRetryStatusCodeRanges
+	t.Cleanup(func() { AutomaticRetryStatusCodeRanges = orig })
+
+	AutomaticRetryStatusCodeRanges = []StatusCodeRange{{Start: 100, End: 599}}
+
+	require.True(t, ShouldRetryByStatusCode(504))
+	require.True(t, ShouldRetryByStatusCode(524))
 }
 
 func TestShouldRetryByStatusCode_DefaultMatchesLegacyBehavior(t *testing.T) {
@@ -80,7 +92,13 @@ func TestShouldRetryByStatusCode_DefaultMatchesLegacyBehavior(t *testing.T) {
 	require.True(t, ShouldRetryByStatusCode(599))
 }
 
+// Task submissions consult this set directly and must keep excluding gateway
+// timeouts even when the relay retry ranges list them.
 func TestIsAlwaysSkipRetryStatusCode(t *testing.T) {
+	orig := AutomaticRetryStatusCodeRanges
+	t.Cleanup(func() { AutomaticRetryStatusCodeRanges = orig })
+	AutomaticRetryStatusCodeRanges = []StatusCodeRange{{Start: 100, End: 599}}
+
 	require.True(t, IsAlwaysSkipRetryStatusCode(504))
 	require.True(t, IsAlwaysSkipRetryStatusCode(524))
 	require.False(t, IsAlwaysSkipRetryStatusCode(500))

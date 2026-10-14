@@ -307,6 +307,8 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 			"waffo_pancake_product_id":   req.Plan.WaffoPancakeProductId,
 			"max_purchase_per_user":      req.Plan.MaxPurchasePerUser,
 			"total_amount":               req.Plan.TotalAmount,
+			"window_5h_amount":           req.Plan.Window5hAmount,
+			"window_7d_amount":           req.Plan.Window7dAmount,
 			"model_quotas":               req.Plan.ModelQuotas,
 			"model_token_quotas":         req.Plan.ModelTokenQuotas,
 			"usable_groups":              req.Plan.UsableGroups,
@@ -568,6 +570,9 @@ func AdminDeleteUserSubscription(c *gin.Context) {
 // count. Entries with non-positive values are rejected. usable_groups is a
 // comma-separated list; every group must exist in the group ratio settings.
 func normalizePlanQuotaConfig(plan *model.SubscriptionPlan) error {
+	if plan.Window5hAmount < 0 || plan.Window7dAmount < 0 {
+		return errors.New("5小时限额与7天限额不能为负数（0 表示不限额）")
+	}
 	trimmed := strings.TrimSpace(plan.ModelQuotas)
 	if trimmed == "" {
 		plan.ModelQuotas = ""

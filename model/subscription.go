@@ -182,6 +182,15 @@ type SubscriptionPlan struct {
 	// the plan funds requests only through per-model buckets)
 	TotalAmount int64 `json:"total_amount" gorm:"type:bigint;not null;default:0"`
 
+	// Sliding-window limits in quota units (0 = the window is not limited).
+	// Window5hAmount caps the cost consumed inside a rolling 5 hour window and
+	// Window7dAmount inside a rolling 7 day window; see
+	// model/subscription_window.go for the bucket-ring approximation. A plan may
+	// set TotalAmount to -1 and fund requests through these windows alone.
+	// The column names are explicit: GORM would derive "window5h_amount".
+	Window5hAmount int64 `json:"window_5h_amount" gorm:"column:window_5h_amount;type:bigint;not null;default:0"`
+	Window7dAmount int64 `json:"window_7d_amount" gorm:"column:window_7d_amount;type:bigint;not null;default:0"`
+
 	// Per-model quota buckets as JSON {"model": quota}. When non-empty, each
 	// model can only consume from its own bucket (buckets are not fungible) and
 	// TotalAmount is not used for funding. Empty = single shared pool.
@@ -348,6 +357,14 @@ type UserSubscription struct {
 	AmountTotal int64 `json:"amount_total" gorm:"type:bigint;not null;default:0"`
 	AmountUsed  int64 `json:"amount_used" gorm:"type:bigint;not null;default:0"`
 
+	// Sliding-window usage state as JSON {"anchor":unix,"buckets":[...]}, only
+	// maintained when the plan limits the matching window. Empty string and NULL
+	// both mean "no usage recorded yet".
+	// NOTE: no SQL default — MySQL 5.7 rejects TEXT defaults; the column names are
+	// explicit because GORM would derive "window5h_state".
+	Window5hState string `json:"window_5h_state" gorm:"column:window_5h_state;type:text"`
+	Window7dState string `json:"window_7d_state" gorm:"column:window_7d_state;type:text"`
+
 	// Per-model used amounts as JSON {"model": used}, only maintained when the
 	// plan defines model_quotas. Empty string and NULL both parse as no usage.
 	// NOTE: no SQL default — MySQL 5.7 rejects TEXT defaults.
@@ -439,6 +456,10 @@ type SubscriptionSummary struct {
 	// TokenUsed is the matching per-model usage in raw token counts.
 	ModelTokenQuotas map[string]int64 `json:"model_token_quotas,omitempty"`
 	TokenUsed        map[string]int64 `json:"token_used,omitempty"`
+	// Window5h / Window7d report the plan's sliding-window limits and the usage
+	// booked against them; nil when the plan does not limit that window.
+	Window5h *SubscriptionWindowUsage `json:"window_5h,omitempty"`
+	Window7d *SubscriptionWindowUsage `json:"window_7d,omitempty"`
 }
 
 type SubscriptionResetResult struct {
@@ -756,6 +777,10 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string, expectedP
 		if err != nil {
 			return err
 		}
+		// 订阅购买按其实际支付金额计入累计充值
+		if err := creditRechargeAmount(tx, order.UserId, order.Money, 0); err != nil {
+			return err
+		}
 		if subscription.PrevUserGroup != "" {
 			upgradeGroup = strings.TrimSpace(subscription.UpgradeGroup)
 		}
@@ -786,6 +811,7 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string, expectedP
 		refreshSubscriptionUserGroupCache(logUserId, "subscription payment completion")
 	}
 	if logUserId > 0 {
+		syncRechargeCaches(logUserId, 0, "subscription payment completion")
 		msg := fmt.Sprintf("订阅购买成功，套餐: %s，支付金额: %.2f，支付方式: %s", logPlanTitle, logMoney, logPaymentMethod)
 		RecordLog(logUserId, LogTypeTopup, msg)
 	}
@@ -947,6 +973,11 @@ func PurchaseSubscriptionWithBalance(userId int, planId int) error {
 			return err
 		}
 
+		// 余额购买订阅同样计入累计充值，金额为套餐价格
+		if err := creditRechargeAmount(tx, userId, plan.PriceAmount, 0); err != nil {
+			return err
+		}
+
 		now := common.GetTimestamp()
 		tradeNo := fmt.Sprintf("SUBBALUSR%dNO%s%d", userId, common.GetRandomString(6), time.Now().UnixNano())
 		order := &SubscriptionOrder{
@@ -985,6 +1016,7 @@ func PurchaseSubscriptionWithBalance(userId int, planId int) error {
 	if upgradeGroup != "" {
 		refreshSubscriptionUserGroupCache(userId, "subscription balance purchase")
 	}
+	syncRechargeCaches(userId, 0, "subscription balance purchase")
 	msg := fmt.Sprintf("使用余额购买订阅成功，套餐: %s，支付金额: %.2f，扣除额度: %d", logPlanTitle, logMoney, chargedQuota)
 	RecordLog(userId, LogTypeTopup, msg)
 	return nil
@@ -1074,6 +1106,7 @@ func buildSubscriptionSummaries(subs []UserSubscription) []SubscriptionSummary {
 				summary.ModelTokenQuotas = tokenQuotas
 				summary.TokenUsed = subCopy.ParseTokenUsed()
 			}
+			summary.Window5h, summary.Window7d = SubscriptionWindowUsages(plan, &subCopy, common.GetTimestamp())
 		}
 		result = append(result, summary)
 	}
@@ -1173,6 +1206,8 @@ func resetUserSubscriptionTx(tx *gorm.DB, sub *UserSubscription, plan *Subscript
 	sub.AmountUsed = 0
 	sub.ModelUsed = "{}"
 	sub.TokenUsed = "{}"
+	sub.Window5hState = ""
+	sub.Window7dState = ""
 	if advanceResetTime {
 		nextReset := calcNextResetTime(time.Unix(now, 0), plan, sub.EndTime)
 		sub.NextResetTime = nextReset
@@ -1411,9 +1446,13 @@ type SubscriptionPreConsumeRecord struct {
 	ModelName string `json:"model_name" gorm:"type:varchar(255);default:''"`
 	// Unit denominates PreConsumed: "quota" (default) or "token" for
 	// token-denominated per-model buckets.
-	Unit      string `json:"unit" gorm:"type:varchar(16);default:'quota'"`
-	CreatedAt int64  `json:"created_at" gorm:"bigint"`
-	UpdatedAt int64  `json:"updated_at" gorm:"type:bigint;index"`
+	Unit string `json:"unit" gorm:"type:varchar(16);default:'quota'"`
+	// WindowCharged is the quota amount booked against the plan's sliding
+	// windows, kept separately because PreConsumed is denominated in tokens for
+	// token-denominated buckets. Refunds restore the windows by this amount.
+	WindowCharged int64 `json:"window_charged" gorm:"column:window_charged;type:bigint;not null;default:0"`
+	CreatedAt     int64 `json:"created_at" gorm:"bigint"`
+	UpdatedAt     int64 `json:"updated_at" gorm:"type:bigint;index"`
 }
 
 func (r *SubscriptionPreConsumeRecord) BeforeCreate(tx *gorm.DB) error {
@@ -1461,6 +1500,8 @@ func maybeResetUserSubscriptionWithPlanTx(tx *gorm.DB, sub *UserSubscription, pl
 	sub.AmountUsed = 0
 	sub.ModelUsed = "{}"
 	sub.TokenUsed = "{}"
+	sub.Window5hState = ""
+	sub.Window7dState = ""
 	sub.LastResetTime = base.Unix()
 	sub.NextResetTime = next
 	return tx.Save(sub).Error
@@ -1544,6 +1585,17 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 			}
 			modelTokenQuotas := plan.ParseModelTokenQuotas()
 			modelQuotas := plan.ParseModelQuotas()
+
+			// Sliding-window limits cap every funding source of this
+			// subscription. A window without room skips this candidate, so the
+			// request can still be funded by another subscription or the wallet.
+			window5h, window7d, windowOk := chargePlanSubscriptionWindows(plan, &sub, now, amount)
+			if !windowOk {
+				continue
+			}
+			sub.Window5hState = window5h
+			sub.Window7dState = window7d
+
 			usedBefore := sub.AmountUsed
 			if len(modelTokenQuotas) > 0 || len(modelQuotas) > 0 {
 				// Bucket mode: the plan funds only via per-model buckets; the
@@ -1563,6 +1615,7 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 						Status:             "consumed",
 						ModelName:          modelName,
 						Unit:               "token",
+						WindowCharged:      amount,
 					}
 					if err := tx.Create(record).Error; err != nil {
 						var dup SubscriptionPreConsumeRecord
@@ -1618,6 +1671,7 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 					PreConsumed:        amount,
 					Status:             "consumed",
 					ModelName:          modelName,
+					WindowCharged:      amount,
 				}
 				if err := tx.Create(record).Error; err != nil {
 					var dup SubscriptionPreConsumeRecord
@@ -1654,9 +1708,9 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 				returnValue.Unit = "quota"
 				return nil
 			}
-			if plan.TotalAmount < 0 {
+			if plan.TotalAmount < 0 && plan.Window5hAmount <= 0 && plan.Window7dAmount <= 0 {
 				// TotalAmount == -1: no shared pool — the plan funds requests
-				// only through per-model buckets.
+				// only through per-model buckets or its sliding windows.
 				continue
 			}
 			if sub.AmountTotal > 0 {
@@ -1671,6 +1725,7 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 				UserSubscriptionId: sub.Id,
 				PreConsumed:        amount,
 				Status:             "consumed",
+				WindowCharged:      amount,
 			}
 			if err := tx.Create(record).Error; err != nil {
 				var dup SubscriptionPreConsumeRecord
@@ -1714,6 +1769,9 @@ func RefundSubscriptionPreConsume(requestId string) error {
 	if strings.TrimSpace(requestId) == "" {
 		return errors.New("requestId is empty")
 	}
+	// Read the clock before opening the transaction: GetDBTimestamp runs its own
+	// query and would block on SQLite's single connection.
+	now := GetDBTimestamp()
 	return DB.Transaction(func(tx *gorm.DB) error {
 		var record SubscriptionPreConsumeRecord
 		if err := lockForUpdate(tx).
@@ -1731,11 +1789,27 @@ func RefundSubscriptionPreConsume(requestId string) error {
 			if err := postConsumeUserSubscriptionTokenDeltaTx(tx, record.UserSubscriptionId, record.ModelName, -record.PreConsumed); err != nil {
 				return err
 			}
+			// Token draws are not quota-denominated, so the sliding windows —
+			// which are — must be restored explicitly. The quota paths above
+			// already move the windows with their own delta.
+			if record.WindowCharged > 0 {
+				var sub UserSubscription
+				if err := lockForUpdate(tx).
+					Where("id = ?", record.UserSubscriptionId).
+					First(&sub).Error; err != nil {
+					return err
+				}
+				sub.Window5hState = applySubscriptionWindowDelta(sub.Window5hState, subscriptionWindow5hBuckets, SubscriptionWindow5hSeconds, now, -record.WindowCharged)
+				sub.Window7dState = applySubscriptionWindowDelta(sub.Window7dState, subscriptionWindow7dBuckets, SubscriptionWindow7dSeconds, now, -record.WindowCharged)
+				if err := tx.Save(&sub).Error; err != nil {
+					return err
+				}
+			}
 		} else if record.ModelName != "" {
-			if err := postConsumeUserSubscriptionModelDeltaTx(tx, record.UserSubscriptionId, record.ModelName, -record.PreConsumed); err != nil {
+			if err := postConsumeUserSubscriptionModelDeltaTx(tx, record.UserSubscriptionId, record.ModelName, -record.PreConsumed, now); err != nil {
 				return err
 			}
-		} else if err := postConsumeUserSubscriptionDeltaTx(tx, record.UserSubscriptionId, -record.PreConsumed); err != nil {
+		} else if err := postConsumeUserSubscriptionDeltaTx(tx, record.UserSubscriptionId, -record.PreConsumed, now); err != nil {
 			return err
 		}
 		record.Status = "refunded"
@@ -1833,15 +1907,18 @@ func PostConsumeUserSubscriptionDelta(userSubscriptionId int, delta int64) error
 	if delta == 0 {
 		return nil
 	}
+	// Read the clock before opening the transaction: GetDBTimestamp runs its own
+	// query and would block on SQLite's single connection.
+	now := GetDBTimestamp()
 	return DB.Transaction(func(tx *gorm.DB) error {
-		return postConsumeUserSubscriptionDeltaTx(tx, userSubscriptionId, delta)
+		return postConsumeUserSubscriptionDeltaTx(tx, userSubscriptionId, delta, now)
 	})
 }
 
 // postConsumeUserSubscriptionDeltaTx is the transactional core of
 // PostConsumeUserSubscriptionDelta; reuse it inside an existing transaction
 // instead of nesting DB.Transaction calls.
-func postConsumeUserSubscriptionDeltaTx(tx *gorm.DB, userSubscriptionId int, delta int64) error {
+func postConsumeUserSubscriptionDeltaTx(tx *gorm.DB, userSubscriptionId int, delta int64, now int64) error {
 	var sub UserSubscription
 	if err := lockForUpdate(tx).
 		Where("id = ?", userSubscriptionId).
@@ -1856,7 +1933,19 @@ func postConsumeUserSubscriptionDeltaTx(tx *gorm.DB, userSubscriptionId int, del
 		return fmt.Errorf("subscription used exceeds total, used=%d total=%d", newUsed, sub.AmountTotal)
 	}
 	sub.AmountUsed = newUsed
+	applySubscriptionWindowDeltaToSubscription(&sub, now, delta)
 	return tx.Save(&sub).Error
+}
+
+// applySubscriptionWindowDeltaToSubscription books a settlement delta against the
+// subscription's sliding windows (positive consume, negative refund). Windows the
+// plan does not limit stay untouched because their state is still empty.
+func applySubscriptionWindowDeltaToSubscription(sub *UserSubscription, now, delta int64) {
+	if sub == nil || delta == 0 {
+		return
+	}
+	sub.Window5hState = applySubscriptionWindowDelta(sub.Window5hState, subscriptionWindow5hBuckets, SubscriptionWindow5hSeconds, now, delta)
+	sub.Window7dState = applySubscriptionWindowDelta(sub.Window7dState, subscriptionWindow7dBuckets, SubscriptionWindow7dSeconds, now, delta)
 }
 
 // PostConsumeUserSubscriptionModelDelta updates a per-model bucket on a
@@ -1872,15 +1961,18 @@ func PostConsumeUserSubscriptionModelDelta(userSubscriptionId int, modelName str
 	if delta == 0 {
 		return nil
 	}
+	// Read the clock before opening the transaction: GetDBTimestamp runs its own
+	// query and would block on SQLite's single connection.
+	now := GetDBTimestamp()
 	return DB.Transaction(func(tx *gorm.DB) error {
-		return postConsumeUserSubscriptionModelDeltaTx(tx, userSubscriptionId, modelName, delta)
+		return postConsumeUserSubscriptionModelDeltaTx(tx, userSubscriptionId, modelName, delta, now)
 	})
 }
 
 // postConsumeUserSubscriptionModelDeltaTx is the transactional core of
 // PostConsumeUserSubscriptionModelDelta; reuse it inside an existing
 // transaction instead of nesting DB.Transaction calls.
-func postConsumeUserSubscriptionModelDeltaTx(tx *gorm.DB, userSubscriptionId int, modelName string, delta int64) error {
+func postConsumeUserSubscriptionModelDeltaTx(tx *gorm.DB, userSubscriptionId int, modelName string, delta int64, now int64) error {
 	var sub UserSubscription
 	if err := lockForUpdate(tx).
 		Where("id = ?", userSubscriptionId).
@@ -1909,6 +2001,8 @@ func postConsumeUserSubscriptionModelDeltaTx(tx *gorm.DB, userSubscriptionId int
 		return err
 	}
 	sub.ModelUsed = string(modelUsedJson)
+	// Quota-denominated buckets also move the sliding windows.
+	applySubscriptionWindowDeltaToSubscription(&sub, now, delta)
 	return tx.Save(&sub).Error
 }
 

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -49,7 +50,9 @@ func GeminiHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 	adaptor.Init(info)
 
 	if info.ChannelSetting.SystemPrompt != "" {
-		if request.SystemInstructions == nil {
+		if info.ChannelSetting.InjectsPromptAsUserMessage() {
+			applyChannelPromptToFirstGeminiUserTurn(c, request, info.ChannelSetting.SystemPrompt)
+		} else if request.SystemInstructions == nil {
 			request.SystemInstructions = &dto.GeminiChatContent{
 				Parts: []dto.GeminiPart{
 					{Text: info.ChannelSetting.SystemPrompt},
@@ -154,6 +157,36 @@ func GeminiHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 
 	service.PostTextConsumeQuota(c, info, usage.(*dto.Usage), nil)
 	return nil
+}
+
+// applyChannelPromptToFirstGeminiUserTurn prefixes the channel prompt to the
+// first text part of the first user turn, leaving systemInstructions untouched.
+func applyChannelPromptToFirstGeminiUserTurn(c *gin.Context, request *dto.GeminiChatRequest, prompt string) {
+	index := slices.IndexFunc(request.Contents, func(content dto.GeminiChatContent) bool {
+		return content.Role == "user"
+	})
+	if index < 0 {
+		request.Contents = append([]dto.GeminiChatContent{{
+			Role:  "user",
+			Parts: []dto.GeminiPart{{Text: prompt}},
+		}}, request.Contents...)
+	} else {
+		parts := request.Contents[index].Parts
+		prefixed := false
+		for i := range parts {
+			if parts[i].Text == "" {
+				continue
+			}
+			parts[i].Text = dto.PrefixPrompt(prompt, parts[i].Text)
+			prefixed = true
+			break
+		}
+		if !prefixed {
+			parts = append([]dto.GeminiPart{{Text: prompt}}, parts...)
+		}
+		request.Contents[index].Parts = parts
+	}
+	common.SetContextKey(c, constant.ContextKeyChannelPromptInjectedAsUser, true)
 }
 
 func GeminiEmbeddingHandler(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types.NewAPIError) {

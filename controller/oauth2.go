@@ -14,6 +14,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
+	"github.com/QuantumNous/new-api/setting/user_level_setting"
 
 	"github.com/gin-gonic/gin"
 )
@@ -696,6 +697,8 @@ func OAuthPricing(c *gin.Context) {
 		if ratio, ok := ratio_setting.GetGroupGroupRatio(user.Group, g); ok {
 			groupRatio[g] = ratio
 		}
+		// 用户等级给出的倍率与分组倍率冲突时，展示更优惠的一个
+		groupRatio[g] = user_level_setting.EffectiveGroupRatio(user.RechargeAmount, g, groupRatio[g])
 	}
 	pricing = filterPricingByUsableGroups(pricing, usableGroup)
 

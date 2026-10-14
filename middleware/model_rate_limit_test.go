@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"slices"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -11,6 +12,8 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/setting"
+	"github.com/QuantumNous/new-api/setting/user_level_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -99,4 +102,73 @@ func TestModelMemoryRateLimitReservesConcurrentSuccessAdmission(t *testing.T) {
 	<-finished
 	assert.Equal(t, http.StatusOK, performRateLimitRequest(router, "/completed", "127.0.0.1:1000").Code)
 	assert.Equal(t, http.StatusTooManyRequests, performRateLimitRequest(router, "/completed", "127.0.0.1:1000").Code)
+}
+
+// A user level grant raises the request cap of the group it was given for: the
+// requests the configured group limit would reject must pass.
+func TestModelRequestRateLimitAppliesLevelGrant(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	previousRedis := common.RedisEnabled
+	previousEnabled := setting.ModelRequestRateLimitEnabled
+	previousDuration := setting.ModelRequestRateLimitDurationMinutes
+	previousCount := setting.ModelRequestRateLimitCount
+	previousSuccess := setting.ModelRequestRateLimitSuccessCount
+	previousGroups := setting.ModelRequestRateLimitGroup2JSONString()
+	common.RedisEnabled = false
+	setting.ModelRequestRateLimitEnabled = true
+	setting.ModelRequestRateLimitDurationMinutes = 60
+	setting.ModelRequestRateLimitCount = 0
+	setting.ModelRequestRateLimitSuccessCount = 1
+	require.NoError(t, setting.UpdateModelRequestRateLimitGroupByJSONString(`{"default":[0,1]}`))
+	t.Cleanup(func() {
+		common.RedisEnabled = previousRedis
+		setting.ModelRequestRateLimitEnabled = previousEnabled
+		setting.ModelRequestRateLimitDurationMinutes = previousDuration
+		setting.ModelRequestRateLimitCount = previousCount
+		setting.ModelRequestRateLimitSuccessCount = previousSuccess
+		require.NoError(t, setting.UpdateModelRequestRateLimitGroupByJSONString(previousGroups))
+	})
+
+	levelSetting := user_level_setting.GetUserLevelSetting()
+	previousLevelEnabled := levelSetting.Enabled
+	previousLevels := slices.Clone(levelSetting.Levels)
+	levelSetting.Enabled = true
+	levelSetting.Levels = []user_level_setting.UserLevel{{
+		Name:            "测试等级",
+		Threshold:       100,
+		GroupRateLimits: map[string][2]int{"default": {0, 3}},
+	}}
+	user_level_setting.RebuildLevelIndex()
+	t.Cleanup(func() {
+		levelSetting.Enabled = previousLevelEnabled
+		levelSetting.Levels = previousLevels
+		user_level_setting.RebuildLevelIndex()
+	})
+
+	for _, tc := range []struct {
+		name         string
+		amount       float64
+		wantStatuses []int
+	}{
+		{"the configured group cap applies below the threshold", 0, []int{http.StatusOK, http.StatusTooManyRequests}},
+		{"a higher grant raises the cap", 100, []int{http.StatusOK, http.StatusOK, http.StatusOK, http.StatusTooManyRequests}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			userID := 7300000 + int(modelRateLimitTestUsers.Add(1))
+			router := gin.New()
+			router.GET("/limited", func(c *gin.Context) {
+				c.Set("id", userID)
+				common.SetContextKey(c, constant.ContextKeyUserGroup, "default")
+				common.SetContextKey(c, constant.ContextKeyUserRechargeAmount, tc.amount)
+			}, ModelRequestRateLimit(), func(c *gin.Context) {
+				common.SetContextKey(c, constant.ContextKeyResponseStreamStatus, relaycommon.NewStreamStatus())
+				c.Status(http.StatusOK)
+			})
+
+			for i, want := range tc.wantStatuses {
+				assert.Equal(t, want, performRateLimitRequest(router, "/limited", "127.0.0.1:1000").Code, "request %d", i+1)
+			}
+		})
+	}
 }

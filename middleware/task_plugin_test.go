@@ -857,6 +857,85 @@ func TestPrepareTaskPluginEndpointAcceptsRegisteredVideoMultipartBody(t *testing
 	assert.Equal(t, http.StatusNoContent, recorder.Code)
 }
 
+// A vendor's own video path is a binding of the host's create operation, so the
+// plugin that owns the model claims it through the real middleware chain. An
+// unclaimed model on the same path still falls through to the ordinary relay.
+func TestPrepareTaskPluginEndpointClaimsVendorVideoAliasPath(t *testing.T) {
+	const key = "endpoint-video-alias-test"
+	_, err := jsplugin.DefaultRegistry.Register(taskProtocolPluginSource(
+		key,
+		"1.0.0",
+		`["alias-video-model"]`,
+		"/v1/videos",
+		`if (ctx.body.kind !== "json" || ctx.body.value.prompt !== "a cat") throw new Error("bad prompt");
+		 return {model: ctx.model, requestBody: {prompt: ctx.body.value.prompt, resolution: ctx.body.value.resolution}};`,
+	), jsplugin.Options{})
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, jsplugin.DefaultRegistry.Unregister(key)) })
+
+	for _, testCase := range []struct {
+		name         string
+		path         string
+		body         string
+		wantClaimed  bool
+		wantResponse string
+	}{
+		{
+			name:         "host path claims the declared model",
+			path:         "/v1/videos",
+			body:         `{"model":"alias-video-model","prompt":"a cat","resolution":"720p"}`,
+			wantClaimed:  true,
+			wantResponse: `"resolution":"720p"`,
+		},
+		{
+			name:         "vendor alias path claims the same model",
+			path:         "/v1/videos/generations",
+			body:         `{"model":"alias-video-model","prompt":"a cat","resolution":"1080p"}`,
+			wantClaimed:  true,
+			wantResponse: `"resolution":"1080p"`,
+		},
+		{
+			name:        "unclaimed model on the alias path falls through",
+			path:        "/v1/videos/generations",
+			body:        `{"model":"alias-unclaimed-model","prompt":"a cat"}`,
+			wantClaimed: false,
+		},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			var claimed bool
+			var decoded string
+			router := gin.New()
+			router.POST(
+				testCase.path,
+				PinTaskPluginEndpoint(),
+				PrepareTaskPluginEndpoint(),
+				func(c *gin.Context) {
+					_, claimed = c.Get(jsplugin.ContextKeyProtocolRequest)
+					if requestValue, exists := c.Get(jsplugin.ContextKeyProtocolRequest); exists {
+						if request, ok := requestValue.(jsplugin.ProtocolRequestContext); ok {
+							encoded, marshalErr := common.Marshal(request.Body)
+							require.NoError(t, marshalErr)
+							decoded = string(encoded)
+						}
+					}
+					c.Status(http.StatusNoContent)
+				},
+			)
+			request := httptest.NewRequest(http.MethodPost, testCase.path, strings.NewReader(testCase.body))
+			request.Header.Set("Content-Type", "application/json")
+			recorder := httptest.NewRecorder()
+
+			router.ServeHTTP(recorder, request)
+
+			assert.Equal(t, http.StatusNoContent, recorder.Code, recorder.Body.String())
+			assert.Equal(t, testCase.wantClaimed, claimed, "the alias path must be claimed exactly like the host path")
+			if testCase.wantResponse != "" {
+				assert.Contains(t, decoded, testCase.wantResponse, "the decoder must receive the vendor's own fields")
+			}
+		})
+	}
+}
+
 // The OpenAI Images edits endpoint accepts multipart uploads. Every file of a
 // repeated image[] field is exposed to the decoder with its own ref, and an
 // unclaimed model on the shared endpoint still reaches the ordinary relay.

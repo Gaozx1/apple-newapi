@@ -231,6 +231,45 @@ describe('model cards', () => {
     ).toBeVisible()
   })
 
+  it('lists image tier prices as their own labeled cells next to the token prices', () => {
+    render(
+      <ModelCard
+        model={pricingModel({
+          image_tier_price: {
+            enabled: true,
+            price_1k: 0.09,
+            price_2k: 0.02,
+            price_4k: 0.04,
+          },
+        })}
+        onClick={vi.fn()}
+      />
+    )
+
+    const inputCell = screen.getByText('Input').parentElement
+    if (!inputCell) {
+      throw new Error('Expected the input price cell to render')
+    }
+    expect(inputCell).toHaveTextContent(/\$2\s*\/\s*1M/)
+    expect(inputCell).toHaveAttribute('data-price-cell')
+
+    for (const [tier, price] of [
+      ['1K', 0.09],
+      ['2K', 0.02],
+      ['4K', 0.04],
+    ] as const) {
+      const label = screen.getByText(`Image ${tier}`)
+      const cell = label.parentElement
+      if (!cell) {
+        throw new Error(`Expected the ${tier} image tier cell to render`)
+      }
+      // Keep the tier label whole so a narrow card cannot break
+      // "Image 1K" across two lines.
+      expect(label).toHaveClass('whitespace-nowrap')
+      expect(cell).toHaveTextContent(new RegExp(`\\$${price}\\s*/\\s*request`))
+    }
+  })
+
   it('omits metadata fields when the model has no groups, endpoints or tags', () => {
     render(
       <ModelCard

@@ -122,6 +122,10 @@ func GenerateTextOtherInfo(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, m
 		other.SetPublic("is_system_prompt_overwritten", true)
 	}
 
+	if common.GetContextKeyBool(ctx, constant.ContextKeyChannelPromptInjectedAsUser) {
+		other.SetPublic("channel_prompt_injected_as_user", true)
+	}
+
 	AppendRelayLogAdminInfo(ctx, relayInfo, other)
 	AppendResponseModelLogInfo(relayInfo, other)
 	appendRequestPath(ctx, relayInfo, other)

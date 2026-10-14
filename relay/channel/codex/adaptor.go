@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/relay/channel"
 	"github.com/QuantumNous/new-api/relay/channel/openai"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
@@ -58,7 +59,14 @@ func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommo
 	if info != nil && info.ChannelSetting.SystemPrompt != "" {
 		systemPrompt := info.ChannelSetting.SystemPrompt
 
-		if len(request.Instructions) == 0 {
+		if info.ChannelSetting.InjectsPromptAsUserMessage() {
+			input, err := prefixChannelPromptToFirstUserInput(request.Input, systemPrompt)
+			if err != nil {
+				return nil, err
+			}
+			request.Input = input
+			common.SetContextKey(c, constant.ContextKeyChannelPromptInjectedAsUser, true)
+		} else if len(request.Instructions) == 0 {
 			if b, err := common.Marshal(systemPrompt); err == nil {
 				request.Instructions = b
 			} else {
@@ -107,6 +115,60 @@ func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommo
 	request.FrequencyPenalty = nil
 	request.PresencePenalty = nil
 	return request, nil
+}
+
+// prefixChannelPromptToFirstUserInput prefixes the channel prompt to the first
+// user message of a Responses `input`, which is either a plain string or a list
+// of input items. Existing items keep their shape: only the prompt text is added
+// as a leading content part of the first user item.
+func prefixChannelPromptToFirstUserInput(input json.RawMessage, prompt string) (json.RawMessage, error) {
+	if len(input) == 0 {
+		items := []map[string]any{responsesUserMessageItem(prompt)}
+		return common.Marshal(items)
+	}
+
+	var items []map[string]any
+	if err := common.Unmarshal(input, &items); err != nil {
+		var text string
+		if err := common.Unmarshal(input, &text); err != nil {
+			// An unknown input shape stays untouched rather than being rewritten.
+			return input, nil
+		}
+		// A plain string is a single user message: keep it one item and add the
+		// prompt as a leading content part, exactly like the item-list path.
+		item := responsesUserMessageItem(prompt)
+		item["content"] = []any{responsesInputTextPart(prompt), responsesInputTextPart(text)}
+		return common.Marshal([]map[string]any{item})
+	}
+
+	for _, item := range items {
+		if role, _ := item["role"].(string); role != "user" {
+			continue
+		}
+		switch content := item["content"].(type) {
+		case []any:
+			item["content"] = append([]any{responsesInputTextPart(prompt)}, content...)
+		case string:
+			item["content"] = []any{responsesInputTextPart(prompt), responsesInputTextPart(content)}
+		default:
+			item["content"] = []any{responsesInputTextPart(prompt)}
+		}
+		return common.Marshal(items)
+	}
+	items = append([]map[string]any{responsesUserMessageItem(prompt)}, items...)
+	return common.Marshal(items)
+}
+
+func responsesInputTextPart(text string) map[string]any {
+	return map[string]any{"type": "input_text", "text": text}
+}
+
+func responsesUserMessageItem(text string) map[string]any {
+	return map[string]any{
+		"type":    "message",
+		"role":    "user",
+		"content": []any{responsesInputTextPart(text)},
+	}
 }
 
 func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, requestBody io.Reader) (any, error) {
