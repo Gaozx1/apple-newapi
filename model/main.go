@@ -389,6 +389,17 @@ func migrateDB() error {
 		&Ticket{},
 		&TicketReply{},
 		&UserAccessToken{},
+		&StoreProduct{},
+		&StoreCdk{},
+		&StoreOrder{},
+		&StoreChannel{},
+		&StoreChannelOrder{},
+		&StoreChannelReport{},
+		&StoreChannelEarnings{},
+		&UserChannelGroup{},
+		&StoreGroupClaim{},
+		&StoreTicket{},
+		&StoreTicketMessage{},
 	)
 	if err != nil {
 		return err

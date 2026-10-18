@@ -476,7 +476,9 @@ function LevelCard(props: LevelCardProps) {
             remove: 'Remove group ratio',
           }}
           ratios={props.level.group_ratios}
-          onChange={(ratios) => props.onChange({ ...props.level, group_ratios: ratios })}
+          onChange={(ratios) =>
+            props.onChange({ ...props.level, group_ratios: ratios })
+          }
         />
         <GroupRateLimitRows
           groups={props.groups}
@@ -490,9 +492,7 @@ function LevelCard(props: LevelCardProps) {
   )
 }
 
-export function UserLevelSettingsSection(
-  props: UserLevelSettingsSectionProps
-) {
+export function UserLevelSettingsSection(props: UserLevelSettingsSectionProps) {
   const { t } = useTranslation()
   const updateOption = useUpdateOption()
   const [useVisualEditor, setUseVisualEditor] = useState(true)
@@ -551,7 +551,9 @@ export function UserLevelSettingsSection(
   }
 
   const addLevel = () => {
-    const used = new Set(levels.map((level) => Math.round(level.threshold * 100)))
+    const used = new Set(
+      levels.map((level) => Math.round(level.threshold * 100))
+    )
     setLevels([...levels, emptyLevel(groups, used)])
   }
 
@@ -630,7 +632,12 @@ export function UserLevelSettingsSection(
                 onRemove={() => removeLevel(index)}
               />
             ))}
-            <Button type='button' variant='outline' size='sm' onClick={addLevel}>
+            <Button
+              type='button'
+              variant='outline'
+              size='sm'
+              onClick={addLevel}
+            >
               <Plus className='mr-1 h-3.5 w-3.5' />
               {t('Add level')}
             </Button>

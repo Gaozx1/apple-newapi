@@ -67,7 +67,10 @@ export function UserTransferDialog(props: UserTransferDialogProps) {
   const [feeMode, setFeeMode] = useState<TransferFeeMode>('deduct')
 
   const transferQuota = parseQuotaFromDollars(amount)
-  const fee = transferQuota > 0 ? Math.max(1, Math.ceil(transferQuota * TRANSFER_FEE_RATE)) : 0
+  const fee =
+    transferQuota > 0
+      ? Math.max(1, Math.ceil(transferQuota * TRANSFER_FEE_RATE))
+      : 0
   const received = feeMode === 'deduct' ? transferQuota - fee : transferQuota
   const totalCharge = feeMode === 'deduct' ? transferQuota : transferQuota + fee
   const canTransfer =
@@ -88,7 +91,11 @@ export function UserTransferDialog(props: UserTransferDialogProps) {
 
   const handleConfirm = async () => {
     if (!canTransfer) return
-    const success = await props.onConfirm(username.trim(), transferQuota, feeMode)
+    const success = await props.onConfirm(
+      username.trim(),
+      transferQuota,
+      feeMode
+    )
     if (success) {
       props.onOpenChange(false)
     }

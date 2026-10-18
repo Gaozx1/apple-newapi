@@ -426,7 +426,38 @@ type postConsumeQuotaResult struct {
 
 func PostConsumeQuota(relayInfo *relaycommon.RelayInfo, quota int, preConsumedQuota int, sendEmail bool) error {
 	_, err := postConsumeQuotaWithResult(relayInfo, quota, preConsumedQuota, sendEmail)
+	if err == nil {
+		creditStoreChannelRevenue(relayInfo, quota)
+	}
 	return err
+}
+
+// creditStoreChannelRevenueForSettle is the hook the modern billing session path
+// uses; keeping one implementation makes the payout auditable in one place.
+func creditStoreChannelRevenueForSettle(relayInfo *relaycommon.RelayInfo, quota int) {
+	creditStoreChannelRevenue(relayInfo, quota)
+}
+
+// creditStoreChannelRevenue pays the merchant of a store channel the quota the
+// buyer consumed, minus the platform fee. A failure here never affects the
+// settlement itself; the ledger row keeps the payout auditable and idempotent.
+func creditStoreChannelRevenue(relayInfo *relaycommon.RelayInfo, quota int) {
+	if relayInfo == nil || relayInfo.ChannelMeta == nil || relayInfo.ChannelMeta.ChannelId <= 0 || quota <= 0 {
+		return
+	}
+	// The payout is a side effect of settlement: never let it break the response.
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			common.SysLog(fmt.Sprintf("store channel payout failed: %v", recovered))
+		}
+	}()
+	modelName := ""
+	if relayInfo != nil {
+		modelName = relayInfo.OriginModelName
+	}
+	if err := model.CreditStoreChannelRevenue(relayInfo.ChannelMeta.ChannelId, relayInfo.UserId, quota, relayInfo.RequestId, modelName); err != nil {
+		common.SysLog("failed to credit store channel revenue: " + err.Error())
+	}
 }
 
 func postConsumeQuotaWithResult(relayInfo *relaycommon.RelayInfo, quota int, preConsumedQuota int, sendEmail bool) (result postConsumeQuotaResult, err error) {

@@ -101,7 +101,11 @@ describe('InviteRelationshipSection', () => {
     previewInviterRebate.mockResolvedValue(preview)
     bindInviter.mockResolvedValue({
       success: true,
-      data: { inviter_id: 9, inviter_username: 'referrer', rebate_quota: 100_000 },
+      data: {
+        inviter_id: 9,
+        inviter_username: 'referrer',
+        rebate_quota: 100_000,
+      },
     })
     const onBound = renderSection()
 

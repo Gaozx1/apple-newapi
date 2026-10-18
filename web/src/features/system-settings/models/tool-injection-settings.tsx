@@ -1,3 +1,4 @@
+import { Check, Globe } from 'lucide-react'
 /*
 Copyright (C) 2023-2026 QuantumNous
 
@@ -19,7 +20,6 @@ For commercial licensing, please contact support@quantumnous.com
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { Check, Globe } from 'lucide-react'
 
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Label } from '@/components/ui/label'
@@ -121,7 +121,7 @@ export function ToolInjectionSettings({
                 key={tool.id}
                 disabled={!enabled}
                 onClick={() => toggleTool(tool.id)}
-                className='flex items-center justify-between rounded-lg border px-3 py-2 text-left text-sm transition-colors hover:bg-muted/40 disabled:cursor-not-allowed'
+                className='hover:bg-muted/40 flex items-center justify-between rounded-lg border px-3 py-2 text-left text-sm transition-colors disabled:cursor-not-allowed'
                 aria-pressed={checked}
               >
                 <span className='flex items-center gap-2'>

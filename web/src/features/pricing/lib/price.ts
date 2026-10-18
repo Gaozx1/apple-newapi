@@ -255,8 +255,7 @@ export function formatImageTierPrices(
 ): { tier: string; formatted: string }[] {
   const cfg = model.image_tier_price
   if (!cfg || !cfg.enabled) return []
-  const ratio =
-    groupRatioOverride ?? getDisplayGroupRatio(model, selectedGroup)
+  const ratio = groupRatioOverride ?? getDisplayGroupRatio(model, selectedGroup)
   const tiers: [string, number][] = [
     ['1K', cfg.price_1k],
     ['2K', cfg.price_2k],

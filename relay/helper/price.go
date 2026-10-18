@@ -47,6 +47,25 @@ func HandleGroupRatio(ctx *gin.Context, relayInfo *relaycommon.RelayInfo) hostty
 		GroupSpecialRatio: -1,
 	}
 
+	// A user-uploaded store channel bills with the merchant's own multiplier, so
+	// traffic that lands on that channel pays list price × its ratio. ChannelId
+	// lives on the embedded ChannelMeta, which stays nil on quota estimates.
+	if relayInfo != nil && relayInfo.ChannelMeta != nil && relayInfo.ChannelMeta.ChannelId > 0 {
+		channelId := relayInfo.ChannelMeta.ChannelId
+		if _, sellerId, storeRatio, isStoreChannel := model.StoreChannelByChannelId(channelId); isStoreChannel {
+			// The owner runs their own upstream for free; everyone else pays the
+			// price the owner listed it at.
+			billingRatio := storeRatio
+			if sellerId == relayInfo.UserId {
+				billingRatio = 0
+			}
+			groupRatioInfo.GroupRatio = billingRatio
+			groupRatioInfo.HasSpecialRatio = true
+			logger.LogDebug(ctx, "store channel %d bills with ratio %.4g", channelId, billingRatio)
+			return groupRatioInfo
+		}
+	}
+
 	// check auto group
 	autoGroup, exists := ctx.Get("auto_group")
 	if exists {

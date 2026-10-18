@@ -25,10 +25,10 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { TitledCard } from '@/components/ui/titled-card'
+import { getUserAvatarFallback, getUserAvatarStyle } from '@/lib/avatar'
 
 import { updateUserProfile } from '../api'
 import type { UserProfile } from '../types'
-import { getUserAvatarFallback, getUserAvatarStyle } from '@/lib/avatar'
 
 // ============================================================================
 // Avatar Card Component
@@ -116,11 +116,7 @@ export function AvatarCard({ profile, onProfileUpdate }: AvatarCardProps) {
         >
           {t('Cancel')}
         </Button>
-        <Button
-          size='sm'
-          onClick={handleSave}
-          disabled={saving || !hasChanges}
-        >
+        <Button size='sm' onClick={handleSave} disabled={saving || !hasChanges}>
           {saving ? t('Saving...') : t('Save Avatar')}
         </Button>
       </div>

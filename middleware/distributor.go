@@ -133,6 +133,19 @@ func Distribute() func(c *gin.Context) {
 					return
 				}
 			}
+			// A user-market channel only serves its owner and the users who
+			// claimed its group; everyone else skips to the next channel.
+			if channel != nil && !model.StoreChannelAccessAllowed(channel.Id, c.GetInt("id")) {
+				if pinned || !selectable || attempt >= service.MaxChannelAdmissionReselects {
+					abortWithOpenAiMessage(c, http.StatusForbidden, "该渠道属于用户分组，请先在分组市场领取后使用", types.ErrorCodeInvalidRequest)
+					return
+				}
+				service.GetChannelConstraints(c).AddFilter(taskdto.ChannelFilter{
+					Kind:               taskdto.FilterExcludedChannelIds,
+					ExcludedChannelIds: []int{channel.Id},
+				})
+				continue
+			}
 			common.SetContextKey(c, constant.ContextKeyRequestStartTime, time.Now())
 			setupErr = SetupContextForSelectedChannel(c, channel, modelRequest.Model)
 			if !service.IsChannelSaturatedError(setupErr) {

@@ -61,8 +61,8 @@ import {
 } from '../constants'
 import { getUserActionMessage } from '../lib'
 import type { User } from '../types'
-import { UserBindingDialog } from './dialogs/user-binding-dialog'
 import { GrantLotteryChancesDialog } from './dialogs/grant-lottery-chances-dialog'
+import { UserBindingDialog } from './dialogs/user-binding-dialog'
 import { useUsers } from './users-provider'
 
 const MANAGE_ACTION_TITLES: Record<AdminUserManageAction, string> = {

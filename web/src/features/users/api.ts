@@ -20,8 +20,8 @@ import type { AxiosRequestConfig } from 'axios'
 
 import type { PermissionCatalog } from '@/lib/admin-permissions'
 import { api } from '@/lib/api'
-import { encryptPassword } from '@/lib/password-crypto'
 import type { CustomOAuthBinding } from '@/lib/oauth'
+import { encryptPassword } from '@/lib/password-crypto'
 import { requireServerSuccess } from '@/lib/server-error-message'
 
 import type {

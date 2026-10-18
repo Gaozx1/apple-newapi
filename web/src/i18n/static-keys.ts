@@ -929,4 +929,9 @@ export const STATIC_I18N_KEYS = [
   'Requested count exceeds the limit',
   '{{count}} task(s)',
   'Offline image generation',
+  // SMS codes: form validation messages resolved from the form schema.
+  'Number is required',
+  'SMS keyword is required',
+  'Recipient is required',
+  'Content is required',
 ] as const

@@ -583,7 +583,12 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 		c.Set(common2.UpstreamRequestIdKey, upID)
 	}
 
-	_ = req.Body.Close()
+	// A request built without a body (for example a task plugin whose vendor
+	// takes every parameter in the query string) leaves req.Body nil, and
+	// closing it panics.
+	if req.Body != nil {
+		_ = req.Body.Close()
+	}
 	_ = c.Request.Body.Close()
 	return resp, nil
 }

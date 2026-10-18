@@ -58,7 +58,7 @@ export function OpenPlatform(props: OpenPlatformProps) {
       />
 
       <AnimateInView>
-        <div className='mx-auto max-w-6xl overflow-hidden rounded-3xl border bg-card/60 shadow-sm backdrop-blur-xs'>
+        <div className='bg-card/60 mx-auto max-w-6xl overflow-hidden rounded-3xl border shadow-sm backdrop-blur-xs'>
           <div className='grid gap-10 p-8 md:grid-cols-2 md:p-12'>
             {/* Left: heading + CTA */}
             <div className='flex flex-col items-start justify-center gap-5'>
@@ -77,7 +77,7 @@ export function OpenPlatform(props: OpenPlatformProps) {
                 )}
               </p>
 
-              <div className='flex flex-wrap items-center gap-4 text-xs text-muted-foreground'>
+              <div className='text-muted-foreground flex flex-wrap items-center gap-4 text-xs'>
                 <span className='inline-flex items-center gap-1.5'>
                   <ShieldCheck className='size-3.5 text-emerald-500' />
                   {t('Standard OAuth 2.0 flow')}
@@ -93,9 +93,7 @@ export function OpenPlatform(props: OpenPlatformProps) {
                 className='group mt-1 h-11 rounded-lg px-6 text-sm font-medium'
                 render={
                   <Link
-                    to={
-                      props.isAuthenticated ? '/oauth2-clients' : '/sign-up'
-                    }
+                    to={props.isAuthenticated ? '/oauth2-clients' : '/sign-up'}
                   />
                 }
               >
@@ -115,7 +113,7 @@ export function OpenPlatform(props: OpenPlatformProps) {
                     className={`rounded-xl border p-4 transition-colors ${
                       tier.free
                         ? 'border-emerald-500/40 bg-emerald-500/10'
-                        : 'bg-background/60 hover:border-sky-500/40 border-border/60'
+                        : 'bg-background/60 border-border/60 hover:border-sky-500/40'
                     }`}
                   >
                     <p className='text-muted-foreground text-[11px] font-medium tracking-wider uppercase'>

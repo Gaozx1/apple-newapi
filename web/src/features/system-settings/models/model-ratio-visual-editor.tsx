@@ -560,7 +560,8 @@ const ModelRatioVisualEditorComponent = forwardRef<
         PluginBillingExpr: pluginBillingExpr,
       })
       const updated = applyPricingDraft(options, data, targetNames)
-      for (const [key, value] of Object.entries(updated)) onChange(key, value)    },
+      for (const [key, value] of Object.entries(updated)) onChange(key, value)
+    },
     [
       modelPrice,
       modelRatio,

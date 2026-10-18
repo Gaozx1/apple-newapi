@@ -6,8 +6,10 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -241,4 +243,272 @@ func TestKlingNativeRouteSubmitPollSettleAndQuery(t *testing.T) {
 	assert.Contains(t, queryRecorder.Body.String(), `"task_status":"succeed"`)
 	assert.NotContains(t, queryRecorder.Body.String(), "kling-private-1")
 	assert.NotContains(t, queryRecorder.Body.String(), upstream.URL)
+}
+
+// A native submit route whose request descriptor carries no body must still
+// complete. d1jiema is such a plugin: every vendor parameter travels in the
+// query string, so the upstream request is built without a body and the relay
+// used to close the nil req.Body, panicking inside the plugin route.
+func TestD1jiemaBodylessNativeSubmitCompletesImmediately(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	service.InitHttpClient()
+
+	previousDB := model.DB
+	previousLogDB := model.LOG_DB
+	previousMainType, previousLogType := common.MainDatabaseType(), common.LogDatabaseType()
+	previousMemoryCache := common.MemoryCacheEnabled
+	previousRedisEnabled := common.RedisEnabled
+	previousIsMaster := common.IsMasterNode
+	previousSQLitePath := common.SQLitePath
+	previousPrices := ratio_setting.ModelPrice2JSONString()
+	previousGroups := ratio_setting.GroupRatio2JSONString()
+
+	common.SetDatabaseTypes(common.DatabaseTypeSQLite, common.DatabaseTypeSQLite)
+	common.IsMasterNode = true
+	common.MemoryCacheEnabled = false
+	common.BatchUpdateEnabled = false
+	common.LogConsumeEnabled = false
+	common.RedisEnabled = false
+	common.SQLitePath = filepath.Join(t.TempDir(), "d1jiema-route.db")
+	t.Setenv("SQL_DSN", "")
+	t.Setenv("LOG_SQL_DSN", "")
+	require.NoError(t, model.InitDB())
+	require.NoError(t, model.InitLogDB())
+	database := model.DB
+	require.NotNil(t, database)
+
+	t.Cleanup(func() {
+		model.DB = previousDB
+		model.LOG_DB = previousLogDB
+		common.SetDatabaseTypes(previousMainType, previousLogType)
+		common.MemoryCacheEnabled = previousMemoryCache
+		common.RedisEnabled = previousRedisEnabled
+		common.IsMasterNode = previousIsMaster
+		common.SQLitePath = previousSQLitePath
+		_ = ratio_setting.UpdateModelPriceByJSONString(previousPrices)
+		_ = ratio_setting.UpdateGroupRatioByJSONString(previousGroups)
+		if sqlDB, err := database.DB(); err == nil {
+			_ = sqlDB.Close()
+		}
+	})
+
+	require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(`{"getPhone":0.05}`))
+	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"default":1}`))
+
+	var upstreamQuery string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upstreamQuery = r.URL.RawQuery
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte("13012345678"))
+	}))
+	defer upstream.Close()
+
+	require.NoError(t, database.Create(&model.User{
+		Id: 1, Username: "sms", Group: "default", Quota: 1_000_000, Status: common.UserStatusEnabled,
+		AffCode: "sms1",
+	}).Error)
+	require.NoError(t, database.Create(&model.User{
+		Id: 2, Username: "sms-sub", Group: "default", Quota: 1_000_000, Status: common.UserStatusEnabled,
+		AffCode: "sms2",
+	}).Error)
+	token := &model.Token{
+		Id: 1, UserId: 1, Key: "smscode", Name: "sms", Status: common.TokenStatusEnabled,
+		ExpiredTime: -1, UnlimitedQuota: true, Group: "default",
+	}
+	require.NoError(t, database.Create(token).Error)
+	require.NoError(t, database.Create(&model.Token{
+		Id: 2, UserId: 2, Key: "smscodesub", Name: "sms-sub", Status: common.TokenStatusEnabled,
+		ExpiredTime: -1, UnlimitedQuota: true, Group: "default",
+	}).Error)
+	// The live deployment funds part of this feature from a subscription, so the
+	// billing session must survive that branch as well.
+	require.NoError(t, database.Create(&model.SubscriptionPlan{
+		Id: 1, Title: "sms-test", Enabled: true, DurationUnit: "month", DurationValue: 1,
+		TotalAmount: 10_000_000, Currency: "USD",
+	}).Error)
+	require.NoError(t, database.Create(&model.UserSubscription{
+		Id: 1, UserId: 2, PlanId: 1, AmountTotal: 10_000_000, AmountUsed: 0,
+		StartTime: time.Now().Unix() - 3600, EndTime: time.Now().Unix() + 30*86400,
+		Status: "active", AllowWalletOverflow: true,
+	}).Error)
+	setting := `{"task_plugin_key":"d1jiema"}`
+	channel := model.Channel{
+		Id: 1, Type: constant.ChannelTypeTaskPlugin, Name: "d1jiema", Key: "tok-123",
+		BaseURL: &upstream.URL, Models: "getPhone", Group: "default",
+		Status: common.ChannelStatusEnabled, Setting: &setting,
+	}
+	require.NoError(t, database.Create(&channel).Error)
+
+	generation := pluginruntime.DefaultRegistry.Generation()
+	require.NotNil(t, generation)
+	binding, found := generation.LookupDeclaredRoute(http.MethodPost, "/d1jiema/getPhone")
+	require.True(t, found)
+
+	for _, tc := range []struct {
+		funding string
+		user    *model.Token
+		want    string
+	}{
+		{"wallet", token, "(funding=wallet)"},
+		{"subscription", &model.Token{Id: 2, UserId: 2, Key: "smscodesub", Name: "sms-sub",
+			Status: common.TokenStatusEnabled, ExpiredTime: -1, UnlimitedQuota: true, Group: "default"},
+			"(funding=subscription)"},
+	} {
+		t.Run(tc.funding, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			c.Request = httptest.NewRequest(http.MethodPost, "/d1jiema/getPhone",
+				bytes.NewBufferString(`{"model":"getPhone","keyWord":"毛竹"}`))
+			c.Request.Header.Set("Content-Type", "application/json")
+			c.Set(pluginruntime.ContextKeyPinnedRoute, pluginruntime.PinnedRoute{
+				Generation: generation, Plugin: binding.Plugin, Route: binding.Route,
+			})
+			c.Set(pluginruntime.ContextKeyPinnedPlugin, pluginruntime.PinnedPlugin{
+				Generation: generation, Plugin: binding.Plugin,
+			})
+
+			middleware.PrepareTaskPluginRoute()(c)
+			require.False(t, c.IsAborted(), recorder.Body.String())
+			require.Nil(t, middleware.SetupContextForSelectedChannel(c, &channel, "getPhone"))
+			common.SetContextKey(c, constant.ContextKeyUserId, tc.user.UserId)
+			common.SetContextKey(c, constant.ContextKeyUserGroup, "default")
+			common.SetContextKey(c, constant.ContextKeyUsingGroup, "default")
+			common.SetContextKey(c, constant.ContextKeyUserQuota, 1_000_000)
+			require.NoError(t, middleware.SetupContextForToken(c, tc.user))
+
+			RelayTask(c)
+
+			require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+			assert.Contains(t, recorder.Body.String(), `"code":"ok"`)
+			assert.Contains(t, recorder.Body.String(), `"phone":"13012345678"`)
+			assert.Equal(t,
+				"code=getPhone&token=tok-123&keyWord=%E6%AF%9B%E7%AB%B9&cardType=%E5%85%A8%E9%83%A8",
+				upstreamQuery)
+		})
+	}
+
+	var persisted model.Task
+	require.NoError(t, database.Where("platform = ?", "d1jiema").Order("id desc").First(&persisted).Error)
+	assert.Equal(t, model.TaskStatus(model.TaskStatusSuccess), persisted.Status)
+	assert.Equal(t, "getPhone", persisted.Action)
+	assert.NotEmpty(t, persisted.PrivateData.UpstreamTaskID)
+}
+
+// A reading that has not received the message is not a delivery: the plugin
+// reports it as a terminal failure, so the host refunds the whole reservation
+// and a caller that keeps reading pays only for the read that returns the code.
+func TestD1jiemaUndeliveredReadIsRefunded(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	service.InitHttpClient()
+
+	previousDB := model.DB
+	previousLogDB := model.LOG_DB
+	previousMainType, previousLogType := common.MainDatabaseType(), common.LogDatabaseType()
+	previousMemoryCache := common.MemoryCacheEnabled
+	previousRedisEnabled := common.RedisEnabled
+	previousIsMaster := common.IsMasterNode
+	previousSQLitePath := common.SQLitePath
+	previousPrices := ratio_setting.ModelPrice2JSONString()
+	previousGroups := ratio_setting.GroupRatio2JSONString()
+
+	common.SetDatabaseTypes(common.DatabaseTypeSQLite, common.DatabaseTypeSQLite)
+	common.IsMasterNode = true
+	common.MemoryCacheEnabled = false
+	common.BatchUpdateEnabled = false
+	common.LogConsumeEnabled = false
+	common.RedisEnabled = false
+	common.SQLitePath = filepath.Join(t.TempDir(), "d1jiema-undelivered.db")
+	t.Setenv("SQL_DSN", "")
+	t.Setenv("LOG_SQL_DSN", "")
+	require.NoError(t, model.InitDB())
+	require.NoError(t, model.InitLogDB())
+	database := model.DB
+	require.NotNil(t, database)
+
+	t.Cleanup(func() {
+		model.DB = previousDB
+		model.LOG_DB = previousLogDB
+		common.SetDatabaseTypes(previousMainType, previousLogType)
+		common.MemoryCacheEnabled = previousMemoryCache
+		common.RedisEnabled = previousRedisEnabled
+		common.IsMasterNode = previousIsMaster
+		common.SQLitePath = previousSQLitePath
+		_ = ratio_setting.UpdateModelPriceByJSONString(previousPrices)
+		_ = ratio_setting.UpdateGroupRatioByJSONString(previousGroups)
+		if sqlDB, err := database.DB(); err == nil {
+			_ = sqlDB.Close()
+		}
+	})
+
+	require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(`{"getMsg":0.25}`))
+	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"default":1}`))
+
+	// The vendor answers this while the SMS has not been delivered.
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte("尚未收到包含关键字“毛竹”的短信，请5秒后再收取。[尚未收到]"))
+	}))
+	defer upstream.Close()
+
+	require.NoError(t, database.Create(&model.User{
+		Id: 1, Username: "sms", Group: "default", Quota: 1_000_000, Status: common.UserStatusEnabled,
+		AffCode: "sms1",
+	}).Error)
+	token := &model.Token{
+		Id: 1, UserId: 1, Key: "smscode", Name: "sms", Status: common.TokenStatusEnabled,
+		ExpiredTime: -1, UnlimitedQuota: true, Group: "default",
+	}
+	require.NoError(t, database.Create(token).Error)
+	setting := `{"task_plugin_key":"d1jiema"}`
+	channel := model.Channel{
+		Id: 1, Type: constant.ChannelTypeTaskPlugin, Name: "d1jiema", Key: "tok-123",
+		BaseURL: &upstream.URL, Models: "getMsg", Group: "default",
+		Status: common.ChannelStatusEnabled, Setting: &setting,
+	}
+	require.NoError(t, database.Create(&channel).Error)
+
+	generation := pluginruntime.DefaultRegistry.Generation()
+	require.NotNil(t, generation)
+	binding, found := generation.LookupDeclaredRoute(http.MethodPost, "/d1jiema/getMsg")
+	require.True(t, found)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/d1jiema/getMsg",
+		bytes.NewBufferString(`{"model":"getMsg","phone":"13012345678","keyWord":"毛竹"}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Set(pluginruntime.ContextKeyPinnedRoute, pluginruntime.PinnedRoute{
+		Generation: generation, Plugin: binding.Plugin, Route: binding.Route,
+	})
+	c.Set(pluginruntime.ContextKeyPinnedPlugin, pluginruntime.PinnedPlugin{
+		Generation: generation, Plugin: binding.Plugin,
+	})
+
+	middleware.PrepareTaskPluginRoute()(c)
+	require.False(t, c.IsAborted(), recorder.Body.String())
+	require.Nil(t, middleware.SetupContextForSelectedChannel(c, &channel, "getMsg"))
+	common.SetContextKey(c, constant.ContextKeyUserId, 1)
+	common.SetContextKey(c, constant.ContextKeyUserGroup, "default")
+	common.SetContextKey(c, constant.ContextKeyUsingGroup, "default")
+	common.SetContextKey(c, constant.ContextKeyUserQuota, 1_000_000)
+	require.NoError(t, middleware.SetupContextForToken(c, token))
+
+	RelayTask(c)
+
+	// The failure is presented through the route's own renderer, so the caller
+	// reads it from the envelope instead of the HTTP status.
+	require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+	assert.Contains(t, recorder.Body.String(), `"code":"error"`)
+	assert.Contains(t, recorder.Body.String(), "尚未收到")
+	assert.Contains(t, recorder.Body.String(), "本次不计费")
+
+	var refreshed model.User
+	require.NoError(t, database.First(&refreshed, 1).Error)
+	assert.Equal(t, 1_000_000, refreshed.Quota, "an undelivered read must not be charged")
+
+	var undelivered model.Task
+	require.NoError(t, database.Where("platform = ?", "d1jiema").First(&undelivered).Error)
+	assert.Equal(t, model.TaskStatus(model.TaskStatusFailure), undelivered.Status)
+	assert.Equal(t, 0, undelivered.Quota)
+	assert.Contains(t, undelivered.FailReason, "尚未收到")
 }

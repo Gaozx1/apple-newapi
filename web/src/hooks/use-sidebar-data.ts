@@ -31,6 +31,8 @@ import {
   LifeBuoy,
   ListTodo,
   MessageSquare,
+  MessageSquareCode,
+  ShoppingBag,
   PlugZap,
   Radio,
   ServerCog,
@@ -115,6 +117,16 @@ export function useSidebarData(): SidebarData {
             url: '/offline-image',
             icon: Images,
           },
+          {
+            title: t('SMS Codes'),
+            url: '/sms-code',
+            icon: MessageSquareCode,
+          },
+          {
+            title: t('Store'),
+            url: '/store',
+            icon: ShoppingBag,
+          },
         ],
       },
       {
@@ -150,6 +162,11 @@ export function useSidebarData(): SidebarData {
             title: t('Security & Access'),
             url: '/security',
             icon: ShieldCheck,
+          },
+          {
+            title: t('My groups'),
+            url: '/my-channels',
+            icon: Radio,
           },
         ],
       },

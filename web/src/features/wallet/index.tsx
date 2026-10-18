@@ -30,6 +30,7 @@ import { useSystemConfig } from '@/hooks/use-system-config'
 import { getSelf } from '@/lib/api'
 import { handleServerError } from '@/lib/handle-server-error'
 
+import { transferQuotaToUser } from './api'
 import { AffiliateRewardsCard } from './components/affiliate-rewards-card'
 import { BillingHistoryDialog } from './components/dialogs/billing-history-dialog'
 import { CreemConfirmDialog } from './components/dialogs/creem-confirm-dialog'
@@ -57,7 +58,6 @@ import {
   getMinTopupAmount,
   dispatchSelectedPayment,
 } from './lib'
-import { transferQuotaToUser } from './api'
 import type {
   UserWalletData,
   PaymentMethod,

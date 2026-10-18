@@ -112,7 +112,6 @@ export async function login(payload: LoginPayload): Promise<LoginResponse> {
     }
     throw error
   }
-
 }
 
 // Two-factor authentication login

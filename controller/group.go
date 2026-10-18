@@ -30,7 +30,7 @@ func GetUserGroups(c *gin.Context) {
 	rechargeAmount := model.GetContextUserRechargeAmount(c)
 	userId := c.GetInt("id")
 	userGroup, _ = model.GetUserGroup(userId, false)
-	userUsableGroups := service.GetUserUsableGroups(userGroup)
+	userUsableGroups := model.FilterOwnedOrClaimedUserGroups(service.GetUserUsableGroups(userGroup), userId)
 	for groupName, _ := range ratio_setting.GetGroupRatioCopy() {
 		// UserUsableGroups contains the groups that the user can use
 		if desc, ok := userUsableGroups[groupName]; ok {

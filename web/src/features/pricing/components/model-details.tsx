@@ -80,7 +80,11 @@ import {
 import { parseTags } from '../lib/filters'
 import { getAvailableGroups, isTokenBasedModel } from '../lib/model-helpers'
 import { withPluginPricing } from '../lib/plugin-pricing'
-import { formatFixedPrice, formatGroupPrice, formatImageTierPrices } from '../lib/price'
+import {
+  formatFixedPrice,
+  formatGroupPrice,
+  formatImageTierPrices,
+} from '../lib/price'
 import {
   evaluateTaskUsageExamples,
   getTaskEnumFields,

@@ -23,6 +23,7 @@ func RegisterScheduledSystemTasks() {
 	service.RegisterSystemTaskHandler(midjourneyPollHandler{})
 	service.RegisterSystemTaskHandler(asyncTaskPollHandler{})
 	service.RegisterSystemTaskHandler(offlineImageHandler{})
+	service.RegisterSystemTaskHandler(storeChannelHealthHandler{})
 }
 
 // channelTestHandler runs the scheduled "test all channels" job. Enablement and
@@ -151,6 +152,28 @@ func (asyncTaskPollHandler) NewPayload() any { return nil }
 func (asyncTaskPollHandler) Run(ctx context.Context, task *model.SystemTask, runnerID string) {
 	summary := service.RunTaskPollingOnce(ctx, service.NewSystemTaskProgressReporter(task, runnerID))
 	finishSystemTaskHandler(task, runnerID, model.SystemTaskStatusSucceeded, summary, nil)
+}
+
+// storeChannelHealthHandler refreshes the rolling error sample of every user
+// channel and disables the ones above 80% failures. It is cheap: one grouped
+// log query per offer that has been sold.
+type storeChannelHealthHandler struct{}
+
+func (storeChannelHealthHandler) Type() string { return model.SystemTaskTypeStoreChannelHealth }
+
+func (storeChannelHealthHandler) Enabled() bool { return true }
+
+func (storeChannelHealthHandler) Interval() time.Duration { return 5 * time.Minute }
+
+func (storeChannelHealthHandler) NewPayload() any { return nil }
+
+func (storeChannelHealthHandler) Run(ctx context.Context, task *model.SystemTask, runnerID string) {
+	disabled, err := model.RefreshStoreChannelHealth()
+	if err != nil {
+		finishSystemTaskHandler(task, runnerID, model.SystemTaskStatusFailed, nil, err)
+		return
+	}
+	finishSystemTaskHandler(task, runnerID, model.SystemTaskStatusSucceeded, map[string]any{"disabled": disabled}, nil)
 }
 
 func finishSystemTaskHandler(task *model.SystemTask, runnerID string, status model.SystemTaskStatus, result any, runErr error) {

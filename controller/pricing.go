@@ -58,7 +58,7 @@ func GetPricing(c *gin.Context) {
 		}
 	}
 
-	usableGroup = service.GetUserUsableGroups(group)
+	usableGroup = model.FilterModelSquareUserGroups(service.GetUserUsableGroups(group), c.GetInt("id"))
 	pricing = filterPricingByUsableGroups(pricing, usableGroup)
 	// check groupRatio contains usableGroup
 	for group := range ratio_setting.GetGroupRatioCopy() {

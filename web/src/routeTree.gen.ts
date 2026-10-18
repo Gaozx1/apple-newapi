@@ -47,12 +47,15 @@ import { Route as AuthenticatedKeysIndexRouteImport } from './routes/_authentica
 import { Route as AuthenticatedLotteryIndexRouteImport } from './routes/_authenticated/lottery/index'
 import { Route as AuthenticatedModelsIndexRouteImport } from './routes/_authenticated/models/index'
 import { Route as AuthenticatedModelsSectionRouteImport } from './routes/_authenticated/models/$section'
+import { Route as AuthenticatedMyChannelsIndexRouteImport } from './routes/_authenticated/my-channels/index'
 import { Route as AuthenticatedOauth2ClientsIndexRouteImport } from './routes/_authenticated/oauth2-clients/index'
 import { Route as AuthenticatedOfflineImageIndexRouteImport } from './routes/_authenticated/offline-image/index'
 import { Route as AuthenticatedPlaygroundIndexRouteImport } from './routes/_authenticated/playground/index'
 import { Route as AuthenticatedProfileIndexRouteImport } from './routes/_authenticated/profile/index'
 import { Route as AuthenticatedRedemptionCodesIndexRouteImport } from './routes/_authenticated/redemption-codes/index'
 import { Route as AuthenticatedSecurityIndexRouteImport } from './routes/_authenticated/security/index'
+import { Route as AuthenticatedSmsCodeIndexRouteImport } from './routes/_authenticated/sms-code/index'
+import { Route as AuthenticatedStoreIndexRouteImport } from './routes/_authenticated/store/index'
 import { Route as AuthenticatedSubscriptionsIndexRouteImport } from './routes/_authenticated/subscriptions/index'
 import { Route as AuthenticatedSystemInfoIndexRouteImport } from './routes/_authenticated/system-info/index'
 import { Route as AuthenticatedSystemSettingsIndexRouteImport } from './routes/_authenticated/system-settings/index'
@@ -280,6 +283,12 @@ const AuthenticatedModelsSectionRoute =
     path: '/models/$section',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedMyChannelsIndexRoute =
+  AuthenticatedMyChannelsIndexRouteImport.update({
+    id: '/my-channels/',
+    path: '/my-channels/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedOauth2ClientsIndexRoute =
   AuthenticatedOauth2ClientsIndexRouteImport.update({
     id: '/oauth2-clients/',
@@ -316,6 +325,17 @@ const AuthenticatedSecurityIndexRoute =
     path: '/security/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedSmsCodeIndexRoute =
+  AuthenticatedSmsCodeIndexRouteImport.update({
+    id: '/sms-code/',
+    path: '/sms-code/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedStoreIndexRoute = AuthenticatedStoreIndexRouteImport.update({
+  id: '/store/',
+  path: '/store/',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedSubscriptionsIndexRoute =
   AuthenticatedSubscriptionsIndexRouteImport.update({
     id: '/subscriptions/',
@@ -516,12 +536,15 @@ export interface FileRoutesByFullPath {
   '/keys/': typeof AuthenticatedKeysIndexRoute
   '/lottery/': typeof AuthenticatedLotteryIndexRoute
   '/models/': typeof AuthenticatedModelsIndexRoute
+  '/my-channels/': typeof AuthenticatedMyChannelsIndexRoute
   '/oauth2-clients/': typeof AuthenticatedOauth2ClientsIndexRoute
   '/offline-image/': typeof AuthenticatedOfflineImageIndexRoute
   '/playground/': typeof AuthenticatedPlaygroundIndexRoute
   '/profile/': typeof AuthenticatedProfileIndexRoute
   '/redemption-codes/': typeof AuthenticatedRedemptionCodesIndexRoute
   '/security/': typeof AuthenticatedSecurityIndexRoute
+  '/sms-code/': typeof AuthenticatedSmsCodeIndexRoute
+  '/store/': typeof AuthenticatedStoreIndexRoute
   '/subscriptions/': typeof AuthenticatedSubscriptionsIndexRoute
   '/system-info/': typeof AuthenticatedSystemInfoIndexRoute
   '/system-settings/': typeof AuthenticatedSystemSettingsIndexRoute
@@ -586,12 +609,15 @@ export interface FileRoutesByTo {
   '/keys': typeof AuthenticatedKeysIndexRoute
   '/lottery': typeof AuthenticatedLotteryIndexRoute
   '/models': typeof AuthenticatedModelsIndexRoute
+  '/my-channels': typeof AuthenticatedMyChannelsIndexRoute
   '/oauth2-clients': typeof AuthenticatedOauth2ClientsIndexRoute
   '/offline-image': typeof AuthenticatedOfflineImageIndexRoute
   '/playground': typeof AuthenticatedPlaygroundIndexRoute
   '/profile': typeof AuthenticatedProfileIndexRoute
   '/redemption-codes': typeof AuthenticatedRedemptionCodesIndexRoute
   '/security': typeof AuthenticatedSecurityIndexRoute
+  '/sms-code': typeof AuthenticatedSmsCodeIndexRoute
+  '/store': typeof AuthenticatedStoreIndexRoute
   '/subscriptions': typeof AuthenticatedSubscriptionsIndexRoute
   '/system-info': typeof AuthenticatedSystemInfoIndexRoute
   '/system-settings': typeof AuthenticatedSystemSettingsIndexRoute
@@ -660,12 +686,15 @@ export interface FileRoutesById {
   '/_authenticated/keys/': typeof AuthenticatedKeysIndexRoute
   '/_authenticated/lottery/': typeof AuthenticatedLotteryIndexRoute
   '/_authenticated/models/': typeof AuthenticatedModelsIndexRoute
+  '/_authenticated/my-channels/': typeof AuthenticatedMyChannelsIndexRoute
   '/_authenticated/oauth2-clients/': typeof AuthenticatedOauth2ClientsIndexRoute
   '/_authenticated/offline-image/': typeof AuthenticatedOfflineImageIndexRoute
   '/_authenticated/playground/': typeof AuthenticatedPlaygroundIndexRoute
   '/_authenticated/profile/': typeof AuthenticatedProfileIndexRoute
   '/_authenticated/redemption-codes/': typeof AuthenticatedRedemptionCodesIndexRoute
   '/_authenticated/security/': typeof AuthenticatedSecurityIndexRoute
+  '/_authenticated/sms-code/': typeof AuthenticatedSmsCodeIndexRoute
+  '/_authenticated/store/': typeof AuthenticatedStoreIndexRoute
   '/_authenticated/subscriptions/': typeof AuthenticatedSubscriptionsIndexRoute
   '/_authenticated/system-info/': typeof AuthenticatedSystemInfoIndexRoute
   '/_authenticated/system-settings/': typeof AuthenticatedSystemSettingsIndexRoute
@@ -733,12 +762,15 @@ export interface FileRouteTypes {
     | '/keys/'
     | '/lottery/'
     | '/models/'
+    | '/my-channels/'
     | '/oauth2-clients/'
     | '/offline-image/'
     | '/playground/'
     | '/profile/'
     | '/redemption-codes/'
     | '/security/'
+    | '/sms-code/'
+    | '/store/'
     | '/subscriptions/'
     | '/system-info/'
     | '/system-settings/'
@@ -803,12 +835,15 @@ export interface FileRouteTypes {
     | '/keys'
     | '/lottery'
     | '/models'
+    | '/my-channels'
     | '/oauth2-clients'
     | '/offline-image'
     | '/playground'
     | '/profile'
     | '/redemption-codes'
     | '/security'
+    | '/sms-code'
+    | '/store'
     | '/subscriptions'
     | '/system-info'
     | '/system-settings'
@@ -876,12 +911,15 @@ export interface FileRouteTypes {
     | '/_authenticated/keys/'
     | '/_authenticated/lottery/'
     | '/_authenticated/models/'
+    | '/_authenticated/my-channels/'
     | '/_authenticated/oauth2-clients/'
     | '/_authenticated/offline-image/'
     | '/_authenticated/playground/'
     | '/_authenticated/profile/'
     | '/_authenticated/redemption-codes/'
     | '/_authenticated/security/'
+    | '/_authenticated/sms-code/'
+    | '/_authenticated/store/'
     | '/_authenticated/subscriptions/'
     | '/_authenticated/system-info/'
     | '/_authenticated/system-settings/'
@@ -1197,6 +1235,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedModelsSectionRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/my-channels/': {
+      id: '/_authenticated/my-channels/'
+      path: '/my-channels'
+      fullPath: '/my-channels/'
+      preLoaderRoute: typeof AuthenticatedMyChannelsIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/oauth2-clients/': {
       id: '/_authenticated/oauth2-clients/'
       path: '/oauth2-clients'
@@ -1237,6 +1282,20 @@ declare module '@tanstack/react-router' {
       path: '/security'
       fullPath: '/security/'
       preLoaderRoute: typeof AuthenticatedSecurityIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/sms-code/': {
+      id: '/_authenticated/sms-code/'
+      path: '/sms-code'
+      fullPath: '/sms-code/'
+      preLoaderRoute: typeof AuthenticatedSmsCodeIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/store/': {
+      id: '/_authenticated/store/'
+      path: '/store'
+      fullPath: '/store/'
+      preLoaderRoute: typeof AuthenticatedStoreIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/subscriptions/': {
@@ -1537,12 +1596,15 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedKeysIndexRoute: typeof AuthenticatedKeysIndexRoute
   AuthenticatedLotteryIndexRoute: typeof AuthenticatedLotteryIndexRoute
   AuthenticatedModelsIndexRoute: typeof AuthenticatedModelsIndexRoute
+  AuthenticatedMyChannelsIndexRoute: typeof AuthenticatedMyChannelsIndexRoute
   AuthenticatedOauth2ClientsIndexRoute: typeof AuthenticatedOauth2ClientsIndexRoute
   AuthenticatedOfflineImageIndexRoute: typeof AuthenticatedOfflineImageIndexRoute
   AuthenticatedPlaygroundIndexRoute: typeof AuthenticatedPlaygroundIndexRoute
   AuthenticatedProfileIndexRoute: typeof AuthenticatedProfileIndexRoute
   AuthenticatedRedemptionCodesIndexRoute: typeof AuthenticatedRedemptionCodesIndexRoute
   AuthenticatedSecurityIndexRoute: typeof AuthenticatedSecurityIndexRoute
+  AuthenticatedSmsCodeIndexRoute: typeof AuthenticatedSmsCodeIndexRoute
+  AuthenticatedStoreIndexRoute: typeof AuthenticatedStoreIndexRoute
   AuthenticatedSubscriptionsIndexRoute: typeof AuthenticatedSubscriptionsIndexRoute
   AuthenticatedSystemInfoIndexRoute: typeof AuthenticatedSystemInfoIndexRoute
   AuthenticatedTaskPluginsIndexRoute: typeof AuthenticatedTaskPluginsIndexRoute
@@ -1571,6 +1633,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedKeysIndexRoute: AuthenticatedKeysIndexRoute,
   AuthenticatedLotteryIndexRoute: AuthenticatedLotteryIndexRoute,
   AuthenticatedModelsIndexRoute: AuthenticatedModelsIndexRoute,
+  AuthenticatedMyChannelsIndexRoute: AuthenticatedMyChannelsIndexRoute,
   AuthenticatedOauth2ClientsIndexRoute: AuthenticatedOauth2ClientsIndexRoute,
   AuthenticatedOfflineImageIndexRoute: AuthenticatedOfflineImageIndexRoute,
   AuthenticatedPlaygroundIndexRoute: AuthenticatedPlaygroundIndexRoute,
@@ -1578,6 +1641,8 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedRedemptionCodesIndexRoute:
     AuthenticatedRedemptionCodesIndexRoute,
   AuthenticatedSecurityIndexRoute: AuthenticatedSecurityIndexRoute,
+  AuthenticatedSmsCodeIndexRoute: AuthenticatedSmsCodeIndexRoute,
+  AuthenticatedStoreIndexRoute: AuthenticatedStoreIndexRoute,
   AuthenticatedSubscriptionsIndexRoute: AuthenticatedSubscriptionsIndexRoute,
   AuthenticatedSystemInfoIndexRoute: AuthenticatedSystemInfoIndexRoute,
   AuthenticatedTaskPluginsIndexRoute: AuthenticatedTaskPluginsIndexRoute,

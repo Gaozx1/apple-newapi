@@ -108,7 +108,11 @@ export function InviteRelationshipSection(
 
   const previewRows = preview
     ? [
-        { key: 'topup', label: t('Recharge orders'), value: preview.topup_quota },
+        {
+          key: 'topup',
+          label: t('Recharge orders'),
+          value: preview.topup_quota,
+        },
         ...(preview.redemption_quota > 0
           ? [
               {
@@ -119,7 +123,11 @@ export function InviteRelationshipSection(
             ]
           : []),
         { key: 'base', label: t('Recharge base'), value: preview.base_quota },
-        { key: 'rebate', label: t('Rebate to credit'), value: preview.rebate_quota },
+        {
+          key: 'rebate',
+          label: t('Rebate to credit'),
+          value: preview.rebate_quota,
+        },
       ]
     : []
 
@@ -216,15 +224,12 @@ export function InviteRelationshipSection(
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
         title={t('Confirm inviter binding')}
-        desc={t(
-          'Bind {{username}} to inviter {{inviter}}?',
-          {
-            username: props.username,
-            inviter: preview
-              ? `${preview.inviter_username} (ID: ${preview.inviter_id})`
-              : '',
-          }
-        )}
+        desc={t('Bind {{username}} to inviter {{inviter}}?', {
+          username: props.username,
+          inviter: preview
+            ? `${preview.inviter_username} (ID: ${preview.inviter_id})`
+            : '',
+        })}
         confirmText={t('Confirm')}
         handleConfirm={() => void handleBind()}
         isLoading={submitting}

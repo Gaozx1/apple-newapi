@@ -1,0 +1,467 @@
+{
+  "cases": [
+    {
+      "name": "native getPhone keeps the keyword and defaults cardType",
+      "hook": "native",
+      "member": "decodeGetPhone",
+      "args": [
+        {
+          "method": "POST",
+          "path": "/d1jiema/getPhone",
+          "params": {},
+          "query": {},
+          "body": { "kind": "json", "value": { "model": "getPhone", "keyWord": "毛竹" } }
+        }
+      ],
+      "expected": {
+        "kind": "submit",
+        "model": "getPhone",
+        "action": "getPhone",
+        "requestBody": { "keyWord": "毛竹", "phone": "", "province": "", "cardType": "全部" }
+      }
+    },
+    {
+      "name": "native getPhone normalizes the requested number and cardType",
+      "hook": "native",
+      "member": "decodeGetPhone",
+      "args": [
+        {
+          "method": "POST",
+          "path": "/d1jiema/getPhone",
+          "params": {},
+          "query": {},
+          "body": {
+            "kind": "json",
+            "value": { "keyWord": "毛竹", "phone": "+86 130-1234-5678", "province": "广东", "cardType": "实卡" }
+          }
+        }
+      ],
+      "expected": {
+        "kind": "submit",
+        "model": "getPhone",
+        "action": "getPhone",
+        "requestBody": { "keyWord": "毛竹", "phone": "13012345678", "province": "广东", "cardType": "实卡" }
+      }
+    },
+    {
+      "name": "native getPhone rejects an unknown cardType",
+      "hook": "native",
+      "member": "decodeGetPhone",
+      "args": [
+        {
+          "method": "POST",
+          "path": "/d1jiema/getPhone",
+          "params": {},
+          "query": {},
+          "body": { "kind": "json", "value": { "cardType": "测试" } }
+        }
+      ],
+      "expectedError": "cardType must be one of"
+    },
+    {
+      "name": "native route rejects a foreign model",
+      "hook": "native",
+      "member": "decodeGetMsg",
+      "args": [
+        {
+          "method": "POST",
+          "path": "/d1jiema/getMsg",
+          "params": {},
+          "query": {},
+          "body": { "kind": "json", "value": { "model": "getPhone", "phone": "13012345678", "keyWord": "毛竹" } }
+        }
+      ],
+      "expectedError": "this route serves only model"
+    },
+    {
+      "name": "native getMsg keeps phone and keyword only",
+      "hook": "native",
+      "member": "decodeGetMsg",
+      "args": [
+        {
+          "method": "POST",
+          "path": "/d1jiema/getMsg",
+          "params": {},
+          "query": {},
+          "body": { "kind": "json", "value": { "phone": "13012345678", "keyWord": "毛竹" } }
+        }
+      ],
+      "expected": {
+        "kind": "submit",
+        "model": "getMsg",
+        "action": "getMsg",
+        "requestBody": { "phone": "13012345678", "keyWord": "毛竹" }
+      }
+    },
+    {
+      "name": "native getMsg requires a phone",
+      "hook": "native",
+      "member": "decodeGetMsg",
+      "args": [
+        {
+          "method": "POST",
+          "path": "/d1jiema/getMsg",
+          "params": {},
+          "query": {},
+          "body": { "kind": "json", "value": { "keyWord": "毛竹" } }
+        }
+      ],
+      "expectedError": "phone is required"
+    },
+    {
+      "name": "native getMsg requires a keyword",
+      "hook": "native",
+      "member": "decodeGetMsg",
+      "args": [
+        {
+          "method": "POST",
+          "path": "/d1jiema/getMsg",
+          "params": {},
+          "query": {},
+          "body": { "kind": "json", "value": { "phone": "13012345678" } }
+        }
+      ],
+      "expectedError": "keyWord is required"
+    },
+    {
+      "name": "native send keeps the optional project id",
+      "hook": "native",
+      "member": "decodeSend",
+      "args": [
+        {
+          "method": "POST",
+          "path": "/d1jiema/send",
+          "params": {},
+          "query": {},
+          "body": {
+            "kind": "json",
+            "value": { "phone": "16200000000", "toPhone": "106900000000", "projId": "42", "content": "验证码 1234" }
+          }
+        }
+      ],
+      "expected": {
+        "kind": "submit",
+        "model": "send",
+        "action": "send",
+        "requestBody": { "phone": "16200000000", "toPhone": "106900000000", "projId": "42", "content": "验证码 1234" }
+      }
+    },
+    {
+      "name": "native send requires content",
+      "hook": "native",
+      "member": "decodeSend",
+      "args": [
+        {
+          "method": "POST",
+          "path": "/d1jiema/send",
+          "params": {},
+          "query": {},
+          "body": { "kind": "json", "value": { "phone": "16200000000", "toPhone": "106900000000" } }
+        }
+      ],
+      "expectedError": "content is required"
+    },
+    {
+      "name": "vendor request targets data.php with an encoded keyword",
+      "hook": "buildSubmitRequest",
+      "args": [
+        {
+          "action": "getPhone",
+          "model": "getPhone",
+          "upstreamModel": "getPhone",
+          "baseUrl": "https://api.d1jiema.com",
+          "apiKey": "tok-123",
+          "upstream": { "kind": "vendor" },
+          "requestBody": { "keyWord": "毛竹", "phone": "", "province": "", "cardType": "全部" }
+        }
+      ],
+      "expected": {
+        "url": "https://api.d1jiema.com/zc/data.php?code=getPhone&token=tok-123&keyWord=%E6%AF%9B%E7%AB%B9&cardType=%E5%85%A8%E9%83%A8",
+        "method": "GET",
+        "headers": {},
+        "action": "getPhone"
+      }
+    },
+    {
+      "name": "a base URL that already names data.php is not extended twice",
+      "hook": "buildSubmitRequest",
+      "args": [
+        {
+          "action": "getMsg",
+          "model": "getMsg",
+          "upstreamModel": "getMsg",
+          "baseUrl": "https://api.d1jiema.com/zc/data.php/",
+          "apiKey": "tok-123",
+          "upstream": { "kind": "vendor" },
+          "requestBody": { "phone": "13012345678", "keyWord": "毛竹" }
+        }
+      ],
+      "expected": {
+        "url": "https://api.d1jiema.com/zc/data.php?code=getMsg&token=tok-123&keyWord=%E6%AF%9B%E7%AB%B9&phone=13012345678",
+        "method": "GET",
+        "headers": {},
+        "action": "getMsg"
+      }
+    },
+    {
+      "name": "an upstream gateway is called on this plugin's own native route",
+      "hook": "buildSubmitRequest",
+      "args": [
+        {
+          "action": "send",
+          "model": "send",
+          "upstreamModel": "send",
+          "baseUrl": "https://gateway.example",
+          "apiKey": "sk-gateway",
+          "upstream": { "kind": "new_api" },
+          "requestBody": { "phone": "16200000000", "toPhone": "106900000000", "projId": "", "content": "hi" }
+        }
+      ],
+      "expected": {
+        "url": "https://gateway.example/d1jiema/send",
+        "method": "POST",
+        "headers": { "Content-Type": "application/json", "Authorization": "Bearer sk-gateway" },
+        "body": { "phone": "16200000000", "toPhone": "106900000000", "projId": "", "content": "hi" },
+        "action": "send"
+      }
+    },
+    {
+      "name": "an empty channel key is rejected before any upstream call",
+      "hook": "buildSubmitRequest",
+      "args": [
+        {
+          "action": "getPhone",
+          "model": "getPhone",
+          "upstreamModel": "getPhone",
+          "baseUrl": "https://api.d1jiema.com",
+          "apiKey": "  ",
+          "upstream": { "kind": "vendor" },
+          "requestBody": { "keyWord": "毛竹", "phone": "", "province": "", "cardType": "全部" }
+        }
+      ],
+      "expectedError": "channel key is empty"
+    },
+    {
+      "name": "responses decodes a JSON string input",
+      "hook": "protocols",
+      "path": ["openai_responses", "decodeRequest"],
+      "args": [
+        {
+          "model": "getPhone",
+          "upstreamModel": "getPhone",
+          "stream": false,
+          "body": { "kind": "json", "value": { "model": "getPhone", "input": "{\"keyWord\":\"毛竹\",\"cardType\":\"虚卡\"}" } }
+        }
+      ],
+      "expected": {
+        "kind": "submit",
+        "model": "getPhone",
+        "action": "getPhone",
+        "requestBody": { "keyWord": "毛竹", "phone": "", "province": "", "cardType": "虚卡" }
+      }
+    },
+    {
+      "name": "responses keeps the client-facing alias while the keyword arrives as text",
+      "hook": "protocols",
+      "path": ["openai_responses", "decodeRequest"],
+      "args": [
+        {
+          "model": "sms-phone",
+          "upstreamModel": "getPhone",
+          "stream": false,
+          "body": { "kind": "json", "value": { "model": "sms-phone", "input": "毛竹" } }
+        }
+      ],
+      "expected": {
+        "kind": "submit",
+        "model": "sms-phone",
+        "action": "getPhone",
+        "requestBody": { "keyWord": "毛竹", "phone": "", "province": "", "cardType": "全部" }
+      }
+    },
+    {
+      "name": "responses reads metadata for the phone and input for the keyword",
+      "hook": "protocols",
+      "path": ["openai_responses", "decodeRequest"],
+      "args": [
+        {
+          "model": "getMsg",
+          "upstreamModel": "getMsg",
+          "stream": false,
+          "body": {
+            "kind": "json",
+            "value": { "model": "getMsg", "input": "毛竹", "metadata": { "phone": "13012345678" } }
+          }
+        }
+      ],
+      "expected": {
+        "kind": "submit",
+        "model": "getMsg",
+        "action": "getMsg",
+        "requestBody": { "phone": "13012345678", "keyWord": "毛竹" }
+      }
+    },
+    {
+      "name": "responses rejects a model this plugin does not serve",
+      "hook": "protocols",
+      "path": ["openai_responses", "decodeRequest"],
+      "args": [
+        {
+          "model": "gpt-4o",
+          "upstreamModel": "gpt-4o",
+          "stream": false,
+          "body": { "kind": "json", "value": { "model": "gpt-4o", "input": "hi" } }
+        }
+      ],
+      "expectedError": "model must be one of"
+    },
+    {
+      "name": "one vendor request is one billable call",
+      "hook": "extractUsage",
+      "args": [{ "action": "getMsg", "usagePurpose": "billing_ratios" }],
+      "expected": { "calls": 1 }
+    },
+    {
+      "name": "immediate completion reports the same single call",
+      "hook": "extractUsageOnComplete",
+      "args": [{ "taskId": "tid" }, { "status": "SUCCESS" }, { "operation": "getMsg" }],
+      "expected": { "calls": 1 }
+    },
+    {
+      "name": "the native presenter returns a taken number",
+      "hook": "native",
+      "member": "renderResult",
+      "args": [
+        {},
+        {
+          "task_id": "task_1",
+          "status": "SUCCESS",
+          "data": { "operation": "getPhone", "raw": "13012345678", "phone": "13012345678" }
+        }
+      ],
+      "expected": {
+        "code": "ok",
+        "operation": "getPhone",
+        "task_id": "task_1",
+        "phone": "13012345678",
+        "raw": "13012345678"
+      }
+    },
+    {
+      "name": "the native presenter flags a message that has not arrived yet",
+      "hook": "native",
+      "member": "renderResult",
+      "args": [
+        {},
+        {
+          "task_id": "task_2",
+          "status": "SUCCESS",
+          "data": {
+            "operation": "getMsg",
+            "raw": "[尚未收到] 请您稍后再试",
+            "phone": "13012345678",
+            "message": "[尚未收到] 请您稍后再试",
+            "pending": true
+          }
+        }
+      ],
+      "expected": {
+        "code": "ok",
+        "operation": "getMsg",
+        "task_id": "task_2",
+        "phone": "13012345678",
+        "message": "[尚未收到] 请您稍后再试",
+        "pending": true,
+        "raw": "[尚未收到] 请您稍后再试"
+      }
+    },
+    {
+      "name": "the native presenter surfaces the vendor refusal",
+      "hook": "native",
+      "member": "renderResult",
+      "args": [
+        {},
+        {
+          "task_id": "task_3",
+          "status": "FAILURE",
+          "fail_reason": "ERROR:没有可用的号码",
+          "data": { "operation": "getPhone", "error": "ERROR:没有可用的号码" }
+        }
+      ],
+      "expected": {
+        "code": "error",
+        "operation": "getPhone",
+        "task_id": "task_3",
+        "reason": "ERROR:没有可用的号码"
+      }
+    },
+    {
+      "name": "the native error renderer keeps the hook message",
+      "hook": "native",
+      "member": "error",
+      "args": [{}, { "code": "invalid_request", "message": "keyWord is required", "httpStatus": 400, "retryable": false }],
+      "expected": { "code": "error", "message": "keyWord is required", "http_status": 400 }
+    },
+    {
+      "name": "the final Responses object carries the message text",
+      "hook": "protocols",
+      "path": ["openai_responses", "renderFinal"],
+      "args": [
+        { "model": "getMsg" },
+        {
+          "task_id": "task_4",
+          "status": "SUCCESS",
+          "data": {
+            "operation": "getMsg",
+            "raw": "【毛竹】验证码9876",
+            "phone": "13012345678",
+            "message": "【毛竹】验证码9876",
+            "pending": false
+          }
+        }
+      ],
+      "expected": {
+        "output": [
+          {
+            "type": "message",
+            "status": "completed",
+            "role": "assistant",
+            "content": [{ "type": "output_text", "text": "【毛竹】验证码9876", "annotations": [], "logprobs": [] }]
+          }
+        ],
+        "metadata": { "operation": "getMsg", "phone": "13012345678", "pending": "false" }
+      }
+    },
+    {
+      "name": "streaming a completed task emits its text once",
+      "hook": "protocols",
+      "path": ["openai_responses", "renderEvents"],
+      "args": [{ "model": "getPhone" }, { "status": "SUCCESS", "data": { "operation": "getPhone", "raw": "13012345678" } }, null],
+      "expected": {
+        "events": [{ "type": "output", "data": "13012345678" }],
+        "state": { "status": "SUCCESS" },
+        "done": true
+      }
+    },
+    {
+      "name": "a repeated streaming tick does not duplicate the text",
+      "hook": "protocols",
+      "path": ["openai_responses", "renderEvents"],
+      "args": [{ "model": "getPhone" }, { "status": "SUCCESS", "data": { "operation": "getPhone", "raw": "13012345678" } }, { "status": "SUCCESS" }],
+      "expected": { "events": [], "state": { "status": "SUCCESS" }, "done": true }
+    },
+    {
+      "name": "a task that is not terminal yet keeps the stream open",
+      "hook": "protocols",
+      "path": ["openai_responses", "renderEvents"],
+      "args": [{ "model": "getPhone" }, { "status": "IN_PROGRESS", "data": null }, null],
+      "expected": { "events": [], "state": { "status": "IN_PROGRESS" }, "done": false }
+    },
+    {
+      "name": "an unknown poll body is never reported as progress",
+      "hook": "parseTaskResult",
+      "args": [{}, { "unexpected": true }],
+      "expected": { "status": "UNKNOWN" }
+    }
+  ]
+}

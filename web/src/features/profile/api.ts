@@ -17,8 +17,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { api } from '@/lib/api'
-import { encryptPassword } from '@/lib/password-crypto'
 import type { CustomOAuthBinding } from '@/lib/oauth'
+import { encryptPassword } from '@/lib/password-crypto'
 import { authRequestOptions, authResult } from '@/lib/secure-verification'
 import type { LoginSession } from '@/stores/auth-store'
 

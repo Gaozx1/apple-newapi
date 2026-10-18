@@ -49,7 +49,11 @@ export type ModelPricingFormValues = z.infer<
   ReturnType<typeof createModelPricingSchema>
 >
 
-export type PricingMode = 'per-token' | 'per-request' | 'tiered_expr' | 'per-second'
+export type PricingMode =
+  | 'per-token'
+  | 'per-request'
+  | 'tiered_expr'
+  | 'per-second'
 
 export type LaneKey =
   | 'completion'
