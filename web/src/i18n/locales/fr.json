@@ -7442,6 +7442,16 @@
     "Resolved": "Clôturé",
     "Complained": "Réclamé",
     "Send failed": "Échec de l'envoi",
-    "Apply for after-sales": "Demander le service après-vente"
+    "Apply for after-sales": "Demander le service après-vente",
+    "AI Support": "Support IA",
+    "Ask about your purchases, balance or after-sales": "Posez vos questions sur vos achats, votre solde ou le service après-vente",
+    "Try: 我买了某个商品，现在用不了，帮我看看": "Essayez : j'ai acheté un produit et il ne fonctionne pas",
+    "Describe what happened…": "Décrivez ce qui s'est passé…",
+    "Assistant failed": "Échec de l'assistant",
+    "Loading account data": "Chargement des données du compte",
+    "Describe the problem with {{name}}": "Décrivez le problème avec {{name}}",
+    "What happened": "Que s'est-il passé",
+    "For example: the code was already used": "Par exemple : le code a déjà été utilisé",
+    "After-sales case opened": "Dossier après-vente ouvert"
   }
 }

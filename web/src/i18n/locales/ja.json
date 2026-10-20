@@ -7442,6 +7442,16 @@
     "Resolved": "解決済み",
     "Complained": "苦情済み",
     "Send failed": "送信に失敗しました",
-    "Apply for after-sales": "アフターサービスを申請"
+    "Apply for after-sales": "アフターサービスを申請",
+    "AI Support": "AIサポート",
+    "Ask about your purchases, balance or after-sales": "購入履歴・残高・アフターサービスを質問できます",
+    "Try: 我买了某个商品，现在用不了，帮我看看": "例：商品を買ったが使えないので確認して",
+    "Describe what happened…": "何が起きたか教えてください…",
+    "Assistant failed": "AIサポートでエラー",
+    "Loading account data": "アカウント情報を読み込み中",
+    "Describe the problem with {{name}}": "{{name}} の問題を説明してください",
+    "What happened": "何が起きましたか",
+    "For example: the code was already used": "例：コードが既に使用済み",
+    "After-sales case opened": "アフターサービスを申請しました"
   }
 }

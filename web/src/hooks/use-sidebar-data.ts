@@ -33,6 +33,7 @@ import {
   MessageSquare,
   MessageSquareCode,
   ShoppingBag,
+  Sparkles,
   PlugZap,
   Radio,
   ServerCog,
@@ -162,6 +163,11 @@ export function useSidebarData(): SidebarData {
             title: t('Security & Access'),
             url: '/security',
             icon: ShieldCheck,
+          },
+          {
+            title: t('AI Support'),
+            url: '/assistant',
+            icon: Sparkles,
           },
           {
             title: t('My groups'),

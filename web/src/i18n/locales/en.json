@@ -7442,6 +7442,16 @@
     "Resolved": "Resolved",
     "Complained": "Complained",
     "Send failed": "Send failed",
-    "Apply for after-sales": "Apply for after-sales"
+    "Apply for after-sales": "Apply for after-sales",
+    "AI Support": "AI Support",
+    "Ask about your purchases, balance or after-sales": "Ask about your purchases, balance or after-sales",
+    "Try: 我买了某个商品，现在用不了，帮我看看": "Try: 我买了某个商品，现在用不了，帮我看看",
+    "Describe what happened…": "Describe what happened…",
+    "Assistant failed": "Assistant failed",
+    "Loading account data": "Loading account data",
+    "Describe the problem with {{name}}": "Describe the problem with {{name}}",
+    "What happened": "What happened",
+    "For example: the code was already used": "For example: the code was already used",
+    "After-sales case opened": "After-sales case opened"
   }
 }

@@ -7442,6 +7442,16 @@
     "Resolved": "已结案",
     "Complained": "已投诉",
     "Send failed": "发送失败",
-    "Apply for after-sales": "申请售后"
+    "Apply for after-sales": "申请售后",
+    "AI Support": "AI 客服",
+    "Ask about your purchases, balance or after-sales": "可以问购买记录、余额、售后处理",
+    "Try: 我买了某个商品，现在用不了，帮我看看": "试试：我买了某个商品，现在用不了，帮我看看",
+    "Describe what happened…": "描述一下发生了什么…",
+    "Assistant failed": "AI 客服出错了",
+    "Loading account data": "正在加载账户信息",
+    "Describe the problem with {{name}}": "描述一下 {{name}} 的问题",
+    "What happened": "发生了什么",
+    "For example: the code was already used": "例如：卡密已被使用",
+    "After-sales case opened": "售后单已提交"
   }
 }

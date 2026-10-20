@@ -7442,6 +7442,16 @@
     "Resolved": "Закрыто",
     "Complained": "Жалоба подана",
     "Send failed": "Не удалось отправить",
-    "Apply for after-sales": "Запросить обслуживание"
+    "Apply for after-sales": "Запросить обслуживание",
+    "AI Support": "ИИ-поддержка",
+    "Ask about your purchases, balance or after-sales": "Спросите о покупках, балансе или обслуживании",
+    "Try: 我买了某个商品，现在用不了，帮我看看": "Например: купил товар, он не работает",
+    "Describe what happened…": "Опишите, что случилось…",
+    "Assistant failed": "Ошибка ИИ-поддержки",
+    "Loading account data": "Загрузка данных аккаунта",
+    "Describe the problem with {{name}}": "Опишите проблему с {{name}}",
+    "What happened": "Что случилось",
+    "For example: the code was already used": "Например: код уже использован",
+    "After-sales case opened": "Обращение создано"
   }
 }

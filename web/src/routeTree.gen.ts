@@ -37,6 +37,7 @@ import { Route as SetupIndexRouteImport } from './routes/setup/index'
 import { Route as authUserResetRouteImport } from './routes/(auth)/user/reset'
 import { Route as AuthenticatedAdminOauth2IndexRouteImport } from './routes/_authenticated/admin-oauth2/index'
 import { Route as AuthenticatedAdminTicketsIndexRouteImport } from './routes/_authenticated/admin-tickets/index'
+import { Route as AuthenticatedAssistantIndexRouteImport } from './routes/_authenticated/assistant/index'
 import { Route as AuthenticatedChannelsIndexRouteImport } from './routes/_authenticated/channels/index'
 import { Route as AuthenticatedChatChatIdRouteImport } from './routes/_authenticated/chat/$chatId'
 import { Route as AuthenticatedDashboardIndexRouteImport } from './routes/_authenticated/dashboard/index'
@@ -223,6 +224,12 @@ const AuthenticatedAdminTicketsIndexRoute =
   AuthenticatedAdminTicketsIndexRouteImport.update({
     id: '/admin-tickets/',
     path: '/admin-tickets/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedAssistantIndexRoute =
+  AuthenticatedAssistantIndexRouteImport.update({
+    id: '/assistant/',
+    path: '/assistant/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedChannelsIndexRoute =
@@ -530,6 +537,7 @@ export interface FileRoutesByFullPath {
   '/usage-logs/audit': typeof AuthenticatedUsageLogsAuditRoute
   '/admin-oauth2/': typeof AuthenticatedAdminOauth2IndexRoute
   '/admin-tickets/': typeof AuthenticatedAdminTicketsIndexRoute
+  '/assistant/': typeof AuthenticatedAssistantIndexRoute
   '/channels/': typeof AuthenticatedChannelsIndexRoute
   '/dashboard/': typeof AuthenticatedDashboardIndexRoute
   '/jailbreak-records/': typeof AuthenticatedJailbreakRecordsIndexRoute
@@ -603,6 +611,7 @@ export interface FileRoutesByTo {
   '/usage-logs/audit': typeof AuthenticatedUsageLogsAuditRoute
   '/admin-oauth2': typeof AuthenticatedAdminOauth2IndexRoute
   '/admin-tickets': typeof AuthenticatedAdminTicketsIndexRoute
+  '/assistant': typeof AuthenticatedAssistantIndexRoute
   '/channels': typeof AuthenticatedChannelsIndexRoute
   '/dashboard': typeof AuthenticatedDashboardIndexRoute
   '/jailbreak-records': typeof AuthenticatedJailbreakRecordsIndexRoute
@@ -680,6 +689,7 @@ export interface FileRoutesById {
   '/_authenticated/usage-logs/audit': typeof AuthenticatedUsageLogsAuditRoute
   '/_authenticated/admin-oauth2/': typeof AuthenticatedAdminOauth2IndexRoute
   '/_authenticated/admin-tickets/': typeof AuthenticatedAdminTicketsIndexRoute
+  '/_authenticated/assistant/': typeof AuthenticatedAssistantIndexRoute
   '/_authenticated/channels/': typeof AuthenticatedChannelsIndexRoute
   '/_authenticated/dashboard/': typeof AuthenticatedDashboardIndexRoute
   '/_authenticated/jailbreak-records/': typeof AuthenticatedJailbreakRecordsIndexRoute
@@ -756,6 +766,7 @@ export interface FileRouteTypes {
     | '/usage-logs/audit'
     | '/admin-oauth2/'
     | '/admin-tickets/'
+    | '/assistant/'
     | '/channels/'
     | '/dashboard/'
     | '/jailbreak-records/'
@@ -829,6 +840,7 @@ export interface FileRouteTypes {
     | '/usage-logs/audit'
     | '/admin-oauth2'
     | '/admin-tickets'
+    | '/assistant'
     | '/channels'
     | '/dashboard'
     | '/jailbreak-records'
@@ -905,6 +917,7 @@ export interface FileRouteTypes {
     | '/_authenticated/usage-logs/audit'
     | '/_authenticated/admin-oauth2/'
     | '/_authenticated/admin-tickets/'
+    | '/_authenticated/assistant/'
     | '/_authenticated/channels/'
     | '/_authenticated/dashboard/'
     | '/_authenticated/jailbreak-records/'
@@ -1163,6 +1176,13 @@ declare module '@tanstack/react-router' {
       path: '/admin-tickets'
       fullPath: '/admin-tickets/'
       preLoaderRoute: typeof AuthenticatedAdminTicketsIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/assistant/': {
+      id: '/_authenticated/assistant/'
+      path: '/assistant'
+      fullPath: '/assistant/'
+      preLoaderRoute: typeof AuthenticatedAssistantIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/channels/': {
@@ -1590,6 +1610,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedUsageLogsAuditRoute: typeof AuthenticatedUsageLogsAuditRoute
   AuthenticatedAdminOauth2IndexRoute: typeof AuthenticatedAdminOauth2IndexRoute
   AuthenticatedAdminTicketsIndexRoute: typeof AuthenticatedAdminTicketsIndexRoute
+  AuthenticatedAssistantIndexRoute: typeof AuthenticatedAssistantIndexRoute
   AuthenticatedChannelsIndexRoute: typeof AuthenticatedChannelsIndexRoute
   AuthenticatedDashboardIndexRoute: typeof AuthenticatedDashboardIndexRoute
   AuthenticatedJailbreakRecordsIndexRoute: typeof AuthenticatedJailbreakRecordsIndexRoute
@@ -1626,6 +1647,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedUsageLogsAuditRoute: AuthenticatedUsageLogsAuditRoute,
   AuthenticatedAdminOauth2IndexRoute: AuthenticatedAdminOauth2IndexRoute,
   AuthenticatedAdminTicketsIndexRoute: AuthenticatedAdminTicketsIndexRoute,
+  AuthenticatedAssistantIndexRoute: AuthenticatedAssistantIndexRoute,
   AuthenticatedChannelsIndexRoute: AuthenticatedChannelsIndexRoute,
   AuthenticatedDashboardIndexRoute: AuthenticatedDashboardIndexRoute,
   AuthenticatedJailbreakRecordsIndexRoute:

@@ -7442,6 +7442,16 @@
     "Resolved": "Đã kết thúc",
     "Complained": "Đã khiếu nại",
     "Send failed": "Gửi thất bại",
-    "Apply for after-sales": "Yêu cầu hậu mãi"
+    "Apply for after-sales": "Yêu cầu hậu mãi",
+    "AI Support": "Hỗ trợ AI",
+    "Ask about your purchases, balance or after-sales": "Hỏi về đơn mua, số dư hoặc hậu mãi",
+    "Try: 我买了某个商品，现在用不了，帮我看看": "Ví dụ: tôi mua sản phẩm nhưng không dùng được",
+    "Describe what happened…": "Mô tả điều đã xảy ra…",
+    "Assistant failed": "Trợ lý AI gặp lỗi",
+    "Loading account data": "Đang tải dữ liệu tài khoản",
+    "Describe the problem with {{name}}": "Mô tả vấn đề của {{name}}",
+    "What happened": "Đã xảy ra chuyện gì",
+    "For example: the code was already used": "Ví dụ: mã đã được sử dụng",
+    "After-sales case opened": "Đã tạo yêu cầu hậu mãi"
   }
 }
