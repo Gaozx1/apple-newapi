@@ -46,7 +46,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { toIntlLocale } from '@/i18n/languages'
+import { normalizeInterfaceLanguage, toIntlLocale } from '@/i18n/languages'
 import {
   formatCurrencyFromUSD,
   formatQuotaWithCurrency,
@@ -83,6 +83,7 @@ import {
   isTagAggregateRow,
   type TagRow,
 } from '../lib'
+import { resolveChannelName } from '../lib/channel-name-i18n'
 import { parseUpstreamUpdateMeta } from '../lib/upstream-update-utils'
 import type { Channel } from '../types'
 import { ChannelRowActionsLayoutContext } from './channel-row-actions-context'
@@ -687,8 +688,13 @@ export function useChannelsColumns(
         meta: { mobileTitle: true },
         cell: ({ row }) => {
           const isTagRow = isTagAggregateRow(row.original)
-          const name = row.getValue('name') as string
+          const baseName = row.getValue('name') as string
           const channel = row.original
+          const name = resolveChannelName(
+            baseName,
+            channel.name_i18n,
+            normalizeInterfaceLanguage(i18n.resolvedLanguage || i18n.language)
+          )
 
           // Tag row with expand/collapse
           if (isTagRow) {
@@ -1264,6 +1270,13 @@ export function useChannelsColumns(
         meta: { pinned: 'right' as const },
       },
     ],
-    [enableSelection, t, locale, sensitiveVisible]
+    [
+      enableSelection,
+      t,
+      locale,
+      sensitiveVisible,
+      i18n.resolvedLanguage,
+      i18n.language,
+    ]
   )
 }

@@ -109,7 +109,10 @@ func (*StripeAdaptor) RequestPay(c *gin.Context, req *StripePayRequest) {
 	reference := fmt.Sprintf("new-api-ref-%d-%d-%s", user.Id, time.Now().UnixMilli(), randstr.String(4))
 	referenceId := "ref_" + common.Sha1([]byte(reference))
 
-	payLink, err := genStripeLink(referenceId, user.StripeCustomer, user.Email, req.Amount, req.SuccessURL, req.CancelURL)
+	// The selected method may name a Stripe provider profile; without one the
+	// legacy Stripe settings apply.
+	method := setting.FindPayMethod(req.PaymentMethod)
+	payLink, err := genStripeLinkWithMethod(method, referenceId, user.StripeCustomer, user.Email, req.Amount, req.SuccessURL, req.CancelURL)
 	if err != nil {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("Stripe 创建 Checkout Session 失败 user_id=%d trade_no=%s amount=%d error=%q", id, referenceId, req.Amount, err.Error()))
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "拉起支付失败"})
@@ -356,11 +359,18 @@ func sessionExpired(ctx context.Context, event stripe.Event) {
 //
 // Returns the checkout session URL or an error if the session creation fails.
 func genStripeLink(referenceId string, customerId string, email string, amount int64, successURL string, cancelURL string) (string, error) {
-	if !strings.HasPrefix(setting.StripeApiSecret, "sk_") && !strings.HasPrefix(setting.StripeApiSecret, "rk_") {
+	return genStripeLinkWithMethod(nil, referenceId, customerId, email, amount, successURL, cancelURL)
+}
+
+// genStripeLinkWithMethod creates a checkout session through the Stripe
+// provider backing one payment method (nil = the legacy provider settings).
+func genStripeLinkWithMethod(method map[string]string, referenceId string, customerId string, email string, amount int64, successURL string, cancelURL string) (string, error) {
+	apiSecret, _, priceId, promotionCodes := setting.StripeConfigOf(method)
+	if !strings.HasPrefix(apiSecret, "sk_") && !strings.HasPrefix(apiSecret, "rk_") {
 		return "", fmt.Errorf("无效的Stripe API密钥")
 	}
 
-	stripe.Key = setting.StripeApiSecret
+	stripe.Key = apiSecret
 
 	// Use custom URLs if provided, otherwise use defaults
 	if successURL == "" {
@@ -376,12 +386,12 @@ func genStripeLink(referenceId string, customerId string, email string, amount i
 		CancelURL:         stripe.String(cancelURL),
 		LineItems: []*stripe.CheckoutSessionLineItemParams{
 			{
-				Price:    stripe.String(setting.StripePriceId),
+				Price:    stripe.String(priceId),
 				Quantity: stripe.Int64(amount),
 			},
 		},
 		Mode:                stripe.String(string(stripe.CheckoutSessionModePayment)),
-		AllowPromotionCodes: stripe.Bool(setting.StripePromotionCodesEnabled),
+		AllowPromotionCodes: stripe.Bool(promotionCodes),
 	}
 
 	if "" == customerId {

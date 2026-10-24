@@ -393,6 +393,8 @@ func migrateDB() error {
 		&StoreCdk{},
 		&StoreOrder{},
 		&StoreChannel{},
+		&Ad{},
+		&AdView{},
 		&StoreChannelOrder{},
 		&StoreChannelReport{},
 		&StoreChannelEarnings{},

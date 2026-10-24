@@ -205,6 +205,13 @@ function addRequiredIssue(
 export const channelFormSchema = z
   .object({
     name: z.string().min(1, ERROR_MESSAGES.REQUIRED_NAME),
+    name_i18n: z
+      .string()
+      .optional()
+      .refine(
+        (value) => !value || isOptionalJsonObject(value),
+        ERROR_MESSAGES.INVALID_JSON
+      ),
     type: z.number().min(0, ERROR_MESSAGES.REQUIRED_TYPE),
     base_url: z.string().optional(),
     task_plugin_key: z.string().optional(),
@@ -443,6 +450,7 @@ export type ChannelFormValues = z.infer<typeof channelFormSchema>
 
 export const CHANNEL_FORM_DEFAULT_VALUES: ChannelFormValues = {
   name: '',
+  name_i18n: '',
   type: 1,
   base_url: '',
   task_plugin_key: '',
@@ -642,6 +650,7 @@ export function transformChannelToFormDefaults(
 
   return {
     name: channel.name || '',
+    name_i18n: channel.name_i18n || '',
     type: channel.type,
     base_url: channel.base_url || '',
     key: '', // Never populate key from backend for security
@@ -925,6 +934,7 @@ export function transformFormDataToCreatePayload(formData: ChannelFormValues): {
 
   const channel: Partial<Channel> = {
     name: formData.name,
+    name_i18n: formData.name_i18n || '',
     type: formData.type,
     base_url: normalizeBaseUrl(formData.base_url) || null,
     key: formData.key,
@@ -974,6 +984,7 @@ export function transformFormDataToUpdatePayload(
   const payload: Partial<Channel> = {
     id: channelId,
     name: formData.name,
+    name_i18n: formData.name_i18n || '',
     type: formData.type,
     base_url: normalizeBaseUrl(formData.base_url) || null,
     openai_organization: formData.openai_organization || null,

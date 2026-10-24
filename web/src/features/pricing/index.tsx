@@ -33,11 +33,15 @@ import {
   ModelDetailsDrawer,
 } from './components'
 import { EXCLUDED_GROUPS, VIEW_MODES } from './constants'
+import { useSponsorAd } from '@/features/ads/api'
+import { AdSlot } from '@/features/ads/components/ad-slot'
+
 import { useFilters } from './hooks/use-filters'
 import { usePricingData } from './hooks/use-pricing-data'
 
 export function Pricing() {
   const { t } = useTranslation()
+  const { data: sponsorAd = null } = useSponsorAd()
   const [selectedModelName, setSelectedModelName] = useState<string | null>(
     null
   )
@@ -202,6 +206,10 @@ export function Pricing() {
               className='mx-auto mt-4 max-w-2xl sm:mt-6'
             />
           </header>
+
+          {sponsorAd !== null && (
+            <AdSlot ad={sponsorAd} className='mx-auto mb-4 w-full max-w-3xl' />
+          )}
 
           <div className='grid gap-4 xl:grid-cols-[280px_minmax(0,1fr)]'>
             <PricingSidebar

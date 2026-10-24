@@ -82,6 +82,7 @@ import {
 } from '@/components/ui/form'
 import { IconBadge, type IconBadgeTone } from '@/components/ui/icon-badge'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { PopoverDescription, PopoverTitle } from '@/components/ui/popover'
 import {
   Select,
@@ -191,6 +192,11 @@ import {
   type ChannelConfigurationSection,
   type ChannelProviderTarget,
 } from '../../lib/channel-configuration'
+import {
+  CHANNEL_NAME_LANGUAGES,
+  parseChannelNameTranslations,
+  stringifyChannelNameTranslations,
+} from '../../lib/channel-name-i18n'
 import {
   getChannelPluginExtensions,
   supportsChannelPluginExtensions,
@@ -405,6 +411,16 @@ function SubHeading(props: {
 /** Stable empty list so memoized consumers do not re-run on every render. */
 const NO_UPSTREAM_MODELS: string[] = []
 
+const LANGUAGE_LABELS: Record<string, string> = {
+  zhCN: 'Simplified Chinese',
+  zhTW: 'Traditional Chinese',
+  en: 'English',
+  fr: 'French',
+  ja: 'Japanese',
+  ru: 'Russian',
+  vi: 'Vietnamese',
+}
+
 export function ChannelMutateDrawer({
   open,
   onOpenChange,
@@ -578,6 +594,27 @@ export function ChannelMutateDrawer({
     resolver: zodResolver(channelFormSchema),
     defaultValues: CHANNEL_FORM_DEFAULT_VALUES,
   })
+
+  // Per-language channel names; the base name is the fallback. Seeded from the
+  // loaded channel so editing preserves existing translations.
+  const [nameTranslations, setNameTranslations] = useState<
+    Record<string, string>
+  >({})
+  useEffect(() => {
+    if (!open) return
+    setNameTranslations(
+      parseChannelNameTranslations(channelData?.data?.name_i18n)
+    )
+  }, [open, channelData])
+  useEffect(() => {
+    form.setValue(
+      'name_i18n',
+      stringifyChannelNameTranslations(nameTranslations),
+      {
+        shouldDirty: false,
+      }
+    )
+  }, [nameTranslations, form])
 
   // Watch values once for conditional fields and configuration indicators.
   const formValues = form.watch()
@@ -2824,10 +2861,41 @@ export function ChannelMutateDrawer({
                 <FormControl>
                   <Input placeholder={t(FIELD_PLACEHOLDERS.NAME)} {...field} />
                 </FormControl>
+                <FormDescription>
+                  {t(
+                    'The base name. Languages without a translation use this name.'
+                  )}
+                </FormDescription>
                 <FormMessage />
               </FormItem>
             )}
           />
+
+          <details className='rounded-md border p-3'>
+            <summary className='cursor-pointer text-sm font-medium'>
+              {t('Name in other languages')}
+            </summary>
+            <div className='mt-3 grid gap-3'>
+              {CHANNEL_NAME_LANGUAGES.map((language) => (
+                <div className='grid gap-1' key={language}>
+                  <Label htmlFor={`channel-name-${language}`}>
+                    {t(LANGUAGE_LABELS[language] ?? language)}
+                  </Label>
+                  <Input
+                    id={`channel-name-${language}`}
+                    value={nameTranslations[language] ?? ''}
+                    placeholder={formValues.name}
+                    onChange={(event) =>
+                      setNameTranslations((current) => ({
+                        ...current,
+                        [language]: event.target.value,
+                      }))
+                    }
+                  />
+                </div>
+              ))}
+            </div>
+          </details>
         </div>
 
         {!isEditing && (

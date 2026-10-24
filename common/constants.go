@@ -123,19 +123,31 @@ var TelegramBotToken = ""
 var TelegramBotName = ""
 
 var QuotaForNewUser = 0
+
 // InviterRechargeRebateRate is the percentage of an invited user's recharge
 // that is credited to the inviter as a rebate (0–100). Configurable in the
 // admin backend. Replaces the old fixed-quota invitation reward.
 var InviterRechargeRebateRate = 0.0
+
 // VideoPerSecondBillingEnabled enables per-second billing for video tasks.
 // When enabled, each video model is billed by its own configured unit price
 // (from the model pricing page) multiplied by the requested seconds, instead
 // of a single flat per-call price. This lets every video model be priced
 // independently.
 var VideoPerSecondBillingEnabled = false
+
 // LotteryEnabled controls whether the lottery (抽奖) feature is available to
 // users. Admins grant draw chances; a draw without a free chance costs quota.
 var LotteryEnabled = false
+
+// AdEnabled controls whether the ads page and sponsor impressions are shown.
+var AdEnabled = false
+
+// AdRewardQuota is the balance credited for one completed rewarded ad view.
+var AdRewardQuota = int(QuotaPerUnit)
+
+// AdRewardMaxDailyViews caps how many sponsor impressions a user sees per day.
+var AdRewardMaxDailyViews = 50
 var ChannelDisableThreshold = 5.0
 var AutomaticDisableChannelEnabled = false
 var AutomaticEnableChannelEnabled = false

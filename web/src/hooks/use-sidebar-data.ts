@@ -32,6 +32,7 @@ import {
   ListTodo,
   MessageSquare,
   MessageSquareCode,
+  MonitorPlay,
   ShoppingBag,
   Sparkles,
   PlugZap,
@@ -168,6 +169,11 @@ export function useSidebarData(): SidebarData {
             title: t('AI Support'),
             url: '/assistant',
             icon: Sparkles,
+          },
+          {
+            title: t('Watch ads'),
+            url: '/ads',
+            icon: MonitorPlay,
           },
           {
             title: t('My groups'),

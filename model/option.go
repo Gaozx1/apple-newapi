@@ -132,6 +132,7 @@ func InitOptionMap() {
 	common.OptionMap["DefaultUseAutoGroup"] = strconv.FormatBool(setting.DefaultUseAutoGroup)
 	common.OptionMap["MaxTokenAutoGroups"] = strconv.Itoa(setting.GetMaxTokenAutoGroups())
 	common.OptionMap["PayMethods"] = operation_setting.PayMethods2JsonString()
+	common.OptionMap["PayProviders"] = setting.PayProviders2JsonString()
 	common.OptionMap["GitHubClientId"] = ""
 	common.OptionMap["GitHubClientSecret"] = ""
 	common.OptionMap["TelegramBotToken"] = ""
@@ -145,6 +146,9 @@ func InitOptionMap() {
 	common.OptionMap["InviterRechargeRebateRate"] = strconv.FormatFloat(common.InviterRechargeRebateRate, 'f', -1, 64)
 	common.OptionMap["VideoPerSecondBillingEnabled"] = strconv.FormatBool(common.VideoPerSecondBillingEnabled)
 	common.OptionMap["LotteryEnabled"] = strconv.FormatBool(common.LotteryEnabled)
+	common.OptionMap["AdEnabled"] = strconv.FormatBool(common.AdEnabled)
+	common.OptionMap["AdRewardQuota"] = strconv.Itoa(common.AdRewardQuota)
+	common.OptionMap["AdRewardMaxDailyViews"] = strconv.Itoa(common.AdRewardMaxDailyViews)
 	common.OptionMap["QuotaRemindThreshold"] = strconv.Itoa(common.QuotaRemindThreshold)
 	common.OptionMap["PreConsumedQuota"] = strconv.Itoa(common.PreConsumedQuota)
 	common.OptionMap["ModelRequestRateLimitCount"] = strconv.Itoa(setting.ModelRequestRateLimitCount)
@@ -616,6 +620,16 @@ func updateOptionMap(key string, value string) (err error) {
 		common.VideoPerSecondBillingEnabled, _ = strconv.ParseBool(value)
 	case "LotteryEnabled":
 		common.LotteryEnabled, _ = strconv.ParseBool(value)
+	case "AdEnabled":
+		common.AdEnabled, _ = strconv.ParseBool(value)
+	case "AdRewardQuota":
+		if parsed, err := strconv.Atoi(value); err == nil && parsed >= 0 {
+			common.AdRewardQuota = parsed
+		}
+	case "AdRewardMaxDailyViews":
+		if parsed, err := strconv.Atoi(value); err == nil && parsed >= 0 {
+			common.AdRewardMaxDailyViews = parsed
+		}
 	case "QuotaRemindThreshold":
 		common.QuotaRemindThreshold, _ = strconv.Atoi(value)
 	case "PreConsumedQuota":
@@ -680,6 +694,8 @@ func updateOptionMap(key string, value string) (err error) {
 		setting.StreamCacheQueueLength, _ = strconv.Atoi(value)
 	case "PayMethods":
 		err = operation_setting.UpdatePayMethodsByJsonString(value)
+	case "PayProviders":
+		err = setting.UpdatePayProvidersByJsonString(value)
 	case "WaffoPayMethods":
 		// WaffoPayMethods is read directly from OptionMap via setting.GetWaffoPayMethods().
 		// The value is already stored in OptionMap at the top of this function (line: common.OptionMap[key] = value).

@@ -134,13 +134,20 @@ type AmountRequest struct {
 }
 
 func GetEpayClient() *epay.Client {
-	if operation_setting.PayAddress == "" || operation_setting.EpayId == "" || operation_setting.EpayKey == "" {
+	return NewEpayClientForMethod(nil)
+}
+
+// NewEpayClientForMethod builds an Epay client for the provider backing one
+// payment method. A nil method keeps the legacy single-provider configuration.
+func NewEpayClientForMethod(method map[string]string) *epay.Client {
+	payAddress, partnerId, key := setting.EpayConfigOf(method)
+	if payAddress == "" || partnerId == "" || key == "" {
 		return nil
 	}
 	withUrl, err := epay.NewClient(&epay.Config{
-		PartnerID: operation_setting.EpayId,
-		Key:       operation_setting.EpayKey,
-	}, operation_setting.PayAddress)
+		PartnerID: partnerId,
+		Key:       key,
+	}, payAddress)
 	if err != nil {
 		return nil
 	}
@@ -289,13 +296,19 @@ func RequestEpay(c *gin.Context) {
 		return
 	}
 	payMoney := getPayMoney(req.Amount, group)
-	if payMoney < 0.01 {
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "充值金额过低"})
+
+	method := setting.FindPayMethod(req.PaymentMethod)
+	if method == nil {
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "支付方式不存在"})
 		return
 	}
-
-	if !operation_setting.ContainsPayMethod(req.PaymentMethod) {
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "支付方式不存在"})
+	if feePercent := setting.MethodFeePercent(method); feePercent > 0 {
+		payMoney = decimal.NewFromFloat(payMoney).
+			Mul(decimal.NewFromFloat(1 + feePercent/100)).
+			InexactFloat64()
+	}
+	if payMoney < 0.01 {
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "充值金额过低"})
 		return
 	}
 
@@ -304,7 +317,7 @@ func RequestEpay(c *gin.Context) {
 	notifyUrl, _ := url.Parse(callBackAddress + "/api/user/epay/notify")
 	tradeNo := fmt.Sprintf("%s%d", common.GetRandomString(6), time.Now().Unix())
 	tradeNo = fmt.Sprintf("USR%dNO%s", id, tradeNo)
-	client := GetEpayClient()
+	client := NewEpayClientForMethod(method)
 	if client == nil {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "当前管理员未配置支付信息"})
 		return
@@ -391,6 +404,30 @@ func UnlockOrder(tradeNo string) {
 	createLock.Unlock()
 }
 
+// epayNotifyClient picks the Epay provider that can verify an incoming webhook.
+// Several Epay providers may be configured, so each profile is tried; the one
+// that verifies the signature wins. A nil result means none is configured.
+func epayNotifyClient(params map[string]string) *epay.Client {
+	candidates := make([]map[string]string, 0, 4)
+	candidates = append(candidates, nil)
+	for _, provider := range setting.GetEnabledPayProviders() {
+		if provider.Type != "epay" {
+			continue
+		}
+		candidates = append(candidates, map[string]string{"provider": provider.Id, "type": "epay"})
+	}
+	for _, method := range candidates {
+		client := NewEpayClientForMethod(method)
+		if client == nil {
+			continue
+		}
+		if verifyInfo, err := client.Verify(params); err == nil && verifyInfo.VerifyStatus {
+			return client
+		}
+	}
+	return NewEpayClientForMethod(nil)
+}
+
 func EpayNotify(c *gin.Context) {
 	if !isEpayWebhookEnabled() {
 		logger.LogWarn(c.Request.Context(), fmt.Sprintf("易支付 webhook 被拒绝 reason=webhook_disabled path=%q client_ip=%s", c.Request.RequestURI, c.ClientIP()))
@@ -425,7 +462,7 @@ func EpayNotify(c *gin.Context) {
 		_, _ = c.Writer.Write([]byte("fail"))
 		return
 	}
-	client := GetEpayClient()
+	client := epayNotifyClient(params)
 	if client == nil {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("易支付 client 未初始化 path=%q client_ip=%s", c.Request.RequestURI, c.ClientIP()))
 		_, err := c.Writer.Write([]byte("fail"))

@@ -42,6 +42,7 @@ export const channelSchema = z.object({
   test_model: z.string().nullish(),
   status: z.number(), // 1: enabled, 0: manual disabled, 2: auto disabled
   name: z.string(),
+  name_i18n: z.string().default('').optional(),
   weight: z.number().nullish(),
   created_time: z.number(),
   test_time: z.number(),
