@@ -14,6 +14,16 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 )
 
+// notifyRootUserJailbreak alerts the root operator about an auto-ban so a false
+// positive can be reviewed in the 破甲拦截记录 page.
+func notifyRootUserJailbreak(notifyType string, subject string, content string) {
+	notifyAdmins(notifyType, func(role int, _ dto.UserSetting) bool {
+		return role == common.RoleRootUser
+	}, func(_ string) (string, string) {
+		return subject, content
+	})
+}
+
 // Anti-jailbreak guard
 //
 // A channel may point at its own classifier ("judge") model plus the behaviour
@@ -131,7 +141,7 @@ func runJailbreakCheck(request JailbreakCheckRequest, content string) error {
 			"anti-jailbreak: banned user %s (id %d) after a hit on channel %s (id %d), model %s, reason: %s",
 			username, request.UserId, request.ChannelName, request.ChannelId, request.ModelName, reason,
 		))
-		NotifyRootUser(dto.NotifyTypeJailbreakBan, "账号因破甲被自动封禁", fmt.Sprintf(
+		notifyRootUserJailbreak(dto.NotifyTypeJailbreakBan, "账号因破甲被自动封禁", fmt.Sprintf(
 			"用户 %s（ID %d）在渠道 %s（ID %d）使用模型 %s 时被判定为破甲尝试。\n理由：%s\n可在「破甲拦截记录」中查看原文。",
 			username, request.UserId, request.ChannelName, request.ChannelId, request.ModelName, reason,
 		))

@@ -1,11 +1,11 @@
 package model
 
 import (
-	"strings"
 	"errors"
 	"fmt"
 	"math/rand"
 	"strconv"
+	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
@@ -77,11 +77,11 @@ type LotteryPrize struct {
 	// RebateRate is the recharge rebate percentage for type=coupon.
 	RebateRate float64 `json:"rebate_rate" gorm:"default:0"`
 	// PlanId is the subscription plan granted for type=subscription.
-	PlanId    int    `json:"plan_id" gorm:"default:0"`
-	Enabled   bool   `json:"enabled" gorm:"default:true"`
-	SortOrder int    `json:"sort_order" gorm:"default:0"`
-	CreatedAt int64  `json:"created_at" gorm:"bigint"`
-	UpdatedAt int64  `json:"updated_at" gorm:"bigint"`
+	PlanId    int   `json:"plan_id" gorm:"default:0"`
+	Enabled   bool  `json:"enabled" gorm:"default:true"`
+	SortOrder int   `json:"sort_order" gorm:"default:0"`
+	CreatedAt int64 `json:"created_at" gorm:"bigint"`
+	UpdatedAt int64 `json:"updated_at" gorm:"bigint"`
 }
 
 func (LotteryPrize) TableName() string {
@@ -159,15 +159,15 @@ func (LotteryCoupon) TableName() string {
 
 // LotteryRecord is an audit log of each draw.
 type LotteryRecord struct {
-	Id         int64            `json:"id" gorm:"primaryKey;autoIncrement"`
-	UserId     int              `json:"user_id" gorm:"not null;index"`
-	PrizeType  LotteryPrizeType `json:"prize_type" gorm:"type:varchar(16);not null"`
-	PrizeLabel string           `json:"prize_label" gorm:"type:varchar(128);not null"`
-	PrizeValue int64            `json:"prize_value" gorm:"not null"` // quota for balance, 0 otherwise
-	RebateRate float64          `json:"rebate_rate" gorm:"not null"` // coupon rate, 0 otherwise
-	PrizePlanId int             `json:"prize_plan_id" gorm:"default:0"` // subscription plan id, 0 otherwise
-	CostQuota  int              `json:"cost_quota" gorm:"not null"`  // quota spent on this draw
-	CreatedAt  int64            `json:"created_at" gorm:"bigint"`
+	Id          int64            `json:"id" gorm:"primaryKey;autoIncrement"`
+	UserId      int              `json:"user_id" gorm:"not null;index"`
+	PrizeType   LotteryPrizeType `json:"prize_type" gorm:"type:varchar(16);not null"`
+	PrizeLabel  string           `json:"prize_label" gorm:"type:varchar(128);not null"`
+	PrizeValue  int64            `json:"prize_value" gorm:"not null"`    // quota for balance, 0 otherwise
+	RebateRate  float64          `json:"rebate_rate" gorm:"not null"`    // coupon rate, 0 otherwise
+	PrizePlanId int              `json:"prize_plan_id" gorm:"default:0"` // subscription plan id, 0 otherwise
+	CostQuota   int              `json:"cost_quota" gorm:"not null"`     // quota spent on this draw
+	CreatedAt   int64            `json:"created_at" gorm:"bigint"`
 }
 
 func (LotteryRecord) TableName() string {
@@ -341,13 +341,13 @@ func DrawLottery(userId int) (*DrawLotteryResult, error) {
 	// Log the outcome.
 	switch prize.Type {
 	case LotteryPrizeBalance:
-		RecordLog(userId, LogTypeSystem, fmt.Sprintf("抽奖中奖：%s，获得额度 %s", prize.Label, logger.LogQuota(int(prize.Quota))))
+		RecordLog(userId, LogTypeSystem, common.NewMessage("Lottery win: {{prize}}, quota {{quota}}", map[string]any{"prize": prize.Label, "quota": logger.LogQuota(int(prize.Quota))}))
 	case LotteryPrizeCoupon:
-		RecordLog(userId, LogTypeSystem, fmt.Sprintf("抽奖中奖：%s（充值返 %s%%）", prize.Label, formatFloat(prize.RebateRate)))
+		RecordLog(userId, LogTypeSystem, common.NewMessage("Lottery win: {{prize}} (recharge rebate {{rate}}%)", map[string]any{"prize": prize.Label, "rate": formatFloat(prize.RebateRate)}))
 	case LotteryPrizeSubscription:
-		RecordLog(userId, LogTypeSystem, fmt.Sprintf("抽奖中奖：%s，获得订阅", prize.Label))
+		RecordLog(userId, LogTypeSystem, common.NewMessage("Lottery win: {{prize}}, subscription granted", map[string]any{"prize": prize.Label}))
 	case LotteryPrizeThanks:
-		RecordLog(userId, LogTypeSystem, "抽奖：谢谢参与")
+		RecordLog(userId, LogTypeSystem, common.NewMessage("Lottery: thanks for participating"))
 	}
 
 	return &DrawLotteryResult{
@@ -432,7 +432,7 @@ func ApplyLotteryCoupon(tx *gorm.DB, userId int, creditedQuota int) (int, error)
 	if err := MarkLotteryCouponUsed(coupon.Id, tx); err != nil {
 		return 0, err
 	}
-	RecordLog(userId, LogTypeSystem, fmt.Sprintf("抽奖充值优惠券返利 %s (充值额度: %s, 优惠比例: %s%%)", logger.LogQuota(bonus), logger.LogQuota(creditedQuota), formatFloat(coupon.RebateRate)))
+	RecordLog(userId, LogTypeSystem, common.NewMessage(fmt.Sprintf("抽奖充值优惠券返利 %s (充值额度: %s, 优惠比例: %s%%)", logger.LogQuota(bonus), logger.LogQuota(creditedQuota), formatFloat(coupon.RebateRate))))
 	return bonus, nil
 }
 

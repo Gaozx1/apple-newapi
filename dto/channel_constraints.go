@@ -37,6 +37,7 @@ type ChannelFilterKind string
 
 const (
 	FilterRequestPath        ChannelFilterKind = "request_path"
+	FilterTaskPluginEndpoint ChannelFilterKind = "task_plugin_endpoint"
 	FilterTaskPluginIdentity ChannelFilterKind = "task_plugin_identity"
 	FilterResponsesWebSocket ChannelFilterKind = "responses_websocket"
 	// FilterExcludedChannelIds is a request-local exclusion produced by the
@@ -52,6 +53,9 @@ type ChannelFilter struct {
 	TaskPluginKeys         []string
 	TaskPluginChannelTypes []int
 	ExcludedChannelIds     []int
+	// TaskPluginRelayOnly excludes endpoint candidates after an ordinary relay
+	// channel wins selection, so retries keep using the same protocol handler.
+	TaskPluginRelayOnly bool
 }
 
 type ChannelConstraints struct {

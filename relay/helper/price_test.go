@@ -9,6 +9,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
@@ -648,6 +649,60 @@ func TestModelPriceHelperPreservesGpt51CodexMaxIdentity(t *testing.T) {
 	assert.Equal(t, 1.75, priceData.ModelRatio)
 }
 
+// DeepSeek thinking tails and @ modifiers bill at the base model's built-in
+// expression; a name on the thinking-suffix blacklist stays opaque and needs
+// its own price.
+func TestModelPriceHelperDeepSeekThinkingTailsBillAtBase(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	require.NoError(t, i18n.Init())
+	saved := map[string]string{}
+	require.NoError(t, config.GlobalConfig.SaveToDB(func(key, value string) error {
+		saved[key] = value
+		return nil
+	}))
+	t.Cleanup(func() { require.NoError(t, config.GlobalConfig.LoadFromDB(saved)) })
+	require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{
+		"billing_setting.billing_mode": `{}`,
+		"billing_setting.billing_expr": `{}`,
+	}))
+	oldSelfUse := operation_setting.SelfUseModeEnabled
+	operation_setting.SelfUseModeEnabled = false
+	t.Cleanup(func() { operation_setting.SelfUseModeEnabled = oldSelfUse })
+	settings := model_setting.GetGlobalSettings()
+	originalBlacklist := append([]string(nil), settings.ThinkingModelBlacklist...)
+	t.Cleanup(func() { settings.ThinkingModelBlacklist = originalBlacklist })
+	settings.ThinkingModelBlacklist = append(originalBlacklist, "deepseek-v4-pro-max")
+
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	ctx.Set("group", "default")
+	for origin, base := range map[string]string{
+		"deepseek-flash-none":           "deepseek-flash",
+		"deepseek-flash-low":            "deepseek-flash",
+		"deepseek-flash-max":            "deepseek-flash",
+		"deepseek-v4-pro-low":           "deepseek-v4-pro",
+		"deepseek-flash@effort:max":     "deepseek-flash",
+		"deepseek-flash-max@effort:low": "deepseek-flash",
+		"deepseek-v4-pro@thinking:off":  "deepseek-v4-pro",
+	} {
+		info := &relaycommon.RelayInfo{
+			OriginModelName: origin, UserGroup: "default", UsingGroup: "default",
+			BillingRequestInput: &billingexpr.RequestInput{Body: []byte(`{}`)},
+		}
+		_, err := ModelPriceHelper(ctx, info, 1000, &types.TokenCountMeta{})
+		require.NoError(t, err, origin)
+		assert.Equal(t, base, info.BillingModelName, origin)
+		expression, _ := billing_setting.GetBuiltinBillingExpr(base)
+		require.NotNil(t, info.TieredBillingSnapshot, origin)
+		assert.Equal(t, expression, info.TieredBillingSnapshot.ExprString, origin)
+	}
+
+	info := &relaycommon.RelayInfo{OriginModelName: "deepseek-v4-pro-max", UserGroup: "default", UsingGroup: "default"}
+	_, err := ModelPriceHelper(ctx, info, 1000, &types.TokenCountMeta{})
+	require.Error(t, err)
+	assert.Equal(t, "deepseek-v4-pro-max", info.GetBillingModelName())
+}
+
 func TestModelPriceHelperNativeGeminiNoThinkingDoesNotAliasBillingModel(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -767,28 +822,20 @@ func installUserLevelGrant(t *testing.T, threshold float64, groupRatios map[stri
 		Threshold:   threshold,
 		GroupRatios: groupRatios,
 	}}
-	user_level_setting.RebuildLevelIndex()
 }
-
 // A level grant is billed only when it is more favorable than the group's
 // configured ratio, so a user never pays more than their group's ratio.
 func TestModelPriceHelperAppliesUserLevelGroupRatio(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-
 	savedModelRatios := ratio_setting.ModelRatio2JSONString()
 	savedGroupRatios := ratio_setting.GroupRatio2JSONString()
-	t.Cleanup(func() {
 		require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(savedModelRatios))
 		require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(savedGroupRatios))
-	})
-
 	modelRatios, err := common.Marshal(map[string]float64{"level-ratio-model": 15})
 	require.NoError(t, err)
 	require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(string(modelRatios)))
 	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"default":1,"vip":0.5,"nogrant":0.4}`))
-
 	installUserLevelGrant(t, 100, map[string]float64{"default": 0.6, "vip": 0.8})
-
 	for _, tc := range []struct {
 		name      string
 		group     string
@@ -809,12 +856,7 @@ func TestModelPriceHelperAppliesUserLevelGroupRatio(t *testing.T) {
 				OriginModelName: "level-ratio-model",
 				UserGroup:       tc.group,
 				UsingGroup:      tc.group,
-			}
-
 			price, err := ModelPriceHelper(ctx, info, 1000, &types.TokenCountMeta{})
-			require.NoError(t, err)
 			assert.Equal(t, tc.wantRatio, price.GroupRatioInfo.GroupRatio)
 			assert.Equal(t, tc.wantQuota, price.QuotaToPreConsume)
-		})
-	}
-}
+func (s *priceTestReservation) ReserveBeforeSubmit(quota int) error { return s.Reserve(quota) }

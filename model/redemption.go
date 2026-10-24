@@ -13,9 +13,9 @@ import (
 
 // RedemptionType 区分兑换码兑换的内容类型。
 const (
-	RedemptionTypeQuota         = "quota"         // 兑换额度（默认）
-	RedemptionTypeLottery       = "lottery"       // 兑换抽奖次数
-	RedemptionTypeSubscription  = "subscription"  // 兑换订阅套餐
+	RedemptionTypeQuota        = "quota"        // 兑换额度（默认）
+	RedemptionTypeLottery      = "lottery"      // 兑换抽奖次数
+	RedemptionTypeSubscription = "subscription" // 兑换订阅套餐
 )
 
 type Redemption struct {
@@ -137,7 +137,7 @@ func SearchRedemptions(keyword string, status string, startIdx int, num int) (re
 
 func GetRedemptionById(id int) (*Redemption, error) {
 	if id == 0 {
-		return nil, errors.New("id 为空！")
+		return nil, common.NewMessage("ID is empty")
 	}
 	redemption := Redemption{Id: id}
 	var err error = nil
@@ -147,10 +147,10 @@ func GetRedemptionById(id int) (*Redemption, error) {
 
 func Redeem(key string, userId int) (quota int, err error) {
 	if key == "" {
-		return 0, errors.New("未提供兑换码")
+		return 0, errors.New("redemption code not provided")
 	}
 	if userId == 0 {
-		return 0, errors.New("无效的 user id")
+		return 0, errors.New("invalid user id")
 	}
 	redemption := &Redemption{}
 
@@ -162,13 +162,13 @@ func Redeem(key string, userId int) (quota int, err error) {
 	err = DB.Transaction(func(tx *gorm.DB) error {
 		err := lockForUpdate(tx).Where(keyCol+" = ?", key).First(redemption).Error
 		if err != nil {
-			return errors.New("无效的兑换码")
+			return errors.New("invalid redemption code")
 		}
 		if redemption.Status != common.RedemptionCodeStatusEnabled {
-			return errors.New("该兑换码已被使用")
+			return errors.New("redemption code already used")
 		}
 		if redemption.ExpiredTime != 0 && redemption.ExpiredTime < common.GetTimestamp() {
-			return errors.New("该兑换码已过期")
+			return errors.New("redemption code expired")
 		}
 		// Compare-and-swap on status: only the transaction that flips
 		// enabled -> used may credit, so a concurrent redeem of the
@@ -184,7 +184,7 @@ func Redeem(key string, userId int) (quota int, err error) {
 			return result.Error
 		}
 		if result.RowsAffected == 0 {
-			return errors.New("该兑换码已被使用")
+			return errors.New("redemption code already used")
 		}
 
 		switch redemption.Type {
@@ -226,21 +226,21 @@ func Redeem(key string, userId int) (quota int, err error) {
 		}
 	})
 	if err != nil {
-		common.SysError("redemption failed: " + err.Error())
+		common.SysError(common.LogText("redemption failed: %s", err.Error()))
 		return 0, ErrRedeemFailed
 	}
 
 	switch redemption.Type {
 	case RedemptionTypeLottery:
-		RecordLog(userId, LogTypeTopup, fmt.Sprintf("通过兑换码获得 %d 次抽奖次数，兑换码ID %d", redemption.Value, redemption.Id))
+		RecordLog(userId, LogTypeTopup, common.NewMessage(fmt.Sprintf("通过兑换码获得 %d 次抽奖次数，兑换码ID %d", redemption.Value, redemption.Id)))
 		return 0, nil
 	case RedemptionTypeSubscription:
 		syncRechargeCaches(userId, 0, "redemption subscription")
-		RecordLog(userId, LogTypeTopup, fmt.Sprintf("通过兑换码获得订阅套餐 (plan=%d)，兑换码ID %d", redemption.Value, redemption.Id))
+		RecordLog(userId, LogTypeTopup, common.NewMessage(fmt.Sprintf("通过兑换码获得订阅套餐 (plan=%d)，兑换码ID %d", redemption.Value, redemption.Id)))
 		return 0, nil
 	default:
 		syncRechargeCaches(userId, redemption.Quota, "redemption")
-		RecordLog(userId, LogTypeTopup, fmt.Sprintf("通过兑换码充值 %s，兑换码ID %d", logger.LogQuota(redemption.Quota), redemption.Id))
+		RecordLog(userId, LogTypeTopup, common.NewMessage(fmt.Sprintf("通过兑换码充值 %s，兑换码ID %d", logger.LogQuota(redemption.Quota), redemption.Id)))
 		return redemption.Quota, nil
 	}
 }
@@ -283,7 +283,7 @@ func (redemption *Redemption) Delete() error {
 
 func DeleteRedemptionById(id int) (err error) {
 	if id == 0 {
-		return errors.New("id 为空！")
+		return common.NewMessage("ID is empty")
 	}
 	redemption := Redemption{Id: id}
 	err = DB.Where(redemption).First(&redemption).Error
