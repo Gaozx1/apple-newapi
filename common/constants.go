@@ -139,15 +139,6 @@ var VideoPerSecondBillingEnabled = false
 // LotteryEnabled controls whether the lottery (抽奖) feature is available to
 // users. Admins grant draw chances; a draw without a free chance costs quota.
 var LotteryEnabled = false
-
-// AdEnabled controls whether the ads page and sponsor impressions are shown.
-var AdEnabled = false
-
-// AdRewardQuota is the balance credited for one completed rewarded ad view.
-var AdRewardQuota = int(QuotaPerUnit)
-
-// AdRewardMaxDailyViews caps how many sponsor impressions a user sees per day.
-var AdRewardMaxDailyViews = 50
 var ChannelDisableThreshold = 5.0
 var AutomaticDisableChannelEnabled = false
 var AutomaticEnableChannelEnabled = false

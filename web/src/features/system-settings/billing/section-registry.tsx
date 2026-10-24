@@ -18,8 +18,6 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { parseCurrencyDisplayType } from '@/lib/currency'
 
-import { AdAdminPanel } from '@/features/ads/components/ad-admin-panel'
-
 import { CheckinSettingsSection } from '../general/checkin-settings-section'
 import { PricingSection } from '../general/pricing-section'
 import { QuotaSettingsSection } from '../general/quota-settings-section'
@@ -200,11 +198,6 @@ const BILLING_SECTIONS = [
         }}
       />
     ),
-  },
-  {
-    id: 'ads',
-    titleKey: 'Ads',
-    build: () => <AdAdminPanel />,
   },
   {
     id: 'checkin',

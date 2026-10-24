@@ -62,7 +62,6 @@ import { safeNumberFieldProps } from '../utils/numeric-field'
 import { AmountDiscountVisualEditor } from './amount-discount-visual-editor'
 import { AmountOptionsVisualEditor } from './amount-options-visual-editor'
 import { CreemProductsVisualEditor } from './creem-products-visual-editor'
-import { PayProvidersEditor } from './pay-providers-editor'
 import { PaymentMethodsVisualEditor } from './payment-methods-visual-editor'
 import {
   formatJsonForEditor,
@@ -1012,10 +1011,6 @@ export function PaymentSettingsSection({
                     </FormItem>
                   )}
                 />
-
-                <div className='mt-6'>
-                  <PayProvidersEditor />
-                </div>
 
                 <div className='grid gap-6 md:grid-cols-2 md:items-start'>
                   <FormField
