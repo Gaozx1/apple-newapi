@@ -41,7 +41,7 @@
     "@tanstack/react-router": "^1.170.17",
     "@tanstack/react-table": "^8.21.3",
     "@tanstack/react-virtual": "^3.14.5",
-    "@visactor/react-vchart": "^2.1.2",
+    "@visactor/react-vchart": "^2.2.0",
     "@visactor/vchart": "^2.1.2",
     "ai": "^7.0.136",
     "auto-skeleton-react": "^1.0.5",
