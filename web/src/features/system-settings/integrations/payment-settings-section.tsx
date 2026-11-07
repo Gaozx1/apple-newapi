@@ -63,6 +63,8 @@ import { safeNumberFieldProps } from '../utils/numeric-field'
 import { AmountDiscountVisualEditor } from './amount-discount-visual-editor'
 import { AmountOptionsVisualEditor } from './amount-options-visual-editor'
 import { CreemProductsVisualEditor } from './creem-products-visual-editor'
+import { usePaymentChannels } from './payment-channels'
+import { PaymentChannelsEditor } from './payment-channels-editor'
 import { PaymentMethodsVisualEditor } from './payment-methods-visual-editor'
 import {
   formatJsonForEditor,
@@ -223,6 +225,7 @@ export function PaymentSettingsSection({
   waffoPancakeProvisionedProductID,
   complianceDefaults,
 }: PaymentSettingsSectionProps) {
+  const { channels } = usePaymentChannels()
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const updateOption = useUpdateOption()
@@ -884,6 +887,9 @@ export function PaymentSettingsSection({
             <div className='overflow-x-auto pb-1'>
               <TabsList className='grid min-w-[44rem] grid-cols-6'>
                 <TabsTrigger value='general'>{t('General')}</TabsTrigger>
+                <TabsTrigger value='channels'>
+                  {t('Payment channels')}
+                </TabsTrigger>
                 <TabsTrigger value='epay'>Epay</TabsTrigger>
                 <TabsTrigger value='stripe'>{t('Stripe')}</TabsTrigger>
                 <TabsTrigger value='creem'>Creem</TabsTrigger>
@@ -985,6 +991,7 @@ export function PaymentSettingsSection({
                       <FormControl>
                         {payMethodsVisualMode ? (
                           <PaymentMethodsVisualEditor
+                            channels={channels}
                             value={field.value}
                             onChange={field.onChange}
                           />
@@ -1139,6 +1146,12 @@ export function PaymentSettingsSection({
               </div>
             </TabsContent>
 
+            <TabsContent
+              value='channels'
+              className={paymentTabContentClassName}
+            >
+              <PaymentChannelsEditor />
+            </TabsContent>
             <TabsContent value='epay' className={paymentTabContentClassName}>
               <div className='space-y-4'>
                 <div>

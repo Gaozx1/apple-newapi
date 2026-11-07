@@ -51,7 +51,6 @@ import { getUserAvatarFallback, getUserAvatarStyle } from '@/lib/avatar'
 import { formatBillingCurrencyFromUSD } from '@/lib/currency'
 import {
   formatLogQuota,
-  formatPercent,
   formatTimestampToDate,
 } from '@/lib/format'
 import { cn } from '@/lib/utils'
@@ -357,6 +356,51 @@ function buildTypeDetailSegments(
   }
 
   return segments
+}
+
+/**
+ * CacheRateBadge: 缓存命中率分级着色徽章。
+ *
+ * 分级口径：
+ *   >=90%  绿（优秀）  70-90% 浅绿（良好）  40-70% 橙（一般）
+ *   10-40% 红（偏低）  <10% 灰（未命中/首轮）
+ *
+ * 为什么需要：缓存率是这套网关的核心成本指标（命中后上游计费降约 17 倍），
+ * 但原来只在灰色小字里显示一个 "(94%)"，扫视时完全看不出好坏。
+ */
+export function CacheRateBadge({
+  percent,
+  tokens,
+}: {
+  percent: number | null
+  tokens?: number
+}) {
+  if (percent == null) return null
+  const pct = Math.max(0, Math.min(100, percent))
+  let cls = 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
+  let label = '未命中'
+  if (pct >= 90) {
+    cls = 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
+    label = '优秀'
+  } else if (pct >= 70) {
+    cls = 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300'
+    label = '良好'
+  } else if (pct >= 40) {
+    cls = 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300'
+    label = '一般'
+  } else if (pct >= 10) {
+    cls = 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300'
+    label = '偏低'
+  }
+  const text = pct >= 100 ? '100%' : `${pct.toFixed(pct >= 10 ? 0 : 1)}%`
+  return (
+    <span
+      title={`缓存命中 ${label}${tokens != null ? ` · ${tokens.toLocaleString()} tokens` : ''}`}
+      className={`inline-flex items-center gap-1 rounded px-1 py-px text-[10px] font-semibold leading-4 tabular-nums ${cls}`}
+    >
+      {text}
+    </span>
+  )
 }
 
 export function useCommonLogsColumns(
@@ -770,8 +814,7 @@ export function useCommonLogsColumns(
                   {cacheReadTokens > 0 && (
                     <span className='text-muted-foreground/60'>
                       {t('Cache')}↓ {cacheReadTokens.toLocaleString()}
-                      {cacheReadPercent !== null &&
-                        ` (${formatPercent(cacheReadPercent)})`}
+                      <CacheRateBadge percent={cacheReadPercent} tokens={cacheReadTokens} />
                     </span>
                   )}
                   {cacheWriteTokens > 0 && (

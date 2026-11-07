@@ -43,6 +43,7 @@ import { SettingsSection } from '../components/settings-section'
 import { useUpdateOption } from '../hooks/use-update-option'
 import { positiveIntegerSchema } from '../utils/numeric-field'
 import { GroupRatioForm } from './group-ratio-form'
+import { GroupManagementDialog } from './group-management-dialog'
 import { ImageTierPricingEditor } from './image-tier-pricing-editor'
 import { ModelRatioForm } from './model-ratio-form'
 import { ToolPriceSettings } from './tool-price-settings'
@@ -516,11 +517,27 @@ export function RatioSettingsCard({
     }
     if (tab === 'groups') {
       return (
-        <GroupRatioForm
-          form={groupForm}
-          onSave={saveGroupRatios}
-          isSaving={updateOption.isPending}
-        />
+        <div className='space-y-4'>
+          <div className='flex flex-wrap items-center justify-between gap-3 rounded-lg border border-dashed p-3'>
+            <p className='text-muted-foreground text-sm'>
+              {t(
+                'Groups are identified by a stable code. Register a group here to give it a display name in every language without breaking the channels and keys that reference it.'
+              )}
+            </p>
+            <GroupManagementDialog
+              trigger={
+                <Button variant='outline' size='sm'>
+                  {t('Group management')}
+                </Button>
+              }
+            />
+          </div>
+          <GroupRatioForm
+            form={groupForm}
+            onSave={saveGroupRatios}
+            isSaving={updateOption.isPending}
+          />
+        </div>
       )
     }
     if (tab === 'tool-prices') {

@@ -36,6 +36,9 @@ import {
   FormMessage,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
+import { NativeSelect } from '@/components/ui/native-select'
+
+import type { PaymentChannel } from './payment-channels'
 
 const createPaymentMethodDialogSchema = (t: (key: string) => string) =>
   z.object({
@@ -43,6 +46,8 @@ const createPaymentMethodDialogSchema = (t: (key: string) => string) =>
     type: z.string().min(1, t('Payment type key is required')),
     icon: z.string().optional(),
     min_topup: z.string().optional(),
+    channel_id: z.string().optional(),
+    gateway_type: z.string().max(50).optional(),
   })
 
 type PaymentMethodDialogFormValues = z.infer<
@@ -57,6 +62,8 @@ export type PaymentMethodData = {
   icon?: string
   min_topup?: string
   color?: string
+  channel_id?: string
+  gateway_type?: string
 }
 
 type PaymentMethodDialogProps = {
@@ -64,6 +71,8 @@ type PaymentMethodDialogProps = {
   onOpenChange: (open: boolean) => void
   onSave: (data: PaymentMethodData) => void
   editData?: PaymentMethodData | null
+  channels?: PaymentChannel[]
+  existingTypes?: string[]
 }
 
 const PAYMENT_TYPE_ICON_NAMES: Record<string, string> = {
@@ -80,11 +89,29 @@ export function PaymentMethodDialog({
   onOpenChange,
   onSave,
   editData,
+  channels = [],
+  existingTypes = [],
 }: PaymentMethodDialogProps) {
   const { t } = useTranslation()
   const isEditMode = !!editData
-  const paymentMethodDialogSchema = createPaymentMethodDialogSchema(t)
+  const paymentMethodDialogSchema = createPaymentMethodDialogSchema(
+    t
+  ).superRefine((values, ctx) => {
+    if (values.type !== editData?.type && existingTypes.includes(values.type)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['type'],
+        message: t('Payment type key already exists'),
+      })
+    }
+  })
   const paymentTypeOptions = [
+    ...['tron', 'ethereum', 'polygon', 'solana'].map((network) => ({
+      iconName: 'SiTether',
+      label: `USDT (${network})`,
+      name: `USDT (${network})`,
+      value: `usdt.${network}`,
+    })),
     {
       iconName: 'SiAlipay',
       label: `${t('Alipay')} (Epay: alipay)`,
@@ -124,6 +151,14 @@ export function PaymentMethodDialog({
   })
 
   const iconValue = form.watch('icon')
+  const selectedType = form.watch('type')
+  const nativeMethod = [
+    'stripe',
+    'creem',
+    'waffo',
+    'waffo_pancake',
+    'balance',
+  ].includes(selectedType)
 
   useEffect(() => {
     if (editData) {
@@ -132,6 +167,8 @@ export function PaymentMethodDialog({
         type: editData.type,
         icon: editData.icon ?? getDefaultIconName(editData.type),
         min_topup: editData.min_topup ?? '',
+        channel_id: editData.channel_id ?? '',
+        gateway_type: editData.gateway_type ?? '',
       })
     } else {
       form.reset({
@@ -139,21 +176,28 @@ export function PaymentMethodDialog({
         type: '',
         icon: '',
         min_topup: '',
+        channel_id: '',
+        gateway_type: '',
       })
     }
   }, [editData, form, open])
 
   const handleSubmit = (values: PaymentMethodDialogFormValues) => {
     const data: PaymentMethodData = {
+      ...editData,
       name: values.name,
       type: values.type,
     }
+    delete data.icon
+    delete data.min_topup
     if (values.icon && values.icon.trim() !== '') {
       data.icon = values.icon.trim()
     }
     if (values.min_topup && values.min_topup.trim() !== '') {
       data.min_topup = values.min_topup
     }
+    data.channel_id = nativeMethod ? '' : (values.channel_id ?? '')
+    data.gateway_type = nativeMethod ? '' : (values.gateway_type?.trim() ?? '')
     onSave(data)
     form.reset()
     onOpenChange(false)
@@ -256,6 +300,65 @@ export function PaymentMethodDialog({
               </FormItem>
             )}
           />
+
+          <FormField
+            control={form.control}
+            name='channel_id'
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>{t('Payment channel')}</FormLabel>
+                <FormControl>
+                  <NativeSelect
+                    {...field}
+                    value={nativeMethod ? '' : (field.value ?? '')}
+                    disabled={nativeMethod}
+                  >
+                    <option value=''>{t('Existing gateway settings')}</option>
+                    {channels.map((channel) => (
+                      <option
+                        key={channel.id}
+                        value={channel.id}
+                        disabled={
+                          !channel.enabled &&
+                          channel.id !== editData?.channel_id
+                        }
+                      >
+                        {channel.name}
+                        {channel.enabled ? '' : ` (${t('Disabled')})`}
+                      </option>
+                    ))}
+                  </NativeSelect>
+                </FormControl>
+                <FormDescription>
+                  {t('Choose the channel that processes this payment method.')}
+                </FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          {!nativeMethod && (
+            <FormField
+              control={form.control}
+              name='gateway_type'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Gateway payment type (optional)')}</FormLabel>
+                  <FormControl>
+                    <Input
+                      {...field}
+                      placeholder='wxpay / alipay / usdt.tron'
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    {t(
+                      'Leave blank to use the payment type key. Set this when multiple buttons use the same gateway payment type.'
+                    )}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          )}
 
           <FormField
             control={form.control}

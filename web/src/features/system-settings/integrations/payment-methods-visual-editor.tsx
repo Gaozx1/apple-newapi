@@ -33,6 +33,7 @@ import {
 
 import { safeJsonParseWithValidation } from '../utils/json-parser'
 import { isArray } from '../utils/json-validators'
+import type { PaymentChannel } from './payment-channels'
 import {
   PaymentMethodDialog,
   type PaymentMethodData,
@@ -41,6 +42,7 @@ import {
 type PaymentMethodsVisualEditorProps = {
   value: string
   onChange: (value: string) => void
+  channels?: PaymentChannel[]
 }
 
 const PAYMENT_TYPE_ICON_NAMES: Record<string, string> = {
@@ -61,9 +63,18 @@ function getEffectiveIconName(method: PaymentMethodData) {
 export function PaymentMethodsVisualEditor({
   value,
   onChange,
+  channels = [],
 }: PaymentMethodsVisualEditorProps) {
   const { t } = useTranslation()
   const paymentTemplates = [
+    ...['tron', 'ethereum', 'polygon', 'solana'].map((network) => ({
+      name: `USDT (${network})`,
+      template: {
+        icon: 'SiTether',
+        name: `USDT (${network})`,
+        type: `usdt.${network}`,
+      },
+    })),
     {
       name: t('Epay Alipay'),
       template: {
@@ -326,6 +337,14 @@ export function PaymentMethodsVisualEditor({
                 ),
               },
               {
+                id: 'channel',
+                header: t('Payment channel'),
+                cell: (method) =>
+                  channels.find((channel) => channel.id === method.channel_id)
+                    ?.name ??
+                  (method.channel_id || t('Existing gateway settings')),
+              },
+              {
                 id: 'icon',
                 header: t('Icon'),
                 cell: (method) => {
@@ -428,6 +447,13 @@ export function PaymentMethodsVisualEditor({
                     </div>
                   </div>
                   <div className='space-y-2 text-sm'>
+                    <p>
+                      {t('Payment channel')}:{' '}
+                      {channels.find(
+                        (channel) => channel.id === method.channel_id
+                      )?.name ??
+                        (method.channel_id || t('Existing gateway settings'))}
+                    </p>
                     <div className='flex items-center gap-2'>
                       <span className='text-muted-foreground min-w-20'>
                         {t('Icon')}
@@ -468,6 +494,8 @@ export function PaymentMethodsVisualEditor({
         onOpenChange={setDialogOpen}
         onSave={handleSave}
         editData={editData}
+        channels={channels}
+        existingTypes={paymentMethods.map((method) => method.type)}
       />
     </div>
   )
