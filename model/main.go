@@ -361,6 +361,7 @@ func migrateDB() error {
 		&Model{},
 		&Vendor{},
 		&PrefillGroup{},
+		&Group{},
 		&Setup{},
 		&TwoFA{},
 		&TwoFABackupCode{},

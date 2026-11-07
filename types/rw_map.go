@@ -43,6 +43,14 @@ func (m *RWMap[K, V]) Set(key K, value V) {
 	m.data[key] = value
 }
 
+// Delete removes one entry. It is a no-op when the key is absent, so callers do
+// not have to read the map first to stay race-free.
+func (m *RWMap[K, V]) Delete(key K) {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+	delete(m.data, key)
+}
+
 func (m *RWMap[K, V]) AddAll(other map[K]V) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()

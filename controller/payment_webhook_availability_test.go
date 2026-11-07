@@ -8,13 +8,16 @@ import (
 	"testing"
 
 	"github.com/Calcium-Ion/go-epay/epay"
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/system_setting"
 	"github.com/gin-gonic/gin"
+	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 func confirmPaymentComplianceForTest(t *testing.T) {
@@ -198,9 +201,14 @@ func TestEpayCallbacksVerifyBeforeSettlement(t *testing.T) {
 	operation_setting.EpayKey = "test-key"
 	operation_setting.PayMethods = []map[string]string{{"type": "alipay"}}
 	system_setting.ServerAddress = "https://dashboard.example.com"
-	// Rejected callbacks and valid non-success events must never reach settlement.
-	// A nil database makes an accidental attempt to settle fail the test.
-	model.DB = nil
+	// Known pending orders may acknowledge non-success events, but must not
+	// settle. With no user or plan, an accidental settlement cannot succeed.
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	model.DB = db
+	require.NoError(t, db.AutoMigrate(&model.TopUp{}, &model.SubscriptionOrder{}))
+	require.NoError(t, db.Create(&model.TopUp{TradeNo: "order", Money: 1, PaymentMethod: "alipay", PaymentProvider: model.PaymentProviderEpay, Status: common.TopUpStatusPending}).Error)
+	require.NoError(t, db.Create(&model.SubscriptionOrder{TradeNo: "order", Money: 1, PaymentMethod: "alipay", PaymentProvider: model.PaymentProviderEpay, Status: common.TopUpStatusPending}).Error)
 	require.True(t, isEpayWebhookEnabled())
 
 	// Both ambiguous maps below had this same valid signing string in v0.0.4.

@@ -92,6 +92,9 @@ func GetOptions(c *gin.Context) {
 			continue
 		}
 		value := common.Interface2String(v)
+		if k == "PaymentChannels" {
+			value = operation_setting.MaskPaymentChannels(value)
+		}
 		isSensitiveKey := strings.HasSuffix(k, "Token") ||
 			strings.HasSuffix(k, "Secret") ||
 			strings.HasSuffix(k, "Key") ||
@@ -456,7 +459,29 @@ func UpdateOption(c *gin.Context) {
 		common.ApiSuccess(c, change)
 		return
 	}
-	err = model.UpdateOption(option.Key, option.Value.(string))
+	if option.Key == "PaymentChannels" {
+		paymentSettingsUpdateMutex.Lock()
+		defer paymentSettingsUpdateMutex.Unlock()
+		value, normalizeErr := operation_setting.NormalizePaymentChannels(option.Value.(string))
+		if normalizeErr != nil {
+			common.ApiError(c, normalizeErr)
+			return
+		}
+		option.Value = value
+	}
+	if option.Key == "PayMethods" {
+		paymentSettingsUpdateMutex.Lock()
+		defer paymentSettingsUpdateMutex.Unlock()
+		if validateErr := operation_setting.ValidatePaymentMethods(option.Value.(string)); validateErr != nil {
+			common.ApiError(c, validateErr)
+			return
+		}
+	}
+	if option.Key == "PaymentChannels" || option.Key == "PayMethods" {
+		err = model.UpdateOptionsBulk(map[string]string{option.Key: option.Value.(string)})
+	} else {
+		err = model.UpdateOption(option.Key, option.Value.(string))
+	}
 	if err != nil {
 		if errors.Is(err, system_setting.ErrPasskeyRPIDInvalid) {
 			writeSecurityOperationError(c, err)

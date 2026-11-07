@@ -426,6 +426,14 @@ func SetApiRouter(router *gin.Engine) {
 		groupRoute.Use(middleware.AdminAuth())
 		{
 			groupRoute.GET("/", controller.GetGroups)
+			// Group definitions: a stable code plus per-language display names.
+			// Renaming only edits the display names, so channels and keys that
+			// reference the code keep working.
+			groupRoute.GET("/definitions", controller.GetGroupDefinitions)
+			groupRoute.POST("/definitions", controller.CreateGroupDefinition)
+			groupRoute.PUT("/definitions/:id", controller.UpdateGroupDefinition)
+			groupRoute.POST("/definitions/:id/rename", controller.RenameGroupDefinition)
+			groupRoute.DELETE("/definitions/:id", controller.DeleteGroupDefinition)
 		}
 
 		prefillGroupRoute := apiRouter.Group("/prefill_group")

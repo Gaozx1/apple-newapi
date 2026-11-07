@@ -364,6 +364,17 @@ func InitResources() error {
 	}
 	model.InitOptionMap()
 
+	// Register a group definition for every group name that already exists in
+	// the option maps or in channel/token/user data. Idempotent, and only on the
+	// master node so several instances cannot insert the same code twice.
+	if common.IsMasterNode {
+		if created, err := model.EnsureGroupsSeeded(); err != nil {
+			common.SysError(common.LogText("failed to register group definitions: %s", err.Error()))
+		} else if created > 0 {
+			common.SysLog(common.LogText("registered %d group definition(s)", created))
+		}
+	}
+
 	// Initialize login RSA key pair for password-in-transit encryption.
 	// Persists to the options table so all instances share the same key.
 	if err := initLoginRSAKeyPair(); err != nil {
