@@ -48,16 +48,16 @@ export function OpenPlatform(props: OpenPlatformProps) {
   return (
     <section className='relative z-10 px-6 py-20 md:py-24'>
       <AnimateInView>
-        <div className='border-border/60 bg-card shadow-card mx-auto max-w-6xl overflow-hidden rounded-3xl border'>
-          <div className='grid gap-10 p-8 md:grid-cols-2 md:p-12'>
+        <div className='surface-glass mx-auto max-w-6xl overflow-hidden rounded-[2rem] p-8 md:p-10'>
+          <div className='grid gap-10 md:grid-cols-2'>
             {/* Left: heading + CTA */}
             <div className='flex flex-col items-start justify-center gap-5'>
-              <div className='border-primary/25 bg-primary/10 text-primary inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium'>
+              <div className='border-primary/25 bg-primary/[0.07] text-primary inline-flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-xs font-semibold backdrop-blur-sm'>
                 <KeyRound className='size-3.5' />
                 {t('Open Platform')}
               </div>
 
-              <h2 className='text-2xl leading-tight font-semibold tracking-[-0.02em] md:text-4xl'>
+              <h2 className='text-2xl leading-tight font-bold tracking-[-0.03em] text-balance md:text-4xl'>
                 {t('OAuth 2.0 Open Platform')}
               </h2>
 
@@ -80,7 +80,7 @@ export function OpenPlatform(props: OpenPlatformProps) {
 
               <Button
                 size='lg'
-                className='group mt-1 h-11 rounded-xl px-6 text-sm font-medium shadow-xs'
+                className='group shadow-glow mt-1 h-12 rounded-full px-8 text-sm font-semibold'
                 render={
                   <Link
                     to={props.isAuthenticated ? '/oauth2-clients' : '/sign-up'}
@@ -100,10 +100,10 @@ export function OpenPlatform(props: OpenPlatformProps) {
                 {TIERS.map((tier) => (
                   <div
                     key={tier.range}
-                    className={`rounded-xl border p-4 transition-colors ${
+                    className={`rounded-2xl border p-4 backdrop-blur-sm transition-colors ${
                       tier.free
                         ? 'border-success/40 bg-success/10'
-                        : 'bg-background/60 border-border/60 hover:border-primary/40'
+                        : 'bg-card/60 border-border/60 hover:border-primary/40'
                     }`}
                   >
                     <p className='text-muted-foreground text-[11px] font-medium tracking-wider uppercase'>

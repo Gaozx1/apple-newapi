@@ -96,7 +96,7 @@ export function PricingTable(props: PricingTableProps) {
         emptyDescription={t('No models match your current filters.')}
         skeletonKeyPrefix='pricing-skeleton'
         applyHeaderSize
-        containerClassName='border-border/70 shadow-card rounded-xl'
+        containerClassName='border-border/60 bg-card/80 shadow-card rounded-2xl'
         getColumnClassName={(_columnId, kind) =>
           kind === 'header' ? 'text-muted-foreground font-medium' : undefined
         }

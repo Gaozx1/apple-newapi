@@ -50,7 +50,7 @@ function Input({
       data-size={typeof size === 'string' ? size : undefined}
       size={typeof size === 'number' ? size : undefined}
       className={cn(
-        'border-input file:text-foreground placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/60 disabled:bg-input/50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:bg-input/20 dark:disabled:bg-input/80 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 w-full min-w-0 rounded-lg border bg-background/60 px-2.5 py-1 text-base shadow-2xs transition-colors outline-none file:inline-flex file:h-6 file:border-0 file:bg-transparent file:text-sm file:font-medium focus-visible:ring-2 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:ring-3 aria-invalid:ring-inset md:text-sm',
+        'bg-input/70 file:text-foreground placeholder:text-muted-foreground focus-visible:bg-background focus-visible:ring-ring/70 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:bg-input/40 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 w-full min-w-0 rounded-lg border border-transparent px-2.5 py-1 text-base shadow-[inset_0_1px_2px_rgba(0,0,0,0.04)] transition-[background-color,box-shadow,color] duration-200 outline-none file:inline-flex file:h-6 file:border-0 file:bg-transparent file:text-sm file:font-medium focus-visible:border-transparent focus-visible:ring-2 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:ring-3 aria-invalid:ring-inset md:text-sm',
         sizeClass,
         className
       )}

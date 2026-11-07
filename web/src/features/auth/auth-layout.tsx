@@ -82,14 +82,18 @@ export function AuthLayout(props: AuthLayoutProps) {
         className='auth-bg pointer-events-none absolute inset-0 -z-10 opacity-70'
       />
       <div className='relative mx-auto grid min-h-svh w-full max-w-[1200px] lg:grid-cols-[minmax(0,1fr)_minmax(0,480px)]'>
-        <aside className='hidden flex-col justify-between p-10 lg:flex xl:p-14'>
+        <aside className='relative hidden flex-col justify-between p-10 lg:flex xl:p-14'>
+          <div
+            aria-hidden
+            className='aurora-bg pointer-events-none absolute inset-6 -z-10 rounded-[2rem] opacity-40 blur-2xl'
+          />
           <AuthBrand />
 
           <div className='max-w-md'>
-            <span className='border-border/60 bg-card/60 text-muted-foreground inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[11px] font-medium tracking-[0.14em] uppercase backdrop-blur-sm'>
+            <span className='border-primary/25 bg-primary/[0.07] text-primary inline-flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-[11px] font-semibold tracking-[0.14em] uppercase backdrop-blur-sm'>
               {t('Secure & Reliable')}
             </span>
-            <h1 className='mt-5 text-[clamp(2.25rem,3.2vw,3rem)] leading-[1.08] font-semibold tracking-[-0.02em]'>
+            <h1 className='mt-5 text-[clamp(2rem,3vw,2.75rem)] leading-[1.1] font-bold tracking-[-0.03em] text-balance'>
               {t('Unified API Gateway for')}
               <br />
               <span className='text-gradient-brand'>
@@ -100,9 +104,9 @@ export function AuthLayout(props: AuthLayoutProps) {
               {capabilities.map((capability) => (
                 <li
                   key={capability.key}
-                  className='text-muted-foreground flex items-center gap-3 text-sm'
+                  className='border-border/60 bg-card/70 text-muted-foreground flex items-center gap-3 rounded-xl border p-3.5 text-sm backdrop-blur-sm'
                 >
-                  <span className='border-border/60 bg-card/70 text-foreground inline-flex size-8 shrink-0 items-center justify-center rounded-lg border'>
+                  <span className='border-border/60 bg-card text-foreground inline-flex size-8 shrink-0 items-center justify-center rounded-lg border'>
                     <capability.icon
                       aria-hidden
                       className='size-4'
@@ -128,7 +132,7 @@ export function AuthLayout(props: AuthLayoutProps) {
           <div className='mb-8 lg:hidden'>
             <AuthBrand compact />
           </div>
-          <div className='border-border/60 bg-card/70 shadow-dialog mx-auto w-full max-w-[400px] rounded-2xl border p-6 backdrop-blur-xl sm:p-8'>
+          <div className='surface-glass mx-auto w-full max-w-[400px] rounded-2xl p-6 sm:p-8'>
             {props.children}
           </div>
           <div className='text-muted-foreground mx-auto mt-6 w-full max-w-[400px] text-center text-xs'>

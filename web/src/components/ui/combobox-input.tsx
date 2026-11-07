@@ -296,7 +296,7 @@ export function ComboboxInput({
               width: dropdown.width,
             }}
             className={cn(
-              'bg-popover text-popover-foreground z-100 rounded-md border shadow-md',
+              'bg-popover/95 text-popover-foreground z-100 rounded-xl border border-border/60 shadow-popover backdrop-blur-xl',
               popupClassName
             )}
           >

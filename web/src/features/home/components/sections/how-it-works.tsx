@@ -67,13 +67,16 @@ export function HowItWorks() {
               key={step.num}
               delay={i * 150}
               animation='fade-up'
-              className='border-border/60 bg-card shadow-card relative flex flex-col items-center rounded-3xl border p-7 text-center md:p-8'
+              className='border-border/60 bg-card/80 shadow-card hover:shadow-popover relative flex flex-col items-center rounded-[1.5rem] border p-7 text-center backdrop-blur-sm transition-[transform,box-shadow] duration-300 hover:-translate-y-0.5 md:p-8'
             >
               <div className='relative mb-6'>
-                <div className='text-muted-foreground border-border/60 bg-muted/50 flex size-16 items-center justify-center rounded-2xl border transition-colors'>
+                <div className='text-foreground border-border/60 bg-muted/50 flex size-16 items-center justify-center rounded-2xl border transition-colors'>
                   {step.icon}
                 </div>
-                <div className='bg-primary text-primary-foreground absolute -top-2 -right-2 flex size-6 items-center justify-center rounded-full text-xs font-bold'>
+                <div
+                  className='bg-gradient-brand shadow-glow text-primary-foreground absolute -top-2 -right-2 flex size-7 items-center justify-center rounded-full text-xs font-bold'
+                  aria-hidden
+                >
                   {step.num}
                 </div>
               </div>

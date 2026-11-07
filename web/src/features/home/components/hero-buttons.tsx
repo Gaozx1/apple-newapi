@@ -35,7 +35,7 @@ export function HeroButtons({ isAuthenticated }: HeroButtonsProps) {
     return (
       <Button
         size='lg'
-        className='h-11 rounded-xl px-5 shadow-xs'
+        className='shadow-glow h-12 rounded-full px-7 font-semibold'
         render={<Link to='/dashboard' />}
       >
         {t('Go to Dashboard')} <ArrowRight className='ml-2 h-5 w-5' />
@@ -47,7 +47,7 @@ export function HeroButtons({ isAuthenticated }: HeroButtonsProps) {
     <>
       <Button
         size='lg'
-        className='h-11 rounded-xl px-5 shadow-xs'
+        className='shadow-glow h-12 rounded-full px-7 font-semibold'
         render={<Link to='/sign-up' />}
       >
         {t('Get Started')}
@@ -56,7 +56,7 @@ export function HeroButtons({ isAuthenticated }: HeroButtonsProps) {
       <Button
         size='lg'
         variant='outline'
-        className='border-border/60 h-11 rounded-xl px-5 shadow-xs'
+        className='border-border/60 bg-card/70 hover:border-primary/30 hover:bg-card h-12 rounded-full px-7 font-medium backdrop-blur-sm'
         render={<Link to='/sign-in' />}
       >
         {t('Sign In')}

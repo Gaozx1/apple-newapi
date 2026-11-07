@@ -23,7 +23,7 @@ import { cn } from '@/lib/utils'
 
 export const sideDrawerContentClassName = (className?: string) =>
   cn(
-    'bg-popover text-foreground flex h-dvh w-full flex-col gap-0 overflow-hidden p-0 shadow-2xl',
+    'bg-popover/95 text-foreground flex h-dvh w-full flex-col gap-0 overflow-hidden p-0 shadow-2xl backdrop-blur-2xl',
     className
   )
 

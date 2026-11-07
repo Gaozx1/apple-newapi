@@ -46,7 +46,7 @@ export function Features(_props: FeaturesProps) {
       desc: t(
         'Optimized network architecture ensures millisecond response times'
       ),
-      span: 'md:col-span-2',
+      span: 'md:col-span-4',
       icon: <Zap className='text-primary size-4' />,
       visual: (
         <div className='mt-4 grid grid-cols-3 gap-2'>
@@ -70,7 +70,7 @@ export function Features(_props: FeaturesProps) {
       desc: t(
         'Enterprise-grade security with comprehensive permission management'
       ),
-      span: 'md:col-span-1',
+      span: 'md:col-span-2',
       icon: <Shield className='text-success size-4' />,
       visual: (
         <div className='mt-4 flex items-center justify-center'>
@@ -102,7 +102,7 @@ export function Features(_props: FeaturesProps) {
       num: '03',
       title: t('Global Coverage'),
       desc: t('Multi-region deployment for stable global access'),
-      span: 'md:col-span-1',
+      span: 'md:col-span-3',
       icon: <Globe className='text-chart-3 size-4' />,
       visual: (
         <div className='mt-4 space-y-2'>
@@ -131,7 +131,7 @@ export function Features(_props: FeaturesProps) {
       num: '04',
       title: t('Developer Friendly'),
       desc: t('Compatible API routes for common AI application workflows'),
-      span: 'md:col-span-2',
+      span: 'md:col-span-3',
       icon: <Code className='text-warning size-4' />,
       visual: (
         <div className='mt-4 flex items-center gap-3'>
@@ -159,7 +159,7 @@ export function Features(_props: FeaturesProps) {
       desc: t(
         'Connect third-party apps with the standard OAuth 2.0 flow. Every user gets 150 free API calls per day.'
       ),
-      span: 'md:col-span-3',
+      span: 'md:col-span-6',
       icon: <KeyRound className='text-info size-4' />,
       visual: (
         <div className='mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4'>
@@ -235,16 +235,16 @@ export function Features(_props: FeaturesProps) {
         </AnimateInView>
 
         {/* Bento grid */}
-        <div className='grid gap-4 md:grid-cols-3'>
+        <div className='grid gap-4 md:grid-cols-6'>
           {features.map((f, i) => (
             <AnimateInView
               key={f.id}
               delay={i * 100}
               animation='scale-in'
-              className={`border-border/60 bg-card shadow-card group hover:border-border rounded-3xl border p-7 transition-colors duration-300 md:p-8 ${f.span}`}
+              className={`border-border/60 bg-card/80 shadow-card hover:shadow-popover group rounded-[1.5rem] border p-7 backdrop-blur-sm transition-[transform,box-shadow] duration-300 hover:-translate-y-0.5 ${f.span}`}
             >
               <div className='mb-3 flex items-center gap-3'>
-                <span className='border-border/60 bg-muted text-muted-foreground flex size-7 items-center justify-center rounded-md border text-[10px] font-semibold tabular-nums'>
+                <span className='border-border/60 bg-muted text-muted-foreground flex size-7 items-center justify-center rounded-lg border text-[10px] font-semibold tabular-nums'>
                   {f.num}
                 </span>
                 <h3 className='text-sm font-semibold'>{f.title}</h3>
@@ -258,15 +258,15 @@ export function Features(_props: FeaturesProps) {
         </div>
 
         {/* Additional features row */}
-        <div className='mt-12 grid grid-cols-2 gap-8 md:grid-cols-4 md:gap-12'>
+        <div className='mt-12 grid grid-cols-2 gap-4 md:grid-cols-4'>
           {additionalFeatures.map((f, i) => (
             <AnimateInView
               key={f.title}
               delay={i * 100}
               animation='fade-up'
-              className='flex flex-col items-center text-center'
+              className='border-border/60 bg-card/70 flex flex-col items-center rounded-2xl border p-5 text-center backdrop-blur-sm'
             >
-              <div className='text-muted-foreground border-border/60 bg-muted/40 group-hover:text-foreground mb-3 flex size-12 items-center justify-center rounded-xl border transition-colors'>
+              <div className='text-muted-foreground border-border/60 bg-muted/40 group-hover:text-foreground mb-3 flex size-11 items-center justify-center rounded-xl border transition-colors'>
                 {f.icon}
               </div>
               <h3 className='mb-1.5 text-sm font-semibold'>{f.title}</h3>

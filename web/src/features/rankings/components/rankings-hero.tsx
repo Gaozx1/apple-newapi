@@ -51,16 +51,16 @@ export function RankingsHero(props: RankingsHeroProps) {
       }}
     >
       <TabsList
-        variant='line'
+        variant='default'
         activateOnFocus
         aria-label={t('Period')}
-        className='border-border/60 h-auto w-full justify-start border-b pb-0'
+        className='bg-card/70 border-border/60 h-auto w-fit rounded-full border p-1 backdrop-blur-sm'
       >
         {PERIODS.map((period) => (
           <TabsTrigger
             key={period.id}
             value={period.id}
-            className='h-9 flex-none px-3 text-sm'
+            className='h-8 flex-none rounded-full px-4 text-sm'
           >
             {t(period.labelKey)}
           </TabsTrigger>

@@ -231,8 +231,8 @@ export function HeroTerminalDemo(props: HeroTerminalDemoProps) {
     <div className={cn('mx-auto w-full max-w-2xl', props.className)}>
       <div
         className={cn(
-          'overflow-hidden rounded-2xl border backdrop-blur-xl',
-          'border-border/60 bg-card/85 shadow-hero'
+          'surface-glass overflow-hidden rounded-[1.75rem]',
+          'shadow-hero'
         )}
       >
         {/* Tab strip */}

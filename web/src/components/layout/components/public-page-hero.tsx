@@ -37,18 +37,23 @@ export function PublicPageHero(props: PublicPageHeroProps) {
   return (
     <section
       className={cn(
-        'relative isolate overflow-hidden px-6 pt-[7.5rem] pb-10 md:pt-[9rem] md:pb-14',
+        'relative isolate overflow-hidden px-6 pt-[8rem] pb-12 md:pt-[9.5rem] md:pb-16',
         props.className
       )}
     >
       <div
         aria-hidden
-        className='public-hero-glow pointer-events-none absolute inset-0 -z-10'
+        className='aurora-bg pointer-events-none absolute inset-0 -z-10'
       />
       <div
         aria-hidden
         className='public-grid pointer-events-none absolute inset-0 -z-10'
       />
+      <div
+        aria-hidden
+        className='pointer-events-none absolute -top-40 left-1/2 -z-10 h-[520px] w-[820px] -translate-x-1/2 rounded-full bg-[radial-gradient(closest-side,oklch(0.62_0.23_275/0.30),transparent)] blur-3xl'
+      />
+
       <div className='mx-auto w-full max-w-6xl'>
         {props.breadcrumb ? (
           <div className='mb-5'>{props.breadcrumb}</div>
@@ -59,16 +64,16 @@ export function PublicPageHero(props: PublicPageHeroProps) {
           }
         >
           {props.eyebrow ? (
-            <span className='border-border/60 bg-card/60 text-muted-foreground inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[11px] font-medium tracking-[0.14em] uppercase backdrop-blur-sm'>
+            <span className='border-primary/25 bg-primary/[0.07] text-primary inline-flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-[11px] font-semibold tracking-[0.14em] uppercase backdrop-blur-sm'>
               {props.eyebrow}
             </span>
           ) : null}
           <h1
             className={cn(
-              'text-balance font-semibold tracking-[-0.02em]',
+              'text-balance font-bold tracking-[-0.03em]',
               size === 'lg'
-                ? 'mt-4 text-[clamp(2.25rem,4vw,3.5rem)] leading-[1.08]'
-                : 'mt-4 text-[clamp(2rem,3.6vw,3rem)] leading-[1.1]'
+                ? 'mt-4 text-[clamp(2.25rem,4.5vw,3.75rem)] leading-[1.05]'
+                : 'mt-4 text-[clamp(2rem,4vw,3.25rem)] leading-[1.06]'
             )}
           >
             {props.title}

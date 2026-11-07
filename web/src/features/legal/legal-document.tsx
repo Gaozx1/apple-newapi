@@ -94,7 +94,7 @@ export function LegalDocument({
     return (
       <PublicLayout>
         <div className='mx-auto max-w-2xl py-12'>
-          <Card className='border-border/70 shadow-card rounded-2xl'>
+          <Card className='surface-glass rounded-2xl border-0'>
             <CardHeader>
               <CardTitle>{title}</CardTitle>
             </CardHeader>
@@ -129,7 +129,7 @@ export function LegalDocument({
       ) : (
         <>
           <PublicPageHero title={title} />
-          <div className='mx-auto max-w-4xl px-4 py-10'>
+          <div className='mx-auto max-w-3xl px-4 py-10'>
             <RichContent
               mode='markdown'
               content={rawContent}

@@ -129,7 +129,7 @@ export function PublicHeader(props: PublicHeaderProps) {
       )}
       <Button
         size='sm'
-        className='h-9 rounded-full px-4 text-[13px] font-medium'
+        className='shadow-glow text-primary-foreground h-9 rounded-full bg-[image:var(--gradient-brand)] px-4 text-[13px] font-medium hover:opacity-90'
         render={<Link to='/sign-in' />}
       >
         {t('Sign in')}
@@ -240,7 +240,7 @@ export function PublicHeader(props: PublicHeaderProps) {
             className={cn(
               'flex items-center justify-between gap-2 transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)]',
               scrolled
-                ? 'bg-background/70 ring-border/50 shadow-popover h-12 rounded-full pr-1.5 pl-4 ring-[0.5px] backdrop-blur-2xl'
+                ? 'bg-background/70 ring-border/50 shadow-popover h-12 rounded-full pr-1.5 pl-4 ring-1 backdrop-blur-2xl'
                 : 'h-16 px-2'
             )}
           >
@@ -301,7 +301,7 @@ export function PublicHeader(props: PublicHeaderProps) {
                     className={cn(
                       'min-w-0 truncate rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors duration-200',
                       isActive
-                        ? 'bg-foreground/[0.06] text-foreground'
+                        ? 'bg-primary/10 text-primary'
                         : 'text-muted-foreground hover:text-foreground',
                       link.disabled && 'pointer-events-none opacity-50'
                     )}
@@ -460,7 +460,7 @@ export function PublicHeader(props: PublicHeaderProps) {
                   <Link
                     to='/sign-up'
                     onClick={() => setMobileOpen(false)}
-                    className='border-border text-foreground hover:bg-muted inline-flex h-10 items-center justify-center rounded-lg border text-sm font-medium transition-colors'
+                    className='border-border/60 bg-card/70 text-foreground hover:bg-muted/70 inline-flex h-10 items-center justify-center rounded-full border text-sm font-medium backdrop-blur-sm transition-colors'
                   >
                     {t('Sign up')}
                   </Link>
@@ -468,7 +468,7 @@ export function PublicHeader(props: PublicHeaderProps) {
                 <Link
                   to={isAuthenticated ? '/dashboard' : '/sign-in'}
                   onClick={() => setMobileOpen(false)}
-                  className='bg-foreground text-background inline-flex h-10 items-center justify-center rounded-lg text-sm font-medium transition-opacity hover:opacity-90 active:opacity-80'
+                  className='shadow-glow text-primary-foreground inline-flex h-10 items-center justify-center rounded-full bg-[image:var(--gradient-brand)] text-sm font-medium transition-opacity hover:opacity-90 active:opacity-80'
                 >
                   {isAuthenticated ? t('Go to Dashboard') : t('Sign in')}
                 </Link>

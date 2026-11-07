@@ -38,11 +38,11 @@ export function CTA(props: CTAProps) {
   return (
     <section className='relative z-10 px-6 py-24 md:py-32'>
       <AnimateInView
-        className='border-border/60 shadow-hero mx-auto max-w-5xl rounded-[2rem] border bg-[image:var(--gradient-cta)] px-6 py-16'
+        className='surface-glass mx-auto max-w-5xl rounded-[2rem] px-6 py-16 md:py-20'
         animation='scale-in'
       >
         <div className='mx-auto max-w-2xl text-center'>
-          <h2 className='text-2xl leading-tight font-semibold tracking-[-0.02em] md:text-4xl'>
+          <h2 className='text-2xl leading-tight font-bold tracking-[-0.03em] text-balance md:text-4xl'>
             {t('Ready to simplify')}
             <br />
             <span className='text-gradient-brand'>
@@ -56,7 +56,7 @@ export function CTA(props: CTAProps) {
           </p>
           <div className='mt-8 flex flex-wrap items-center justify-center gap-3'>
             <Button
-              className='group h-11 rounded-xl px-5 shadow-xs'
+              className='group shadow-glow h-12 rounded-full px-8 text-sm font-semibold'
               render={<Link to='/sign-up' />}
             >
               {t('Get Started')}
@@ -64,7 +64,7 @@ export function CTA(props: CTAProps) {
             </Button>
             <Button
               variant='outline'
-              className='border-border/60 hover:border-border hover:bg-muted/50 h-11 rounded-xl px-5 shadow-xs'
+              className='border-border/60 bg-card/70 hover:border-primary/30 hover:bg-card h-12 rounded-full px-8 text-sm font-medium backdrop-blur-sm'
               render={<Link to='/pricing' />}
             >
               {t('View Pricing')}

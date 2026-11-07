@@ -168,12 +168,12 @@ function FooterBrand(props: { logo: string; name: string; version?: string }) {
         {t('Powerful API Management Platform')}
       </p>
       <div className='mt-5 flex flex-wrap items-center gap-2'>
-        <span className='border-border/60 bg-muted/40 text-muted-foreground inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium'>
+        <span className='border-border/60 bg-primary/[0.07] text-primary inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium backdrop-blur-sm'>
           <span aria-hidden className='bg-success size-1.5 rounded-full' />
           {t('Online')}
         </span>
         {props.version ? (
-          <span className='border-border/60 bg-card/60 text-muted-foreground inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-medium'>
+          <span className='border-border/60 bg-card/60 text-muted-foreground inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-medium backdrop-blur-sm'>
             {t('Version')} {props.version}
           </span>
         ) : null}
@@ -265,17 +265,17 @@ export function Footer(props: FooterProps) {
     return (
       <footer
         className={cn(
-          'border-border/60 bg-background border-t',
+          'border-border/50 bg-background/80 border-t backdrop-blur-xl',
           props.className
         )}
       >
-        <div className='mx-auto w-full max-w-6xl px-6 py-8'>
-          <div className='bg-muted/20 border-border/50 flex flex-col items-center justify-between gap-4 rounded-2xl border px-4 py-4 backdrop-blur-sm sm:flex-row sm:px-5'>
+        <div className='mx-auto w-full max-w-6xl px-6 py-14 md:py-16'>
+          <div className='surface-glass flex flex-col items-center justify-between gap-4 rounded-2xl px-4 py-4 sm:flex-row sm:px-5'>
             <div
               className='custom-footer text-muted-foreground min-w-0 text-center text-sm sm:text-left'
               dangerouslySetInnerHTML={{ __html: footerHtml }}
             />
-            <div className='border-border/60 text-muted-foreground/45 flex w-full flex-wrap items-center justify-center gap-x-3 gap-y-1 border-t pt-4 text-xs sm:w-auto sm:justify-end sm:border-t-0 sm:border-l sm:pt-0 sm:pl-5'>
+            <div className='border-border/50 text-muted-foreground/60 flex w-full flex-wrap items-center justify-center gap-x-3 gap-y-1 border-t pt-4 text-xs sm:w-auto sm:justify-end sm:border-t-0 sm:border-l sm:pt-0 sm:pl-5'>
               <LegalLinks />
               <ProjectAttribution currentYear={currentYear} inline />
             </div>
@@ -287,14 +287,17 @@ export function Footer(props: FooterProps) {
 
   return (
     <footer
-      className={cn('border-border/60 bg-background border-t', props.className)}
+      className={cn(
+        'border-border/50 bg-background/80 border-t backdrop-blur-xl',
+        props.className
+      )}
     >
       <div className='mx-auto max-w-6xl px-6 py-14 md:py-16'>
         <div
           className={cn(
             'grid gap-10',
             showLinkColumns
-              ? 'md:grid-cols-[1.5fr_repeat(3,1fr)]'
+              ? 'md:grid-cols-[1.6fr_repeat(3,1fr)]'
               : 'md:grid-cols-1'
           )}
         >

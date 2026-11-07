@@ -164,7 +164,7 @@ export function ModelsSection(props: ModelsSectionProps) {
   }, [chartGridColor, chartTextColor, orderedPoints, t])
 
   return (
-    <section className='bg-card border-border/70 shadow-card overflow-hidden rounded-2xl border'>
+    <section className='bg-card/80 border-border/60 shadow-card overflow-hidden rounded-2xl border backdrop-blur-sm'>
       {/* Chart block ----------------------------------------------------- */}
       <header className='flex items-start justify-between gap-4 px-5 py-4'>
         <div className='min-w-0 flex-1'>

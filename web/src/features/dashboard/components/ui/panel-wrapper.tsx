@@ -50,7 +50,7 @@ function PanelHeader(props: {
   )
 
   return (
-    <div className='border-b px-4 py-3 sm:px-5'>
+    <div className='border-border/60 border-b px-4 py-3 sm:px-5'>
       {props.actions != null ? (
         <div className='flex items-start justify-between gap-2'>
           {heading}
@@ -68,7 +68,7 @@ export function PanelWrapper(props: PanelWrapperProps) {
   const resolvedEmptyMessage = props.emptyMessage ?? t('No data available')
   const height = props.height ?? 'h-64'
   const frameClassName = cn(
-    'overflow-hidden rounded-2xl border border-border/70 bg-card shadow-card',
+    'overflow-hidden rounded-2xl border border-border/60 bg-card/85 shadow-card backdrop-blur-sm',
     props.className
   )
 

@@ -69,7 +69,7 @@ import { MobileCardList } from './mobile-card-list'
  * on top without changing table geometry.
  */
 const DATA_TABLE_FRAME_CLASS =
-  'overflow-hidden rounded-xl border border-border/70 bg-card shadow-card'
+  'overflow-hidden rounded-2xl border border-border/60 bg-card/85 backdrop-blur-sm shadow-card'
 
 /**
  * Pass-through configuration for the default {@link DataTableToolbar}.
