@@ -83,7 +83,7 @@ type recordedSettlement struct {
 	refunded bool
 }
 
-func (s *recordedSettlement) Settle(quota int) error {
+func (s *recordedSettlement) Settle(quota int, _ int) error {
 	s.settled = append(s.settled, quota)
 	return nil
 }

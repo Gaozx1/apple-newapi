@@ -348,11 +348,11 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
   }
 
   return (
-    <Card className='hover:ring-foreground/20 h-full min-w-0 gap-3 transition-colors'>
+    <Card className='border-border/70 shadow-card hover:shadow-popover h-full min-w-0 gap-3 rounded-2xl transition-shadow'>
       <CardHeader className='flex flex-row items-start gap-3'>
         <div
           aria-hidden
-          className='bg-muted/50 flex size-10 shrink-0 items-center justify-center rounded-lg'
+          className='from-primary/10 to-chart-3/10 ring-border/50 flex size-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br ring-1'
         >
           {modelIcon || (
             <span className='text-muted-foreground text-sm font-bold'>

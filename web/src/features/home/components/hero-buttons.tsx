@@ -33,7 +33,11 @@ export function HeroButtons({ isAuthenticated }: HeroButtonsProps) {
   const { t } = useTranslation()
   if (isAuthenticated) {
     return (
-      <Button size='lg' render={<Link to='/dashboard' />}>
+      <Button
+        size='lg'
+        className='h-11 rounded-xl px-5 shadow-xs'
+        render={<Link to='/dashboard' />}
+      >
         {t('Go to Dashboard')} <ArrowRight className='ml-2 h-5 w-5' />
       </Button>
     )
@@ -41,11 +45,20 @@ export function HeroButtons({ isAuthenticated }: HeroButtonsProps) {
 
   return (
     <>
-      <Button size='lg' render={<Link to='/sign-up' />}>
+      <Button
+        size='lg'
+        className='h-11 rounded-xl px-5 shadow-xs'
+        render={<Link to='/sign-up' />}
+      >
         {t('Get Started')}
         <ArrowRight className='ml-2 h-5 w-5' />
       </Button>
-      <Button size='lg' variant='outline' render={<Link to='/sign-in' />}>
+      <Button
+        size='lg'
+        variant='outline'
+        className='border-border/60 h-11 rounded-xl px-5 shadow-xs'
+        render={<Link to='/sign-in' />}
+      >
         {t('Sign In')}
       </Button>
     </>

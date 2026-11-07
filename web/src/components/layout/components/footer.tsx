@@ -149,6 +149,39 @@ function ProjectAttribution(props: { currentYear: number; inline?: boolean }) {
   )
 }
 
+function FooterBrand(props: { logo: string; name: string; version?: string }) {
+  const { t } = useTranslation()
+
+  return (
+    <div className='shrink-0'>
+      <Link to='/' className='group flex items-center gap-2.5'>
+        <img
+          src={props.logo}
+          alt={props.name}
+          className='border-border/60 size-8 rounded-xl border object-contain'
+        />
+        <span className='text-sm font-semibold tracking-tight'>
+          {props.name}
+        </span>
+      </Link>
+      <p className='text-muted-foreground mt-3 max-w-[240px] text-sm leading-relaxed'>
+        {t('Powerful API Management Platform')}
+      </p>
+      <div className='mt-5 flex flex-wrap items-center gap-2'>
+        <span className='border-border/60 bg-muted/40 text-muted-foreground inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium'>
+          <span aria-hidden className='bg-success size-1.5 rounded-full' />
+          {t('Online')}
+        </span>
+        {props.version ? (
+          <span className='border-border/60 bg-card/60 text-muted-foreground inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-medium'>
+            {t('Version')} {props.version}
+          </span>
+        ) : null}
+      </div>
+    </div>
+  )
+}
+
 export function Footer(props: FooterProps) {
   const { t } = useTranslation()
   const {
@@ -157,11 +190,13 @@ export function Footer(props: FooterProps) {
     footerHtml,
     demoSiteEnabled,
   } = useSystemConfig()
+  const { status } = useStatus()
 
   const displayLogo = systemLogo || props.logo || '/logo.png'
   const displayName = systemName || props.name || 'New API'
   const isDemoSiteMode = Boolean(demoSiteEnabled)
   const currentYear = new Date().getFullYear()
+  const version = status?.version
 
   const fallbackColumns = useMemo<FooterColumnProps[]>(
     () => [
@@ -221,16 +256,20 @@ export function Footer(props: FooterProps) {
   )
 
   const displayColumns = props.columns ?? fallbackColumns
+  // Keep the brand column and bottom bar visible on every site; only render
+  // the documentation/related link columns when they are actually configured
+  // (demo mode or explicit `columns` prop).
+  const showLinkColumns = Boolean(props.columns) || isDemoSiteMode
 
   if (footerHtml) {
     return (
       <footer
         className={cn(
-          'border-border/40 relative z-10 border-t',
+          'border-border/60 bg-background border-t',
           props.className
         )}
       >
-        <div className='mx-auto w-full max-w-6xl px-6 py-5'>
+        <div className='mx-auto w-full max-w-6xl px-6 py-8'>
           <div className='bg-muted/20 border-border/50 flex flex-col items-center justify-between gap-4 rounded-2xl border px-4 py-4 backdrop-blur-sm sm:flex-row sm:px-5'>
             <div
               className='custom-footer text-muted-foreground min-w-0 text-center text-sm sm:text-left'
@@ -248,52 +287,44 @@ export function Footer(props: FooterProps) {
 
   return (
     <footer
-      className={cn('border-border/40 relative z-10 border-t', props.className)}
+      className={cn('border-border/60 bg-background border-t', props.className)}
     >
-      <div className='mx-auto max-w-6xl px-6 py-12 md:py-16'>
-        <div className='flex flex-col justify-between gap-10 md:flex-row md:gap-16'>
-          {/* Brand column */}
-          <div className='shrink-0'>
-            <Link to='/' className='group flex items-center gap-2.5'>
-              <img
-                src={displayLogo}
-                alt={displayName}
-                className='size-7 rounded-lg object-contain'
-              />
-              <span className='text-sm font-semibold tracking-tight'>
-                {displayName}
-              </span>
-            </Link>
-            <p className='text-muted-foreground/60 mt-3 max-w-[200px] text-xs leading-relaxed'>
-              {t('Powerful API Management Platform')}
-            </p>
-          </div>
-
-          {/* Links columns */}
-          {isDemoSiteMode && (
-            <div className='grid grid-cols-3 gap-8 md:gap-16'>
-              {displayColumns.map((column, index) => (
-                <div key={index}>
-                  <p className='text-muted-foreground/50 mb-3 text-xs font-medium tracking-wider uppercase'>
-                    {t(column.title)}
-                  </p>
-                  <ul className='space-y-2.5'>
-                    {column.links.map((link, linkIndex) => (
-                      <li key={linkIndex}>
-                        <FooterLinkItem link={link} />
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ))}
-            </div>
+      <div className='mx-auto max-w-6xl px-6 py-14 md:py-16'>
+        <div
+          className={cn(
+            'grid gap-10',
+            showLinkColumns
+              ? 'md:grid-cols-[1.5fr_repeat(3,1fr)]'
+              : 'md:grid-cols-1'
           )}
+        >
+          <FooterBrand
+            logo={displayLogo}
+            name={displayName}
+            version={version}
+          />
+
+          {showLinkColumns &&
+            displayColumns.map((column) => (
+              <div key={column.title}>
+                <p className='text-muted-foreground mb-4 text-[11px] font-medium tracking-[0.14em] uppercase'>
+                  {t(column.title)}
+                </p>
+                <ul className='space-y-2.5'>
+                  {column.links.map((link) => (
+                    <li key={`${link.text}:${link.href}`}>
+                      <FooterLinkItem link={link} />
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
         </div>
 
         {/* Copyright + optional legal links inline on the left, project
             attribution on the right; wraps on narrow screens. */}
-        <div className='border-border/30 mt-12 flex flex-col items-center justify-between gap-x-3 gap-y-2 border-t pt-6 sm:flex-row'>
-          <div className='text-muted-foreground/40 flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-xs sm:justify-start'>
+        <div className='border-border/50 text-muted-foreground mt-12 flex flex-col gap-3 border-t pt-6 text-xs sm:flex-row sm:items-center sm:justify-between'>
+          <div className='flex flex-wrap items-center justify-center gap-x-2 gap-y-1 sm:justify-start'>
             <span>
               &copy; {currentYear} {displayName}.{' '}
               {props.copyright ?? t('footer.defaultCopyright')}

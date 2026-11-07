@@ -16,12 +16,16 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { SkipToMain } from '@/components/skip-to-main'
+
 import type { TopNavLink } from '../types'
+import { Footer } from './footer'
 import { PublicHeader, type PublicHeaderProps } from './public-header'
 
 type PublicLayoutProps = {
   children: React.ReactNode
   showMainContainer?: boolean
+  showFooter?: boolean
   navContent?: React.ReactNode
   headerProps?: Omit<PublicHeaderProps, 'navContent'>
   navLinks?: TopNavLink[]
@@ -33,8 +37,11 @@ type PublicLayoutProps = {
 }
 
 export function PublicLayout(props: PublicLayoutProps) {
+  const showFooter = props.showFooter ?? props.showMainContainer !== false
+
   return (
     <div className='bg-background text-foreground relative min-h-svh overflow-x-clip'>
+      <SkipToMain />
       <PublicHeader
         navContent={props.navContent}
         navLinks={props.navLinks}
@@ -47,12 +54,16 @@ export function PublicLayout(props: PublicLayoutProps) {
       />
 
       {props.showMainContainer !== false ? (
-        <main className='container px-4 py-6 pt-20 md:px-4'>
+        <main id='content' className='container px-4 py-6 pt-20 md:px-4'>
           {props.children}
         </main>
       ) : (
-        props.children
+        <main id='content' className='relative'>
+          {props.children}
+        </main>
       )}
+
+      {showFooter ? <Footer /> : null}
     </div>
   )
 }

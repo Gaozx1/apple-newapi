@@ -26,6 +26,10 @@ export { AppSidebar } from './components/app-sidebar'
 export { AuthenticatedLayout } from './components/authenticated-layout'
 export { PublicLayout } from './components/public-layout'
 export { PublicHeader } from './components/public-header'
+export {
+  PublicPageHero,
+  type PublicPageHeroProps,
+} from './components/public-page-hero'
 export { PublicNavigation } from './components/public-navigation'
 export { HeaderLogo } from './components/header-logo'
 export { NavLinkItem, NavLinkList } from './components/nav-link-item'

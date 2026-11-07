@@ -252,6 +252,23 @@ func RefreshUserGroupCache(userId int) error {
 	return PublishUserAuthCache(userId)
 }
 
+// updateUserCacheField prevents individual cache refreshes from bypassing the
+// auth-version fence. It intentionally does nothing when the complete hash is
+// absent; the next GetUserCache call will repopulate it from the database.
+func updateUserCacheField(userId int, field string, value any) error {
+	if !common.RedisEnabled {
+		return nil
+	}
+	var user User
+	if err := DB.Select("id", "auth_version").Where("id = ?", userId).First(&user).Error; err != nil {
+		return err
+	}
+	if user.AuthVersion <= 0 {
+		return fmt.Errorf("invalid user auth version")
+	}
+	return updateUserCacheFieldAtVersion(userId, field, value, user.AuthVersion)
+}
+
 // GetUserLanguage returns the user's language preference from cache
 // Uses the existing GetUserCache mechanism for efficiency
 func GetUserLanguage(userId int) string {

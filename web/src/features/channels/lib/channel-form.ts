@@ -995,6 +995,9 @@ export function transformFormDataToCreatePayload(formData: ChannelFormValues): {
       ;(channel as Record<string, unknown>)[key] = null
     }
   })
+  // `name_i18n` is a non-nullable string on the backend; keep '' instead of
+  // null so created channels stay compatible with `channelSchema`.
+  channel.name_i18n = formData.name_i18n || ''
 
   return {
     mode,
@@ -1059,6 +1062,8 @@ export function transformFormDataToUpdatePayload(
   payload.status_code_mapping = formData.status_code_mapping || ''
   payload.param_override = formData.param_override || ''
   payload.header_override = formData.header_override || ''
+  // `name_i18n` is a non-nullable string on the backend; never send null.
+  payload.name_i18n = formData.name_i18n || ''
 
   return payload
 }

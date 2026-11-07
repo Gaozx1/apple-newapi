@@ -402,9 +402,9 @@ func applyImageTierOverride(info *relaycommon.RelayInfo, responseBody []byte) {
 // deployment's own /v1/files or upstream CDN is skipped for safety — remote
 // fetches during billing are deliberately avoided, so url entries return "".
 func firstOutputImageSize(responseBody []byte) string {
-	count := gjson.GetBytes(responseBody, "data.#").Int()
+	count := ojson.GetBytes(responseBody, "data.#").Int()
 	for i := int64(0); i < count && i < 8; i++ {
-		b64 := gjson.GetBytes(responseBody, fmt.Sprintf("data.%d.b64_json", i)).String()
+		b64 := ojson.GetBytes(responseBody, fmt.Sprintf("data.%d.b64_json", i)).String()
 		if b64 == "" {
 			continue
 		}

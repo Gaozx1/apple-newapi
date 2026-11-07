@@ -63,6 +63,15 @@ import { DataTableCardGrid } from './card-grid'
 import { MobileCardList } from './mobile-card-list'
 
 /**
+ * Frame applied to the desktop table container (and the mobile table view).
+ * `DataTableView` ships a plain `rounded-lg border` container; this override
+ * lands the shared card surface (radius, hairline border, card fill, elevation)
+ * on top without changing table geometry.
+ */
+const DATA_TABLE_FRAME_CLASS =
+  'overflow-hidden rounded-xl border border-border/70 bg-card shadow-card'
+
+/**
  * Pass-through configuration for the default {@link DataTableToolbar}.
  * Pass `toolbar` (ReactNode) instead to fully replace the default toolbar.
  */
@@ -448,6 +457,7 @@ function renderMobile<TData>(
           getColumnClassName={props.getColumnClassName}
           pinnedColumns={props.pinnedColumns}
           containerClassName={cn(
+            DATA_TABLE_FRAME_CLASS,
             'transition-opacity duration-150',
             isFetchingOnly && 'pointer-events-none opacity-60',
             props.tableClassName
@@ -549,6 +559,7 @@ function renderDesktop<TData>(
       getColumnClassName={props.getColumnClassName}
       pinnedColumns={props.pinnedColumns}
       containerClassName={cn(
+        DATA_TABLE_FRAME_CLASS,
         fixedHeight && 'min-h-0 flex-1',
         'transition-opacity duration-150',
         isFetchingOnly && 'pointer-events-none opacity-60',

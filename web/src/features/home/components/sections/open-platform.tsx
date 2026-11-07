@@ -47,27 +47,17 @@ export function OpenPlatform(props: OpenPlatformProps) {
 
   return (
     <section className='relative z-10 px-6 py-20 md:py-24'>
-      {/* Glow background */}
-      <div
-        aria-hidden
-        className='pointer-events-none absolute inset-x-6 inset-y-8 -z-10 rounded-3xl opacity-60 dark:opacity-30'
-        style={{
-          background:
-            'radial-gradient(ellipse 45% 60% at 15% 20%, oklch(0.72 0.17 250 / 45%) 0%, transparent 70%), radial-gradient(ellipse 40% 55% at 85% 80%, oklch(0.68 0.16 300 / 40%) 0%, transparent 70%)',
-        }}
-      />
-
       <AnimateInView>
-        <div className='bg-card/60 mx-auto max-w-6xl overflow-hidden rounded-3xl border shadow-sm backdrop-blur-xs'>
+        <div className='border-border/60 bg-card shadow-card mx-auto max-w-6xl overflow-hidden rounded-3xl border'>
           <div className='grid gap-10 p-8 md:grid-cols-2 md:p-12'>
             {/* Left: heading + CTA */}
             <div className='flex flex-col items-start justify-center gap-5'>
-              <div className='inline-flex items-center gap-2 rounded-full border border-sky-500/25 bg-sky-500/10 px-3 py-1 text-xs font-medium text-sky-600 dark:text-sky-400'>
+              <div className='border-primary/25 bg-primary/10 text-primary inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium'>
                 <KeyRound className='size-3.5' />
                 {t('Open Platform')}
               </div>
 
-              <h2 className='text-2xl leading-tight font-bold tracking-tight md:text-4xl'>
+              <h2 className='text-2xl leading-tight font-semibold tracking-[-0.02em] md:text-4xl'>
                 {t('OAuth 2.0 Open Platform')}
               </h2>
 
@@ -79,18 +69,18 @@ export function OpenPlatform(props: OpenPlatformProps) {
 
               <div className='text-muted-foreground flex flex-wrap items-center gap-4 text-xs'>
                 <span className='inline-flex items-center gap-1.5'>
-                  <ShieldCheck className='size-3.5 text-emerald-500' />
+                  <ShieldCheck className='text-success size-3.5' />
                   {t('Standard OAuth 2.0 flow')}
                 </span>
                 <span className='inline-flex items-center gap-1.5'>
-                  <Wallet className='size-3.5 text-emerald-500' />
+                  <Wallet className='text-success size-3.5' />
                   {t('Pay from wallet balance')}
                 </span>
               </div>
 
               <Button
                 size='lg'
-                className='group mt-1 h-11 rounded-lg px-6 text-sm font-medium'
+                className='group mt-1 h-11 rounded-xl px-6 text-sm font-medium shadow-xs'
                 render={
                   <Link
                     to={props.isAuthenticated ? '/oauth2-clients' : '/sign-up'}
@@ -112,8 +102,8 @@ export function OpenPlatform(props: OpenPlatformProps) {
                     key={tier.range}
                     className={`rounded-xl border p-4 transition-colors ${
                       tier.free
-                        ? 'border-emerald-500/40 bg-emerald-500/10'
-                        : 'bg-background/60 border-border/60 hover:border-sky-500/40'
+                        ? 'border-success/40 bg-success/10'
+                        : 'bg-background/60 border-border/60 hover:border-primary/40'
                     }`}
                   >
                     <p className='text-muted-foreground text-[11px] font-medium tracking-wider uppercase'>
@@ -124,9 +114,7 @@ export function OpenPlatform(props: OpenPlatformProps) {
                     </p>
                     <p
                       className={`mt-1 text-2xl font-bold tracking-tight ${
-                        tier.free
-                          ? 'text-emerald-600 dark:text-emerald-400'
-                          : 'text-sky-600 dark:text-sky-400'
+                        tier.free ? 'text-success' : 'text-primary'
                       }`}
                     >
                       {tier.price}

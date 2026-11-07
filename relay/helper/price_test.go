@@ -804,6 +804,8 @@ func (s *priceTestReservation) NeedsRefund() bool        { return false }
 func (s *priceTestReservation) GetPreConsumedQuota() int { return s.held }
 func (s *priceTestReservation) Reserve(quota int) error  { s.held = max(s.held, quota); return nil }
 
+func (s *priceTestReservation) ReserveBeforeSubmit(quota int) error { return s.Reserve(quota) }
+
 // installUserLevelGrant publishes a single-rung ladder for one test and restores
 // the previous configuration afterwards.
 func installUserLevelGrant(t *testing.T, threshold float64, groupRatios map[string]float64) {
@@ -822,20 +824,28 @@ func installUserLevelGrant(t *testing.T, threshold float64, groupRatios map[stri
 		Threshold:   threshold,
 		GroupRatios: groupRatios,
 	}}
+	user_level_setting.RebuildLevelIndex()
 }
+
 // A level grant is billed only when it is more favorable than the group's
 // configured ratio, so a user never pays more than their group's ratio.
 func TestModelPriceHelperAppliesUserLevelGroupRatio(t *testing.T) {
 	gin.SetMode(gin.TestMode)
+
 	savedModelRatios := ratio_setting.ModelRatio2JSONString()
 	savedGroupRatios := ratio_setting.GroupRatio2JSONString()
+	t.Cleanup(func() {
 		require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(savedModelRatios))
 		require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(savedGroupRatios))
+	})
+
 	modelRatios, err := common.Marshal(map[string]float64{"level-ratio-model": 15})
 	require.NoError(t, err)
 	require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(string(modelRatios)))
 	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"default":1,"vip":0.5,"nogrant":0.4}`))
+
 	installUserLevelGrant(t, 100, map[string]float64{"default": 0.6, "vip": 0.8})
+
 	for _, tc := range []struct {
 		name      string
 		group     string
@@ -856,7 +866,12 @@ func TestModelPriceHelperAppliesUserLevelGroupRatio(t *testing.T) {
 				OriginModelName: "level-ratio-model",
 				UserGroup:       tc.group,
 				UsingGroup:      tc.group,
+			}
+
 			price, err := ModelPriceHelper(ctx, info, 1000, &types.TokenCountMeta{})
+			require.NoError(t, err)
 			assert.Equal(t, tc.wantRatio, price.GroupRatioInfo.GroupRatio)
 			assert.Equal(t, tc.wantQuota, price.QuotaToPreConsume)
-func (s *priceTestReservation) ReserveBeforeSubmit(quota int) error { return s.Reserve(quota) }
+		})
+	}
+}

@@ -93,7 +93,7 @@ export function SectionPageLayout(props: SectionPageLayoutProps) {
                   : 'min-w-0 flex-1'
               }
             >
-              <h2 className='truncate text-base font-bold tracking-tight sm:text-lg'>
+              <h2 className='truncate text-[15px] font-semibold tracking-tight sm:text-base'>
                 {title}
               </h2>
             </div>

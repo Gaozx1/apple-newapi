@@ -745,3 +745,49 @@ For commercial licensing, please contact support@quantumnous.com
     display: none;
   }
 }
+
+/* ── Quiet Precision public surface utilities ── */
+@layer utilities {
+  .public-hero-glow {
+    background-image: var(--gradient-hero-glow);
+  }
+
+  .public-grid {
+    background-image:
+      linear-gradient(to right, var(--border) 1px, transparent 1px),
+      linear-gradient(to bottom, var(--border) 1px, transparent 1px);
+    background-size: 64px 64px;
+    mask-image: radial-gradient(
+      ellipse 60% 50% at 50% 30%,
+      black 20%,
+      transparent 100%
+    );
+    opacity: 0.06;
+  }
+
+  .surface-glass {
+    background-color: color-mix(in oklch, var(--card) 70%, transparent);
+    backdrop-filter: blur(16px);
+    box-shadow: inset 0 0 0 1px
+      color-mix(in oklch, var(--border) 60%, transparent);
+  }
+
+  .text-gradient-brand {
+    background-image: var(--gradient-brand);
+    background-clip: text;
+    color: transparent;
+  }
+
+  .auth-bg {
+    background-image: var(--gradient-hero-glow);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .surface-reveal,
+  .hero-enter {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}

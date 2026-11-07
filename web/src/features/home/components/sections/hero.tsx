@@ -57,7 +57,7 @@ export function Hero(props: HeroProps) {
       return (
         <Button
           variant='outline'
-          className='group border-border/50 hover:border-border hover:bg-muted/50 inline-flex h-11 items-center gap-1.5 rounded-lg px-5 text-sm font-medium'
+          className='group border-border/60 hover:border-border hover:bg-muted/50 inline-flex h-11 items-center gap-1.5 rounded-xl px-5 text-sm font-medium shadow-xs'
           render={
             <a href={docsUrl} target='_blank' rel='noopener noreferrer' />
           }
@@ -70,7 +70,7 @@ export function Hero(props: HeroProps) {
     return (
       <Button
         variant='outline'
-        className='group border-border/50 hover:border-border hover:bg-muted/50 inline-flex h-11 items-center gap-1.5 rounded-lg px-5 text-sm font-medium'
+        className='group border-border/60 hover:border-border hover:bg-muted/50 inline-flex h-11 items-center gap-1.5 rounded-xl px-5 text-sm font-medium shadow-xs'
         render={<Link to={docsUrl} />}
       >
         <BookOpen className='text-muted-foreground/80 group-hover:text-foreground size-4 transition-colors duration-200' />
@@ -80,23 +80,14 @@ export function Hero(props: HeroProps) {
   }
 
   return (
-    <section className='relative z-10 overflow-hidden px-6 pt-24 pb-16 md:pt-32 md:pb-24 lg:pt-36 lg:pb-28'>
-      {/* Radial gradient background */}
+    <section className='relative isolate z-10 overflow-hidden px-6 pt-[7.5rem] pb-[5.5rem] md:pt-[9rem] md:pb-[7rem]'>
       <div
         aria-hidden
-        className='pointer-events-none absolute inset-0 -z-10 opacity-25 dark:opacity-[0.12]'
-        style={{
-          background: [
-            'radial-gradient(ellipse 60% 50% at 20% 20%, oklch(0.72 0.18 250 / 80%) 0%, transparent 70%)',
-            'radial-gradient(ellipse 50% 40% at 80% 15%, oklch(0.65 0.15 200 / 60%) 0%, transparent 70%)',
-            'radial-gradient(ellipse 40% 35% at 40% 80%, oklch(0.70 0.12 280 / 40%) 0%, transparent 70%)',
-          ].join(', '),
-        }}
+        className='public-hero-glow pointer-events-none absolute inset-0 -z-10'
       />
-      {/* Grid pattern */}
       <div
         aria-hidden
-        className='absolute inset-0 -z-10 bg-[linear-gradient(to_right,var(--border)_1px,transparent_1px),linear-gradient(to_bottom,var(--border)_1px,transparent_1px)] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_30%,black_20%,transparent_100%)] bg-[size:4rem_4rem] opacity-[0.08]'
+        className='public-grid pointer-events-none absolute inset-0 -z-10'
       />
 
       <div className='mx-auto grid max-w-6xl grid-cols-1 items-start gap-12 lg:grid-cols-12 lg:gap-8'>
@@ -105,16 +96,16 @@ export function Hero(props: HeroProps) {
           {/* Top Pill Badge — links to the OAuth 2.0 open platform */}
           <Link
             to={props.isAuthenticated ? '/oauth2-clients' : '/sign-up'}
-            className='landing-animate-fade-up group mb-5 inline-flex items-center gap-1.5 rounded-full border border-blue-500/20 bg-blue-500/5 px-3 py-1.5 text-[11px] font-medium text-blue-600 opacity-0 shadow-xs transition-colors hover:border-blue-500/40 hover:bg-blue-500/10 dark:border-blue-400/20 dark:bg-blue-400/5 dark:text-blue-400'
+            className='landing-animate-fade-up group border-primary/25 bg-primary/8 text-primary hover:border-primary/40 hover:bg-primary/10 mb-5 inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-medium opacity-0 shadow-xs transition-colors'
             style={{ animationDelay: '0ms' }}
           >
             <span className='relative flex size-1.5'>
-              <span className='absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-400 opacity-75' />
-              <span className='relative inline-flex size-1.5 rounded-full bg-blue-500 dark:bg-blue-400' />
+              <span className='bg-primary absolute inline-flex h-full w-full animate-ping rounded-full opacity-75' />
+              <span className='bg-primary relative inline-flex size-1.5 rounded-full' />
             </span>
             <span>
               {t('OAuth 2.0 Open Platform is live')}
-              <span className='text-blue-500/70 dark:text-blue-400/70'>
+              <span className='text-primary/70'>
                 {' '}
                 · {t('First 150 API calls free every day')}
               </span>
@@ -123,17 +114,17 @@ export function Hero(props: HeroProps) {
           </Link>
 
           <h1
-            className='landing-animate-fade-up text-[clamp(2.25rem,4.5vw,3.25rem)] leading-[1.15] font-bold tracking-tight'
+            className='landing-animate-fade-up text-[clamp(2.5rem,5vw,3.75rem)] leading-[1.05] font-semibold tracking-[-0.03em]'
             style={{ animationDelay: '60ms' }}
           >
             {t('Unified API Gateway for')}
             <br />
-            <span className='bg-gradient-to-r from-blue-400 via-violet-400 to-purple-500 bg-clip-text text-transparent'>
+            <span className='text-gradient-brand'>
               {t('Vast Range of AI Models')}
             </span>
           </h1>
           <p
-            className='landing-animate-fade-up text-muted-foreground/80 mt-5 max-w-xl text-base leading-relaxed opacity-0 md:text-[15px]'
+            className='landing-animate-fade-up text-muted-foreground mt-5 max-w-xl text-base leading-relaxed opacity-0 md:text-lg'
             style={{ animationDelay: '120ms' }}
           >
             {t(
@@ -148,7 +139,7 @@ export function Hero(props: HeroProps) {
             {props.isAuthenticated ? (
               <>
                 <Button
-                  className='group h-11 rounded-lg px-5 text-sm font-medium'
+                  className='group h-11 rounded-xl px-5 text-sm font-medium shadow-xs'
                   render={<Link to='/dashboard' />}
                 >
                   {t('Go to Dashboard')}
@@ -159,7 +150,7 @@ export function Hero(props: HeroProps) {
             ) : (
               <>
                 <Button
-                  className='group h-11 rounded-lg px-5 text-sm font-medium'
+                  className='group h-11 rounded-xl px-5 text-sm font-medium shadow-xs'
                   render={<Link to='/sign-up' />}
                 >
                   {t('Get Started')}
@@ -167,7 +158,7 @@ export function Hero(props: HeroProps) {
                 </Button>
                 <Button
                   variant='outline'
-                  className='border-border/50 hover:border-border hover:bg-muted/50 h-11 rounded-lg px-5 text-sm font-medium'
+                  className='border-border/60 hover:border-border hover:bg-muted/50 h-11 rounded-xl px-5 text-sm font-medium shadow-xs'
                   render={<Link to='/pricing' />}
                 >
                   {t('View Pricing')}
@@ -198,7 +189,7 @@ export function Hero(props: HeroProps) {
                 href='https://cherry-ai.com'
                 target='_blank'
                 rel='noopener noreferrer'
-                className='group border-border/40 bg-muted/15 text-foreground/80 hover:border-border hover:bg-muted/30 hover:text-foreground flex items-center gap-3 rounded-full border px-5 py-2.5 text-sm font-medium shadow-[0_1px_2.5px_rgba(0,0,0,0.01)] backdrop-blur-xs transition-all duration-300 hover:scale-[1.02]'
+                className='group border-border/60 bg-card/60 text-foreground/80 hover:border-primary/30 hover:text-foreground flex items-center gap-3 rounded-xl border px-4 py-2.5 text-sm font-medium shadow-xs transition-colors duration-300'
               >
                 <CherryStudio.Color size={24} className='shrink-0' />
                 <span>Cherry Studio</span>
@@ -209,7 +200,7 @@ export function Hero(props: HeroProps) {
                 href='https://ccswitch.io'
                 target='_blank'
                 rel='noopener noreferrer'
-                className='group border-border/40 bg-muted/15 text-foreground/80 hover:border-border hover:bg-muted/30 hover:text-foreground flex items-center gap-3 rounded-full border px-5 py-2.5 text-sm font-medium shadow-[0_1px_2.5px_rgba(0,0,0,0.01)] backdrop-blur-xs transition-all duration-300 hover:scale-[1.02]'
+                className='group border-border/60 bg-card/60 text-foreground/80 hover:border-primary/30 hover:text-foreground flex items-center gap-3 rounded-xl border px-4 py-2.5 text-sm font-medium shadow-xs transition-colors duration-300'
               >
                 <img
                   src='https://ccswitch.io/favicon.png'
@@ -224,7 +215,7 @@ export function Hero(props: HeroProps) {
                 />
                 <span
                   style={{ display: 'none' }}
-                  className='size-6 shrink-0 items-center justify-center rounded-md bg-blue-500/10 text-[10px] font-bold text-blue-600 dark:bg-blue-400/10 dark:text-blue-400'
+                  className='bg-primary/10 text-primary size-6 shrink-0 items-center justify-center rounded-md text-[10px] font-bold'
                 >
                   CC
                 </span>
@@ -232,7 +223,7 @@ export function Hero(props: HeroProps) {
               </a>
 
               {/* "更多" */}
-              <div className='group border-border/40 bg-muted/15 text-foreground/55 hover:border-border hover:bg-muted/30 hover:text-foreground flex cursor-default items-center gap-2.5 rounded-full border px-5 py-2.5 text-sm font-medium shadow-[0_1px_2.5px_rgba(0,0,0,0.01)] backdrop-blur-xs transition-all duration-300 hover:scale-[1.02]'>
+              <div className='group border-border/60 bg-card/60 text-foreground/55 hover:border-primary/30 hover:text-foreground flex cursor-default items-center gap-2.5 rounded-xl border px-4 py-2.5 text-sm font-medium shadow-xs transition-colors duration-300'>
                 <MoreIcon />
                 <span>{t('More Apps')}</span>
               </div>

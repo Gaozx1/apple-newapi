@@ -757,7 +757,7 @@ func executeTaskSubmissionWith(
 		// The client of a relayed event stream already holds the vendor's
 		// work, so it is settled and logged without a task row.
 		if c.Writer.Written() {
-			if settleErr := service.SettleBilling(c, relayInfo, result.Quota); settleErr != nil {
+			if settleErr := service.SettleBilling(c, relayInfo, result.Quota, 0); settleErr != nil {
 				common.SysError(common.LogText("settle task billing error: %s", settleErr.Error()))
 				return nil, taskErr
 			}

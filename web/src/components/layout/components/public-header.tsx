@@ -121,7 +121,7 @@ export function PublicHeader(props: PublicHeaderProps) {
         <Button
           variant='outline'
           size='sm'
-          className='h-8 rounded-lg px-3.5 text-xs font-medium'
+          className='h-9 rounded-full px-4 text-[13px] font-medium'
           render={<Link to='/sign-up' />}
         >
           {t('Sign up')}
@@ -129,7 +129,7 @@ export function PublicHeader(props: PublicHeaderProps) {
       )}
       <Button
         size='sm'
-        className='h-8 rounded-lg px-3.5 text-xs font-medium'
+        className='h-9 rounded-full px-4 text-[13px] font-medium'
         render={<Link to='/sign-in' />}
       >
         {t('Sign in')}
@@ -137,7 +137,7 @@ export function PublicHeader(props: PublicHeaderProps) {
     </>
   )
   if (isAuthenticated) authContent = <ProfileDropdown />
-  if (loading) authContent = <Skeleton className='h-8 w-20 rounded-lg' />
+  if (loading) authContent = <Skeleton className='h-9 w-24 rounded-full' />
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 20)
@@ -151,6 +151,19 @@ export function PublicHeader(props: PublicHeaderProps) {
     return () => {
       document.body.style.overflow = ''
     }
+  }, [mobileOpen])
+
+  useEffect(() => {
+    if (!mobileOpen) return
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setMobileOpen(false)
+      }
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
   }, [mobileOpen])
 
   useEffect(() => {
@@ -220,14 +233,14 @@ export function PublicHeader(props: PublicHeaderProps) {
         <div
           className={cn(
             'pointer-events-auto mx-auto transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)]',
-            scrolled ? 'max-w-[52rem] px-3 pt-3' : 'max-w-7xl px-4 pt-0 md:px-6'
+            scrolled ? 'max-w-[60rem] px-3 pt-3' : 'max-w-7xl px-4 pt-0 md:px-6'
           )}
         >
           <nav
             className={cn(
               'flex items-center justify-between gap-2 transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)]',
               scrolled
-                ? 'bg-background/60 ring-border/50 h-12 rounded-2xl pr-1.5 pl-4 shadow-[0_2px_16px_-6px_rgba(0,0,0,0.08),0_0_0_0.5px_rgba(0,0,0,0.02)] ring-[0.5px] backdrop-blur-2xl dark:shadow-[0_2px_16px_-6px_rgba(0,0,0,0.4)]'
+                ? 'bg-background/70 ring-border/50 shadow-popover h-12 rounded-full pr-1.5 pl-4 ring-[0.5px] backdrop-blur-2xl'
                 : 'h-16 px-2'
             )}
           >
@@ -270,7 +283,7 @@ export function PublicHeader(props: PublicHeaderProps) {
                       tabIndex={link.disabled ? -1 : undefined}
                       onClick={(event) => handleNavLinkClick(event, link)}
                       className={cn(
-                        'text-muted-foreground hover:text-foreground min-w-0 truncate rounded-lg px-3 py-1.5 text-sm font-medium transition-colors duration-200',
+                        'text-muted-foreground hover:text-foreground min-w-0 truncate rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors duration-200',
                         link.disabled && 'pointer-events-none opacity-50'
                       )}
                     >
@@ -286,9 +299,9 @@ export function PublicHeader(props: PublicHeaderProps) {
                     disabled={link.disabled}
                     onClick={(event) => handleNavLinkClick(event, link)}
                     className={cn(
-                      'min-w-0 truncate rounded-lg px-3 py-1.5 text-sm font-medium transition-colors duration-200',
+                      'min-w-0 truncate rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors duration-200',
                       isActive
-                        ? 'text-foreground'
+                        ? 'bg-foreground/[0.06] text-foreground'
                         : 'text-muted-foreground hover:text-foreground',
                       link.disabled && 'pointer-events-none opacity-50'
                     )}
@@ -340,6 +353,9 @@ export function PublicHeader(props: PublicHeaderProps) {
                 className='size-9'
                 onClick={() => setMobileOpen((v) => !v)}
                 aria-label={t('Toggle navigation menu')}
+                aria-expanded={mobileOpen}
+                aria-controls='mobile-nav'
+                aria-haspopup='dialog'
               >
                 <div className='relative size-4'>
                   <span
@@ -369,6 +385,12 @@ export function PublicHeader(props: PublicHeaderProps) {
 
       {/* Mobile full-screen overlay */}
       <div
+        id='mobile-nav'
+        role='dialog'
+        aria-modal='true'
+        aria-label={t('Header navigation')}
+        aria-hidden={!mobileOpen}
+        inert={!mobileOpen}
         className={cn(
           'bg-background/98 fixed inset-0 z-40 backdrop-blur-2xl transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] lg:pointer-events-none lg:hidden',
           mobileOpen

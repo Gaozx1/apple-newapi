@@ -20,7 +20,7 @@ import { useQuery } from '@tanstack/react-query'
 import { FileWarning } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
-import { PublicLayout } from '@/components/layout'
+import { PublicLayout, PublicPageHero } from '@/components/layout'
 import { RichContent } from '@/components/rich-content'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -94,7 +94,7 @@ export function LegalDocument({
     return (
       <PublicLayout>
         <div className='mx-auto max-w-2xl py-12'>
-          <Card>
+          <Card className='border-border/70 shadow-card rounded-2xl'>
             <CardHeader>
               <CardTitle>{title}</CardTitle>
             </CardHeader>
@@ -123,21 +123,20 @@ export function LegalDocument({
   }
 
   return (
-    <PublicLayout showMainContainer={!contentIsHtml}>
+    <PublicLayout showMainContainer={false} showFooter={!contentIsHtml}>
       {contentIsHtml ? (
         <RichContent mode='html' htmlVariant='isolated' content={rawContent} />
       ) : (
-        <div className='mx-auto max-w-4xl space-y-6 py-12'>
-          <div className='space-y-2'>
-            <h1 className='text-3xl font-semibold tracking-tight'>{title}</h1>
+        <>
+          <PublicPageHero title={title} />
+          <div className='mx-auto max-w-4xl px-4 py-10'>
+            <RichContent
+              mode='markdown'
+              content={rawContent}
+              className='prose-neutral dark:prose-invert max-w-none'
+            />
           </div>
-
-          <RichContent
-            mode='markdown'
-            content={rawContent}
-            className='prose-neutral dark:prose-invert max-w-none'
-          />
-        </div>
+        </>
       )}
     </PublicLayout>
   )

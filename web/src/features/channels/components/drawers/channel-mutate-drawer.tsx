@@ -2483,7 +2483,8 @@ export function ChannelMutateDrawer({
           </FormControl>
         </FormItem>
       )}
-    />  )
+    />
+  )
 
   const routingFields = (
     <div
@@ -5113,8 +5114,7 @@ export function ChannelMutateDrawer({
                 {formatFields}
                 {ollamaOpenAIChatFields}
                 {thinkingFields}
-                {currentType !== CHANNEL_TYPE_ADVANCED_CUSTOM &&
-                  passthroughFields}
+                {passthroughFields}
                 {currentType !== CHANNEL_TYPE_ADVANCED_CUSTOM &&
                   imageEditJSONFields}
                 {systemPromptFields}

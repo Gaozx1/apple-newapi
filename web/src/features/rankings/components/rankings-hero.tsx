@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useTranslation } from 'react-i18next'
 
-import { cn } from '@/lib/utils'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 import type { RankingPeriod } from '../types'
 
@@ -35,59 +35,37 @@ type RankingsHeroProps = {
 }
 
 /**
- * Hero strip for the rankings page. Intentionally minimal — title +
- * subtitle + period tabs only.
+ * Period selector for the rankings page. The page title and subtitle are
+ * rendered by `PublicPageHero`; this component only owns the tab strip.
  */
 export function RankingsHero(props: RankingsHeroProps) {
   const { t } = useTranslation()
 
   return (
-    <section className='space-y-5'>
-      <div className='space-y-2'>
-        <h1 className='text-[clamp(1.75rem,4vw,2.5rem)] leading-[1.15] font-bold tracking-tight'>
-          {t('Rankings')}
-        </h1>
-        <p className='text-muted-foreground/80 max-w-2xl text-sm'>
-          {t(
-            'Discover the most-used models and rising vendors on the platform, updated from live usage data.'
-          )}
-        </p>
-      </div>
-
-      {/* Underline tabs for period — clean and unobtrusive. */}
-      <div
-        role='tablist'
+    <Tabs
+      value={props.period}
+      onValueChange={(value) => {
+        if (typeof value === 'string') {
+          props.onPeriodChange(value as RankingPeriod)
+        }
+      }}
+    >
+      <TabsList
+        variant='line'
+        activateOnFocus
         aria-label={t('Period')}
-        className='border-border/60 flex items-center border-b'
+        className='border-border/60 h-auto w-full justify-start border-b pb-0'
       >
-        {PERIODS.map((p) => {
-          const isActive = props.period === p.id
-          return (
-            <button
-              key={p.id}
-              role='tab'
-              type='button'
-              aria-selected={isActive}
-              onClick={() => props.onPeriodChange(p.id)}
-              className={cn(
-                'focus-visible:ring-ring/40 relative -mb-px rounded-sm px-3 py-2 text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:outline-none',
-                isActive
-                  ? 'text-foreground'
-                  : 'text-muted-foreground hover:text-foreground'
-              )}
-            >
-              {t(p.labelKey)}
-              <span
-                aria-hidden
-                className={cn(
-                  'bg-foreground absolute inset-x-3 -bottom-px h-[2px] rounded-full transition-opacity',
-                  isActive ? 'opacity-100' : 'opacity-0'
-                )}
-              />
-            </button>
-          )
-        })}
-      </div>
-    </section>
+        {PERIODS.map((period) => (
+          <TabsTrigger
+            key={period.id}
+            value={period.id}
+            className='h-9 flex-none px-3 text-sm'
+          >
+            {t(period.labelKey)}
+          </TabsTrigger>
+        ))}
+      </TabsList>
+    </Tabs>
   )
 }

@@ -111,6 +111,8 @@ describe('security sidebar visibility', () => {
       'Profile',
       'OAuth 2.0 Apps',
       'Security & Access',
+      'AI Support',
+      'My groups',
     ])
     expect(
       result.current
