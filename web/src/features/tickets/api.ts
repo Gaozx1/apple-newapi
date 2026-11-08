@@ -45,15 +45,18 @@ export async function getMyTickets(
 }
 
 /**
- * Admin: get all tickets (paginated), optionally filtered by status.
+ * Admin: get all tickets (paginated), optionally filtered by status and by
+ * claim state (unclaimed pool or the caller's claimed tickets).
  */
 export async function getAllTickets(
   page = 1,
   pageSize = 20,
-  status?: string
+  status?: string,
+  assignee?: 'pending' | 'mine'
 ): Promise<ApiResponse<TicketListResponse>> {
   const params: Record<string, unknown> = { page, page_size: pageSize }
   if (status) params.status = status
+  if (assignee) params.assignee = assignee
   const res = await api.get('/api/user/admin-tickets', { params })
   return res.data
 }
@@ -87,6 +90,22 @@ export async function replyTicket(
   data: ReplyTicketRequest
 ): Promise<ApiResponse> {
   const res = await api.post(`/api/user/tickets/${id}/reply`, data)
+  return res.data
+}
+
+/**
+ * Admin: claim a ticket. Only the claimer may reply to or close it afterwards.
+ */
+export async function claimTicket(id: number): Promise<ApiResponse<Ticket>> {
+  const res = await api.post(`/api/user/admin-tickets/${id}/claim`)
+  return res.data
+}
+
+/**
+ * Admin: return a claimed ticket to the pending pool.
+ */
+export async function unclaimTicket(id: number): Promise<ApiResponse> {
+  const res = await api.post(`/api/user/admin-tickets/${id}/unclaim`)
   return res.data
 }
 

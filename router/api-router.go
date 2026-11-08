@@ -208,6 +208,8 @@ func SetApiRouter(router *gin.Engine) {
 					ticketAdminRoute.GET("", controller.GetAllTickets)
 					ticketAdminRoute.GET("/:id", controller.GetTicket)
 					ticketAdminRoute.POST("/:id/reply", controller.ReplyTicket)
+					ticketAdminRoute.POST("/:id/claim", controller.ClaimTicket)
+					ticketAdminRoute.POST("/:id/unclaim", controller.UnclaimTicket)
 					ticketAdminRoute.POST("/:id/close", controller.CloseTicket)
 				}
 

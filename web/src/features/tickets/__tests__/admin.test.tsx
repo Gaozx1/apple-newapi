@@ -19,7 +19,9 @@ For commercial licensing, please contact support@quantumnous.com
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, test, vi } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vitest'
+
+import { useAuthStore } from '@/stores/auth-store'
 
 import type {
   ApiResponse,
@@ -36,6 +38,8 @@ vi.mock('../api', () => ({
   getTicket: vi.fn(),
   replyTicket: vi.fn(),
   closeTicket: vi.fn(),
+  claimTicket: vi.fn(),
+  unclaimTicket: vi.fn(),
   createTicket: vi.fn(),
   getMyTickets: vi.fn(),
 }))
@@ -53,6 +57,20 @@ await i18n.use(initReactI18next).init({
         All: 'All',
         Open: 'Open',
         Closed: 'Closed',
+        'All claims': 'All claims',
+        Unclaimed: 'Unclaimed',
+        'Claimed by me': 'Claimed by me',
+        'Claimed by {{name}}': 'Claimed by {{name}}',
+        'Claim Ticket': 'Claim Ticket',
+        'Claiming...': 'Claiming...',
+        'Unclaim Ticket': 'Unclaim Ticket',
+        'Releasing...': 'Releasing...',
+        'Ticket claimed': 'Ticket claimed',
+        'Ticket returned to the pending pool':
+          'Ticket returned to the pending pool',
+        'Failed to claim ticket': 'Failed to claim ticket',
+        'Failed to unclaim ticket': 'Failed to unclaim ticket',
+        'Claim this ticket to reply to it': 'Claim this ticket to reply to it',
         'No tickets yet': 'No tickets yet',
         Back: 'Back',
         Support: 'Support',
@@ -80,6 +98,9 @@ function makeTicket(overrides: Partial<Ticket>): Ticket {
     subject: 'Billing question',
     content: 'Why was I charged twice?',
     status: 'open',
+    assignee_id: 0,
+    assignee_name: '',
+    claimed_at: 0,
     created_at: 1756400000,
     updated_at: 1756400000,
     ...overrides,
@@ -98,6 +119,10 @@ function AdminHarness() {
     </I18nextProvider>
   )
 }
+
+afterEach(() => {
+  useAuthStore.setState(useAuthStore.getInitialState(), true)
+})
 
 describe('AdminTickets', () => {
   test('renders tickets from the API with username, subject, and status', async () => {
@@ -122,7 +147,12 @@ describe('AdminTickets', () => {
     render(<AdminHarness />)
 
     await waitFor(() => {
-      expect(api.getAllTickets).toHaveBeenCalledWith(1, 100, undefined)
+      expect(api.getAllTickets).toHaveBeenCalledWith(
+        1,
+        100,
+        undefined,
+        undefined
+      )
     })
     expect(await screen.findByText('Billing question')).toBeInTheDocument()
     expect(screen.getByText(/alice/)).toBeInTheDocument()
@@ -156,11 +186,116 @@ describe('AdminTickets', () => {
     await user.click(screen.getByRole('button', { name: 'Closed' }))
 
     await waitFor(() => {
-      expect(api.getAllTickets).toHaveBeenLastCalledWith(1, 100, 'closed')
+      expect(api.getAllTickets).toHaveBeenLastCalledWith(
+        1,
+        100,
+        'closed',
+        undefined
+      )
     })
   })
 
-  test('opens the detail view with an admin close action for open tickets', async () => {
+  test('re-queries the unclaimed pool when that filter is clicked', async () => {
+    const user = userEvent.setup()
+    vi.mocked(api.getAllTickets).mockResolvedValue({
+      success: true,
+      data: { items: [], total: 0, page: 1, size: 20 },
+    } as ApiResponse<TicketListResponse>)
+
+    render(<AdminHarness />)
+    await screen.findByText('No tickets yet')
+
+    await user.click(screen.getByRole('button', { name: 'Unclaimed' }))
+
+    await waitFor(() => {
+      expect(api.getAllTickets).toHaveBeenLastCalledWith(
+        1,
+        100,
+        undefined,
+        'pending'
+      )
+    })
+  })
+
+  test('shows the assignee on a claimed ticket', async () => {
+    vi.mocked(api.getAllTickets).mockResolvedValue({
+      success: true,
+      data: {
+        items: [
+          makeTicket({
+            id: 4,
+            assignee_id: 9,
+            assignee_name: 'admin-bob',
+            claimed_at: 1756400100,
+          }),
+        ],
+        total: 1,
+        page: 1,
+        size: 20,
+      },
+    } as ApiResponse<TicketListResponse>)
+
+    render(<AdminHarness />)
+
+    expect(await screen.findByText('Claimed by admin-bob')).toBeInTheDocument()
+  })
+
+  test('lets the assignee unclaim and close their ticket', async () => {
+    useAuthStore.setState(useAuthStore.getInitialState(), true)
+    useAuthStore.getState().auth.setUser({ id: 2, username: 'root', role: 100 })
+    const user = userEvent.setup()
+    const ticket = makeTicket({
+      id: 5,
+      status: 'open',
+      assignee_id: 2,
+      assignee_name: 'root',
+      claimed_at: 1756400100,
+    })
+    vi.mocked(api.getAllTickets).mockResolvedValue({
+      success: true,
+      data: { items: [ticket], total: 1, page: 1, size: 20 },
+    } as ApiResponse<TicketListResponse>)
+    vi.mocked(api.getTicket).mockResolvedValue({
+      success: true,
+      data: { ticket, replies: [] },
+    } as ApiResponse<TicketDetailResponse>)
+
+    render(<AdminHarness />)
+    await user.click(await screen.findByText('Billing question'))
+
+    expect(await screen.findByText('Unclaim Ticket')).toBeInTheDocument()
+    expect(screen.getByText('Close Ticket')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Unclaim Ticket' }))
+    await waitFor(() => {
+      expect(api.unclaimTicket).toHaveBeenCalledWith(5)
+    })
+  })
+
+  test('offers a claim action on the unclaimed detail view', async () => {
+    const user = userEvent.setup()
+    const ticket = makeTicket({ id: 6, status: 'open' })
+    vi.mocked(api.getAllTickets).mockResolvedValue({
+      success: true,
+      data: { items: [ticket], total: 1, page: 1, size: 20 },
+    } as ApiResponse<TicketListResponse>)
+    vi.mocked(api.getTicket).mockResolvedValue({
+      success: true,
+      data: { ticket, replies: [] },
+    } as ApiResponse<TicketDetailResponse>)
+
+    render(<AdminHarness />)
+    await user.click(await screen.findByText('Billing question'))
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Claim Ticket' })
+    )
+    await waitFor(() => {
+      expect(api.claimTicket).toHaveBeenCalledWith(6)
+    })
+  })
+
+  test('asks an admin to claim an unclaimed ticket before handling it', async () => {
     const user = userEvent.setup()
     const ticket = makeTicket({ id: 3, username: 'alice', status: 'open' })
     vi.mocked(api.getAllTickets).mockResolvedValue({
@@ -195,7 +330,10 @@ describe('AdminTickets', () => {
     render(<AdminHarness />)
     await user.click(await screen.findByText('Billing question'))
 
-    expect(await screen.findByText('Close Ticket')).toBeInTheDocument()
+    expect(
+      await screen.findByRole('button', { name: 'Claim Ticket' })
+    ).toBeInTheDocument()
+    expect(screen.queryByText('Close Ticket')).not.toBeInTheDocument()
     expect(screen.getByText(/alice/)).toBeInTheDocument()
   })
 })
