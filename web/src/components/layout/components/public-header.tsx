@@ -232,16 +232,13 @@ export function PublicHeader(props: PublicHeaderProps) {
       <header className='pointer-events-none fixed inset-x-0 top-0 z-50'>
         <div
           className={cn(
-            'pointer-events-auto mx-auto transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)]',
-            scrolled ? 'max-w-[60rem] px-3 pt-3' : 'max-w-7xl px-4 pt-0 md:px-6'
+            'pointer-events-auto mx-auto max-w-7xl px-3 pt-3 sm:px-6'
           )}
         >
           <nav
             className={cn(
-              'flex items-center justify-between gap-2 transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)]',
-              scrolled
-                ? 'bg-background/70 ring-border/50 shadow-popover h-12 rounded-full pr-1.5 pl-4 ring-1 backdrop-blur-2xl'
-                : 'h-16 px-2'
+              'bg-background/90 ring-border/70 flex h-14 items-center justify-between gap-2 rounded-2xl pr-2 pl-3 ring-1 backdrop-blur-xl transition-shadow duration-200 sm:pr-3 sm:pl-5',
+              scrolled ? 'shadow-popover' : 'shadow-card'
             )}
           >
             {/* Logo */}
@@ -296,6 +293,7 @@ export function PublicHeader(props: PublicHeaderProps) {
                     key={`${link.title}:${link.href}`}
                     to={link.href}
                     title={t(link.title)}
+                    aria-current={isActive ? 'page' : undefined}
                     disabled={link.disabled}
                     onClick={(event) => handleNavLinkClick(event, link)}
                     className={cn(

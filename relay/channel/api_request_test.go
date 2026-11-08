@@ -2,15 +2,151 @@ package channel
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
+	"github.com/QuantumNous/new-api/constant"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/relay/helper"
+	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestStreamingCompletionReturnsWhileUpstreamConnectionRemainsOpen(t *testing.T) {
+	service.InitHttpClient()
+	settings := operation_setting.GetGeneralSetting()
+	previousPing := settings.PingIntervalEnabled
+	previousTimeout := constant.StreamingTimeout
+	settings.PingIntervalEnabled = false
+	constant.StreamingTimeout = 30
+	t.Cleanup(func() {
+		settings.PingIntervalEnabled = previousPing
+		constant.StreamingTimeout = previousTimeout
+	})
+
+	peerCancelled := make(chan struct{})
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, "data: completed\n\n")
+		w.(http.Flusher).Flush()
+		<-r.Context().Done()
+		close(peerCancelled)
+	}))
+	defer upstream.Close()
+	defer upstream.CloseClientConnections()
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	req, err := http.NewRequest(http.MethodPost, upstream.URL, nil)
+	require.NoError(t, err)
+	info := &relaycommon.RelayInfo{IsStream: true, ChannelMeta: &relaycommon.ChannelMeta{}}
+	response, err := doRequest(c, req, info)
+	require.NoError(t, err)
+	returned := make(chan struct{})
+	var received string
+	go func() {
+		helper.StreamScannerHandler(c, response, info, func(data string, result *helper.StreamResult) {
+			received = data
+			result.Done()
+		})
+		close(returned)
+	}()
+	select {
+	case <-returned:
+	case <-time.After(5 * time.Second):
+		t.Fatal("completed stream remained blocked on the open upstream connection")
+	}
+	assert.Equal(t, "completed", received)
+	assert.Equal(t, relaycommon.StreamEndReasonDone, info.StreamStatus.EndReason)
+	assert.False(t, info.StreamStatus.HasErrors())
+	assert.NoError(t, c.Request.Context().Err())
+	select {
+	case <-peerCancelled:
+	case <-time.After(5 * time.Second):
+		t.Fatal("completed stream did not release the upstream request")
+	}
+}
+
+func TestStreamingRequestCancellationReleasesOpenUpstreamBody(t *testing.T) {
+	service.InitHttpClient()
+	settings := operation_setting.GetGeneralSetting()
+	previousPing := settings.PingIntervalEnabled
+	settings.PingIntervalEnabled = false
+	t.Cleanup(func() { settings.PingIntervalEnabled = previousPing })
+
+	for _, action := range []string{"close response", "cancel client", "cancel upstream"} {
+		t.Run(action, func(t *testing.T) {
+			peerCancelled := make(chan struct{})
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				_, _ = io.WriteString(w, "x")
+				w.(http.Flusher).Flush()
+				<-r.Context().Done()
+				close(peerCancelled)
+			}))
+			defer upstream.Close()
+			defer upstream.CloseClientConnections()
+
+			clientContext, cancelClient := context.WithCancel(context.Background())
+			defer cancelClient()
+			upstreamContext, cancelUpstream := context.WithCancel(context.Background())
+			defer cancelUpstream()
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil).WithContext(clientContext)
+			req, err := http.NewRequestWithContext(upstreamContext, http.MethodPost, upstream.URL, nil)
+			require.NoError(t, err)
+			info := &relaycommon.RelayInfo{IsStream: true, ChannelMeta: &relaycommon.ChannelMeta{}}
+			response, err := doRequest(c, req, info)
+			require.NoError(t, err)
+			first := make([]byte, 1)
+			_, err = io.ReadFull(response.Body, first)
+			require.NoError(t, err)
+			assert.Equal(t, "x", string(first))
+
+			reading := make(chan struct{})
+			readResult := make(chan error, 1)
+			go func() {
+				close(reading)
+				_, readErr := io.Copy(io.Discard, response.Body)
+				readResult <- readErr
+			}()
+			<-reading
+			closeResult := make(chan error, 1)
+			switch action {
+			case "close response":
+				go func() { closeResult <- response.Body.Close() }()
+			case "cancel client":
+				cancelClient()
+			case "cancel upstream":
+				cancelUpstream()
+			}
+			select {
+			case readErr := <-readResult:
+				assert.Error(t, readErr)
+			case <-time.After(5 * time.Second):
+				t.Fatal("stream reader remained blocked after cancellation")
+			}
+			select {
+			case <-peerCancelled:
+			case <-time.After(5 * time.Second):
+				t.Fatal("upstream request was not cancelled")
+			}
+			if action == "close response" {
+				select {
+				case closeErr := <-closeResult:
+					require.NoError(t, closeErr)
+				case <-time.After(5 * time.Second):
+					t.Fatal("response close remained blocked")
+				}
+			} else {
+				require.NoError(t, response.Body.Close())
+			}
+		})
+	}
+}
 
 func TestNewTaskAPIRequestInheritsClientCancellation(t *testing.T) {
 	recorder := httptest.NewRecorder()

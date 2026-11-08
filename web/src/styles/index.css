@@ -740,6 +740,34 @@ For commercial licensing, please contact support@quantumnous.com
 
 /* ── Aurora Glass surface utilities ── */
 @layer utilities {
+  .landing-hero-glow {
+    background-image:
+      radial-gradient(
+        ellipse 65% 55% at 90% 30%,
+        color-mix(in oklch, var(--primary) 12%, transparent),
+        transparent 85%
+      ),
+      radial-gradient(
+        ellipse 50% 45% at 5% 0%,
+        color-mix(in oklch, var(--chart-2) 7%, transparent),
+        transparent 85%
+      );
+  }
+
+  .landing-hero-title {
+    font-size: clamp(1.75rem, 6.8vw, 2.75rem);
+    line-height: 1.25;
+    letter-spacing: -0.035em;
+    overflow-wrap: break-word;
+  }
+
+  @media (min-width: 640px) {
+    .landing-hero-title {
+      font-size: clamp(2.5rem, 4vw, 3.25rem);
+      line-height: 1.18;
+    }
+  }
+
   /* Aurora glow layer — multi-stop radial "northern lights" wash used at the
    * top of public pages, auth screens and hero sections. */
   .aurora-bg {

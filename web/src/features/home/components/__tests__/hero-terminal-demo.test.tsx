@@ -28,6 +28,34 @@ afterEach(() => {
 })
 
 describe('hero terminal demo tabs', () => {
+  it('keeps the initial example readable until playback is started', () => {
+    vi.useFakeTimers()
+    render(<HeroTerminalDemo />)
+
+    expect(screen.getByRole('button', { name: 'Start' })).toBeVisible()
+    act(() => vi.advanceTimersByTime(10000))
+    expect(screen.getByRole('tab', { name: 'Chat' })).toHaveAttribute(
+      'aria-selected',
+      'true'
+    )
+  })
+
+  it('lets keyboard users select the next protocol with an arrow key', async () => {
+    const user = userEvent.setup()
+    render(<HeroTerminalDemo />)
+    const chat = screen.getByRole('tab', { name: 'Chat' })
+    chat.focus()
+
+    await user.keyboard('{ArrowRight}')
+
+    expect(screen.getByRole('tab', { name: 'Responses' })).toHaveFocus()
+    expect(screen.getByRole('tab', { name: 'Responses' })).toHaveAttribute(
+      'aria-selected',
+      'true'
+    )
+    expect(screen.getByRole('tabpanel')).toHaveTextContent('/v1/responses')
+  })
+
   it('marks the visible endpoint as the selected tab', () => {
     render(<HeroTerminalDemo />)
 
@@ -40,6 +68,17 @@ describe('hero terminal demo tabs', () => {
       'aria-selected',
       'false'
     )
+  })
+
+  it('copies the endpoint of the selected protocol', async () => {
+    const user = userEvent.setup()
+    render(<HeroTerminalDemo />)
+
+    await user.click(screen.getByRole('tab', { name: 'Claude' }))
+    await user.click(screen.getByRole('button', { name: 'Copy to clipboard' }))
+
+    expect(await navigator.clipboard.readText()).toBe('/v1/messages')
+    expect(screen.getByRole('button', { name: 'Copied' })).toBeVisible()
   })
 
   it('switches the demo when another tab is selected', async () => {
@@ -71,6 +110,7 @@ describe('hero terminal demo tabs', () => {
     }))
     render(<HeroTerminalDemo />)
 
+    fireEvent.click(screen.getByRole('button', { name: 'Start' }))
     const pause = screen.getByRole('button', { name: 'Stop' })
     fireEvent.click(pause)
     expect(screen.getByRole('button', { name: 'Start' })).toBeVisible()

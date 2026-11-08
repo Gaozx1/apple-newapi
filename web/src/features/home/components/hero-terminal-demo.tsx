@@ -17,10 +17,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { Pause, Play } from 'lucide-react'
-import { useState, useEffect, useRef, type ReactNode } from 'react'
+import { useState, useEffect, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { CopyButton } from '@/components/copy-button'
 import { Button } from '@/components/ui/button'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
 
 type AccentTone = 'emerald' | 'amber' | 'blue' | 'violet'
@@ -161,7 +163,6 @@ const API_DEMOS: ApiDemoConfig[] = [
 ]
 
 const CYCLE_INTERVAL = 4500
-const TRANSITION_MS = 220
 
 interface HeroTerminalDemoProps {
   className?: string
@@ -170,57 +171,26 @@ interface HeroTerminalDemoProps {
 export function HeroTerminalDemo(props: HeroTerminalDemoProps) {
   const { t } = useTranslation()
   const [activeIndex, setActiveIndex] = useState(0)
-  const [transitioning, setTransitioning] = useState(false)
-  const [isPlaying, setIsPlaying] = useState(true)
-  const transitionRef = useRef<ReturnType<typeof setTimeout>>(undefined)
-
-  // Respect the user's reduced-motion preference by pausing the carousel.
-  useEffect(() => {
-    const mq = window.matchMedia('(prefers-reduced-motion: reduce)')
-    if (mq.matches) {
-      setIsPlaying(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    return () => {
-      if (transitionRef.current) clearTimeout(transitionRef.current)
-    }
-  }, [])
+  const [isPlaying, setIsPlaying] = useState(false)
 
   useEffect(() => {
     if (!isPlaying) return
 
     const cycleTimer = setTimeout(() => {
-      setTransitioning(true)
-      transitionRef.current = setTimeout(() => {
-        setActiveIndex((prev) => (prev + 1) % API_DEMOS.length)
-        setTransitioning(false)
-      }, TRANSITION_MS)
+      setActiveIndex((prev) => (prev + 1) % API_DEMOS.length)
     }, CYCLE_INTERVAL)
 
     return () => {
       clearTimeout(cycleTimer)
-      if (transitionRef.current) clearTimeout(transitionRef.current)
     }
   }, [activeIndex, isPlaying])
 
   const handleSelect = (index: number) => {
-    if (index === activeIndex) return
-    if (transitionRef.current) clearTimeout(transitionRef.current)
-    setTransitioning(true)
-    transitionRef.current = setTimeout(() => {
-      setActiveIndex(index)
-      setTransitioning(false)
-    }, TRANSITION_MS)
+    setActiveIndex(index)
+    setIsPlaying(false)
   }
 
   const handleTogglePlayback = () => {
-    if (isPlaying) {
-      // Pausing drops any in-flight crossfade so the visible content returns.
-      if (transitionRef.current) clearTimeout(transitionRef.current)
-      setTransitioning(false)
-    }
     setIsPlaying((prev) => !prev)
   }
 
@@ -228,51 +198,56 @@ export function HeroTerminalDemo(props: HeroTerminalDemoProps) {
   const accent = ACCENT_CLASSES[demo.accent]
 
   return (
-    <div className={cn('mx-auto w-full max-w-2xl', props.className)}>
-      <div
+    <div className={cn('mx-auto min-w-0 w-full max-w-2xl', props.className)}>
+      <Tabs
+        value={activeIndex}
+        onValueChange={(value) => {
+          if (typeof value === 'number') handleSelect(value)
+        }}
         className={cn(
-          'surface-glass overflow-hidden rounded-[1.75rem]',
+          'border-border bg-card gap-0 overflow-hidden rounded-2xl border',
           'shadow-hero'
         )}
       >
         {/* Tab strip */}
         <div
-          role='tablist'
-          aria-label={t('API')}
           className={cn(
-            'flex items-center gap-1 border-b px-2 sm:gap-1.5 sm:px-3',
-            'border-border/50'
+            'flex min-w-0 items-center gap-2 border-b px-3 py-2 sm:px-4',
+            'border-border/70 bg-muted/40'
           )}
         >
-          {API_DEMOS.map((item, index) => {
-            const tone = ACCENT_CLASSES[item.accent]
-            const isActive = index === activeIndex
-            return (
-              <button
-                key={item.id}
-                type='button'
-                role='tab'
-                aria-selected={isActive}
-                onClick={() => handleSelect(index)}
-                className={cn(
-                  'relative -mb-px flex items-center gap-1.5 border-b-2 px-2.5 py-2.5 text-[11px] font-medium tracking-wide transition-colors sm:px-3 sm:text-xs',
-                  isActive
-                    ? `${tone.activeBorder} ${tone.activeText}`
-                    : 'text-foreground/40 hover:text-foreground/70 border-transparent'
-                )}
-              >
-                {item.label}
-              </button>
-            )
-          })}
-          <div className='ml-auto flex items-center gap-2 pr-2 sm:pr-3'>
+          <div className='min-w-0 flex-1 overflow-x-auto'>
+            <TabsList
+              activateOnFocus
+              aria-label={t('API')}
+              className='h-9 justify-start gap-0.5 rounded-lg bg-transparent p-0'
+            >
+              {API_DEMOS.map((item, index) => {
+                const tone = ACCENT_CLASSES[item.accent]
+                const isActive = index === activeIndex
+                return (
+                  <TabsTrigger
+                    key={item.id}
+                    value={index}
+                    className={cn(
+                      'h-9 flex-none rounded-lg px-2.5 text-xs sm:px-3',
+                      isActive ? tone.activeText : 'text-muted-foreground'
+                    )}
+                  >
+                    {item.label}
+                  </TabsTrigger>
+                )
+              })}
+            </TabsList>
+          </div>
+          <div className='flex shrink-0 items-center gap-2'>
             <Button
               type='button'
               variant='ghost'
               size='icon-sm'
               onClick={handleTogglePlayback}
               aria-label={isPlaying ? t('Stop') : t('Start')}
-              className='text-foreground/40 hover:text-foreground'
+              className='text-muted-foreground hover:text-foreground'
             >
               {isPlaying ? (
                 <Pause aria-hidden className='size-3.5' />
@@ -280,46 +255,56 @@ export function HeroTerminalDemo(props: HeroTerminalDemoProps) {
                 <Play aria-hidden className='size-3.5' />
               )}
             </Button>
-            <span className='bg-success inline-block size-1.5 rounded-full shadow-[0_0_8px_var(--success)]' />
-            <span className='text-foreground/40 font-mono text-[10px] tracking-wider uppercase'>
+            <span
+              aria-hidden
+              className='bg-success hidden size-1.5 rounded-full sm:inline-block'
+            />
+            <span className='text-muted-foreground hidden font-mono text-[10px] tracking-wider uppercase sm:inline'>
               200 ok
             </span>
           </div>
         </div>
 
-        {/* Endpoint row */}
-        <div
-          className={cn(
-            'flex items-center gap-2.5 border-b px-5 py-3',
-            'border-border/40'
-          )}
-        >
-          <span
+        <TabsContent value={activeIndex} className='min-w-0'>
+          {/* Endpoint row */}
+          <div
             className={cn(
-              'rounded-md px-1.5 py-0.5 font-mono text-[10px] font-semibold tracking-wider',
-              accent.badge
+              'flex min-w-0 items-center gap-2.5 border-b px-4 py-2 sm:px-5',
+              'border-border/40'
             )}
           >
-            {demo.method}
-          </span>
-          <code
-            className={cn(
-              'text-foreground/75 truncate font-mono text-[12.5px] transition-opacity duration-200',
-              transitioning ? 'opacity-0' : 'opacity-100'
-            )}
-          >
-            {demo.endpoint}
-          </code>
-        </div>
+            <span
+              className={cn(
+                'rounded-md px-1.5 py-0.5 font-mono text-[10px] font-semibold tracking-wider',
+                accent.badge
+              )}
+            >
+              {demo.method}
+            </span>
+            <code
+              className={cn(
+                'text-foreground min-w-0 flex-1 truncate font-mono text-xs'
+              )}
+            >
+              {demo.endpoint}
+            </code>
+            <CopyButton
+              value={demo.endpoint}
+              tooltip={t('Copy to clipboard')}
+              className='size-8'
+              iconClassName='size-3.5'
+            />
+          </div>
 
-        {/* Body — fixed rows so neither block shifts when switching demos */}
-        <div className='grid h-[400px] grid-rows-[235px_minmax(0,1fr)] font-mono text-[12.5px] leading-[1.55]'>
-          {/* Request */}
-          <RequestBlock demo={demo} transitioning={transitioning} />
+          {/* Body — fixed rows so neither block shifts when switching demos */}
+          <div className='grid h-[400px] min-w-0 grid-rows-[235px_minmax(0,1fr)] font-mono text-xs leading-[1.65] sm:text-[12.5px]'>
+            {/* Request */}
+            <RequestBlock demo={demo} />
 
-          {/* Response */}
-          <ResponseBlock demo={demo} transitioning={transitioning} />
-        </div>
+            {/* Response */}
+            <ResponseBlock demo={demo} />
+          </div>
+        </TabsContent>
 
         {/* Footer metrics */}
         <div
@@ -328,7 +313,7 @@ export function HeroTerminalDemo(props: HeroTerminalDemoProps) {
             'border-border/40 bg-muted/30'
           )}
         >
-          <div className='text-foreground/40 flex items-center gap-3 text-[10px] tabular-nums'>
+          <div className='text-muted-foreground flex items-center gap-3 text-[10px] tabular-nums'>
             <span className='flex items-center gap-1'>
               <span className='font-mono'>{demo.latency}</span>
               <span className='tracking-wider uppercase'>ms</span>
@@ -346,27 +331,23 @@ export function HeroTerminalDemo(props: HeroTerminalDemoProps) {
               </span>
             </span>
           </div>
-          <span className='text-foreground/30 font-mono text-[10px] tracking-wider uppercase'>
+          <span className='text-muted-foreground hidden font-mono text-[10px] tracking-wider uppercase sm:inline'>
             stream · sse
           </span>
         </div>
-      </div>
+      </Tabs>
     </div>
   )
 }
 
-function RequestBlock(props: { demo: ApiDemoConfig; transitioning: boolean }) {
-  const { demo, transitioning } = props
+function RequestBlock(props: { demo: ApiDemoConfig }) {
+  const { demo } = props
+  const { t } = useTranslation()
 
   return (
-    <div className='relative px-5 py-4'>
-      <SectionLabel>Request</SectionLabel>
-      <div
-        className={cn(
-          'mt-2 transition-opacity duration-200',
-          transitioning ? 'opacity-0' : 'opacity-100'
-        )}
-      >
+    <div className='relative min-w-0 overflow-x-auto px-4 py-4 sm:px-5'>
+      <SectionLabel>{t('Request')}</SectionLabel>
+      <div className='mt-2'>
         <CodeLine>
           <Command>curl</Command> <Flag>-X</Flag> <Flag>POST</Flag>{' '}
           <StringText>&quot;{demo.endpoint}&quot;</StringText>{' '}
@@ -394,23 +375,19 @@ function RequestBlock(props: { demo: ApiDemoConfig; transitioning: boolean }) {
   )
 }
 
-function ResponseBlock(props: { demo: ApiDemoConfig; transitioning: boolean }) {
-  const { demo, transitioning } = props
+function ResponseBlock(props: { demo: ApiDemoConfig }) {
+  const { demo } = props
+  const { t } = useTranslation()
 
   return (
     <div
       className={cn(
-        'relative border-t px-5 py-4',
+        'relative min-w-0 overflow-x-auto border-t px-4 py-4 sm:px-5',
         'border-border/40 bg-muted/20'
       )}
     >
-      <SectionLabel>Response</SectionLabel>
-      <div
-        className={cn(
-          'mt-2 transition-opacity duration-200',
-          transitioning ? 'opacity-0' : 'opacity-100'
-        )}
-      >
+      <SectionLabel>{t('Response')}</SectionLabel>
+      <div className='mt-2'>
         {demo.response.map((line) => (
           <CodeLine key={line}>{renderResponseLine(line, demo)}</CodeLine>
         ))}
@@ -421,7 +398,7 @@ function ResponseBlock(props: { demo: ApiDemoConfig; transitioning: boolean }) {
 
 function SectionLabel(props: { children: ReactNode }) {
   return (
-    <span className='text-foreground/30 font-sans text-[10px] font-semibold tracking-[0.18em] uppercase'>
+    <span className='text-muted-foreground font-sans text-[10px] font-semibold tracking-[0.14em] uppercase'>
       {props.children}
     </span>
   )
@@ -528,7 +505,7 @@ function tokenize(input: string): ReactNode {
 
 function CodeLine(props: { children: ReactNode; indent?: number }) {
   return (
-    <div className='break-words whitespace-pre-wrap'>
+    <div className='whitespace-pre'>
       {props.indent ? (
         <span
           aria-hidden

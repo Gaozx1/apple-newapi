@@ -1,6 +1,7 @@
 package channel
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -454,6 +455,18 @@ func keepUpstreamRedirectResponse(_ *http.Request, _ []*http.Request) error {
 	return http.ErrUseLastResponse
 }
 
+type upstreamStreamBody struct {
+	io.ReadCloser
+	cancel context.CancelFunc
+}
+
+func (body *upstreamStreamBody) Close() error {
+	// A transport body can hold its read lock while waiting for another chunk.
+	// Cancel the network request before Close so stream cleanup can join readers.
+	body.cancel()
+	return body.ReadCloser.Close()
+}
+
 func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http.Response, error) {
 	client, err := service.GetHttpClientWithProxySettings(info.ChannelSetting.Proxy, info.ChannelSetting)
 	if err != nil {
@@ -486,13 +499,36 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 	}
 
 	common2.SetContextKey(c, appconstant.ContextKeyUpstreamRequestOrigin, req.URL.Scheme+"://"+req.URL.Host)
+	var cancelUpstream context.CancelFunc
+	if info.IsStream {
+		requestContext, cancel := context.WithCancel(req.Context())
+		stopClientCancellation := context.AfterFunc(c.Request.Context(), cancel)
+		cancelUpstream = func() {
+			stopClientCancellation()
+			cancel()
+		}
+		req = req.WithContext(requestContext)
+	}
 	resp, err := relayClient.Do(req)
 	if err != nil {
+		if cancelUpstream != nil {
+			cancelUpstream()
+		}
 		logger.LogError(c, common2.LogText("do request failed: %s", err.Error()))
 		return nil, types.NewError(err, types.ErrorCodeDoRequestFailed, types.ErrOptionWithHideErrMsg("upstream error: do request failed"))
 	}
 	if resp == nil {
+		if cancelUpstream != nil {
+			cancelUpstream()
+		}
 		return nil, errors.New("resp is nil")
+	}
+	if cancelUpstream != nil {
+		if resp.Body == nil {
+			cancelUpstream()
+		} else {
+			resp.Body = &upstreamStreamBody{ReadCloser: resp.Body, cancel: cancelUpstream}
+		}
 	}
 	if common2.DebugEnabled {
 		policy := service.NormalizeHTTPTransportPolicy(info.ChannelSetting)
