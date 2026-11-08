@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -104,8 +105,8 @@ type replyTicketRequest struct {
 }
 
 // ReplyTicket appends a reply to a ticket. Users may reply only to their own
-// open tickets; admins may reply to any open ticket (and their reply is marked
-// as admin-authored).
+// open tickets; admins may reply only to tickets they claimed (and their reply
+// is marked as admin-authored).
 func ReplyTicket(c *gin.Context) {
 	ticketId, ok := parseTicketIdParam(c)
 	if !ok {
@@ -146,12 +147,21 @@ func ReplyTicket(c *gin.Context) {
 	})
 }
 
-// GetAllTickets returns every ticket with optional status filter and
-// pagination. Admin only.
+// GetAllTickets returns every ticket with optional status and assignee
+// filters and pagination. Admin only.
 func GetAllTickets(c *gin.Context) {
 	status := TicketStatus(c.Query("status"))
 	page, pageSize := parseTicketPage(c)
-	tickets, total, err := model.GetAllTickets(status, page, pageSize)
+	filter := model.TicketListFilter{
+		Status:   status,
+		Assignee: c.Query("assignee"),
+		UserId:   c.GetInt("id"),
+	}
+	if filter.Assignee != "" && filter.Assignee != model.TicketAssigneePending && filter.Assignee != model.TicketAssigneeMine {
+		common.ApiErrorMsg(c, "无效的认领筛选条件")
+		return
+	}
+	tickets, total, err := model.GetAllTickets(filter, page, pageSize)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -167,13 +177,50 @@ func GetAllTickets(c *gin.Context) {
 	})
 }
 
-// CloseTicket closes a ticket. Admin only.
+// ClaimTicket assigns a ticket to the calling administrator.
+func ClaimTicket(c *gin.Context) {
+	ticketId, ok := parseTicketIdParam(c)
+	if !ok {
+		return
+	}
+	ticket, err := model.ClaimTicket(ticketId, c.GetInt("id"), c.GetString("username"))
+	if err != nil {
+		apiTicketError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "工单已认领",
+		"data":    ticket,
+	})
+}
+
+// UnclaimTicket returns a ticket to the pending pool so any administrator can
+// pick it up. The assignee releases their own claim; root administrators may
+// release any claim.
+func UnclaimTicket(c *gin.Context) {
+	ticketId, ok := parseTicketIdParam(c)
+	if !ok {
+		return
+	}
+	isRoot := c.GetInt("role") >= common.RoleRootUser
+	if err := model.UnclaimTicket(ticketId, c.GetInt("id"), isRoot); err != nil {
+		apiTicketError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "已取消认领",
+	})
+}
+
+// CloseTicket closes a ticket. Admin only; the caller must hold its claim.
 func CloseTicket(c *gin.Context) {
 	ticketId, ok := parseTicketIdParam(c)
 	if !ok {
 		return
 	}
-	if err := model.CloseTicket(ticketId); err != nil {
+	if err := model.CloseTicket(ticketId, c.GetInt("id")); err != nil {
 		apiTicketError(c, err)
 		return
 	}
@@ -214,13 +261,17 @@ func parseTicketPage(c *gin.Context) (int, int) {
 }
 
 func apiTicketError(c *gin.Context, err error) {
-	switch err {
-	case model.ErrTicketNotFound:
+	switch {
+	case errors.Is(err, model.ErrTicketNotFound):
 		common.ApiErrorMsg(c, "工单不存在")
-	case model.ErrTicketClosed:
+	case errors.Is(err, model.ErrTicketClosed):
 		common.ApiErrorMsg(c, "工单已关闭，无法回复")
-	case model.ErrTicketEmptyField:
+	case errors.Is(err, model.ErrTicketEmptyField):
 		common.ApiErrorMsg(c, "标题和内容不能为空")
+	case errors.Is(err, model.ErrTicketNotClaimed):
+		common.ApiErrorMsg(c, "请先认领该工单")
+	case errors.Is(err, model.ErrTicketClaimedByOther):
+		common.ApiErrorMsg(c, "该工单已被其他管理员认领")
 	default:
 		common.ApiError(c, err)
 	}

@@ -44,6 +44,10 @@ export interface Ticket {
   subject: string
   content: string
   status: TicketStatus
+  /** Administrator handling the ticket; 0 while it waits in the pending pool. */
+  assignee_id: number
+  assignee_name: string
+  claimed_at: number
   created_at: number
   updated_at: number
 }

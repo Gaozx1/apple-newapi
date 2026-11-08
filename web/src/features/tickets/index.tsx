@@ -28,13 +28,16 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
+import { useAuthStore } from '@/stores/auth-store'
 
 import {
+  claimTicket,
   closeTicket,
   createTicket,
   getMyTickets,
   getTicket,
   replyTicket,
+  unclaimTicket,
 } from './api'
 import type { Ticket, TicketReply } from './types'
 
@@ -49,6 +52,19 @@ export function StatusBadge({ status }: { status: Ticket['status'] }) {
   return (
     <Badge variant={isOpen ? 'default' : 'secondary'}>
       {t(isOpen ? 'Open' : 'Closed')}
+    </Badge>
+  )
+}
+
+/** Claim state of a ticket as shown to administrators. */
+export function ClaimBadge({ ticket }: { ticket: Ticket }) {
+  const { t } = useTranslation()
+  if (ticket.assignee_id === 0) {
+    return <Badge variant='outline'>{t('Unclaimed')}</Badge>
+  }
+  return (
+    <Badge variant='secondary'>
+      {t('Claimed by {{name}}', { name: ticket.assignee_name })}
     </Badge>
   )
 }
@@ -91,12 +107,19 @@ export function TicketDetail({
 }) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
+  const currentUserId = useAuthStore((state) => state.auth.user?.id ?? 0)
   const [replyContent, setReplyContent] = useState('')
 
   const { data, isLoading } = useQuery({
     queryKey: ['ticket-detail', ticketId],
     queryFn: () => getTicket(ticketId),
   })
+
+  const invalidateTicket = () => {
+    queryClient.invalidateQueries({ queryKey: ['ticket-detail', ticketId] })
+    queryClient.invalidateQueries({ queryKey: ['admin-tickets'] })
+    queryClient.invalidateQueries({ queryKey: ['my-tickets'] })
+  }
 
   const replyMutation = useMutation({
     mutationFn: (content: string) => replyTicket(ticketId, { content }),
@@ -112,6 +135,40 @@ export function TicketDetail({
     },
     onError: (err: unknown) => {
       const msg = err instanceof Error ? err.message : t('Failed to send reply')
+      toast.error(msg)
+    },
+  })
+
+  const claimMutation = useMutation({
+    mutationFn: () => claimTicket(ticketId),
+    onSuccess: (res) => {
+      if (res.success) {
+        invalidateTicket()
+        toast.success(t('Ticket claimed'))
+      } else {
+        toast.error(res.message || t('Failed to claim ticket'))
+      }
+    },
+    onError: (err: unknown) => {
+      const msg =
+        err instanceof Error ? err.message : t('Failed to claim ticket')
+      toast.error(msg)
+    },
+  })
+
+  const unclaimMutation = useMutation({
+    mutationFn: () => unclaimTicket(ticketId),
+    onSuccess: (res) => {
+      if (res.success) {
+        invalidateTicket()
+        toast.success(t('Ticket returned to the pending pool'))
+      } else {
+        toast.error(res.message || t('Failed to unclaim ticket'))
+      }
+    },
+    onError: (err: unknown) => {
+      const msg =
+        err instanceof Error ? err.message : t('Failed to unclaim ticket')
       toast.error(msg)
     },
   })
@@ -163,6 +220,46 @@ export function TicketDetail({
 
   const { ticket, replies } = detail
   const isClosed = ticket.status === 'closed'
+  const isClaimant =
+    ticket.assignee_id !== 0 && ticket.assignee_id === currentUserId
+  // Admins must claim a ticket before they can reply to it; users may reply
+  // to their own open tickets regardless of the claim state.
+  const canRespond = !isClosed && (!adminView || isClaimant)
+
+  let replySection = (
+    <p className='text-muted-foreground text-sm'>
+      {t('Claim this ticket to reply to it')}
+    </p>
+  )
+  if (isClosed) {
+    replySection = (
+      <p className='text-muted-foreground text-sm'>
+        {t('This ticket is closed')}
+      </p>
+    )
+  } else if (canRespond) {
+    replySection = (
+      <div className='space-y-2'>
+        <Textarea
+          placeholder={t('Type your reply...')}
+          value={replyContent}
+          onChange={(e) => setReplyContent(e.target.value)}
+          disabled={replyMutation.isPending}
+        />
+        <Button
+          onClick={() => {
+            if (replyContent.trim()) {
+              replyMutation.mutate(replyContent.trim())
+            }
+          }}
+          disabled={replyMutation.isPending || !replyContent.trim()}
+          className='w-full sm:w-auto'
+        >
+          {replyMutation.isPending ? t('Sending...') : t('Send reply')}
+        </Button>
+      </div>
+    )
+  }
 
   return (
     <div className='space-y-4'>
@@ -171,16 +268,38 @@ export function TicketDetail({
           {t('Back')}
         </Button>
         <div className='flex items-center gap-2'>
-          {adminView && !isClosed && (
+          {adminView && !isClosed && ticket.assignee_id === 0 && (
             <Button
-              variant='outline'
               size='sm'
-              onClick={() => closeMutation.mutate()}
-              disabled={closeMutation.isPending}
+              onClick={() => claimMutation.mutate()}
+              disabled={claimMutation.isPending}
             >
-              {t('Close Ticket')}
+              {claimMutation.isPending ? t('Claiming...') : t('Claim Ticket')}
             </Button>
           )}
+          {adminView && !isClosed && isClaimant && (
+            <>
+              <Button
+                variant='outline'
+                size='sm'
+                onClick={() => unclaimMutation.mutate()}
+                disabled={unclaimMutation.isPending}
+              >
+                {unclaimMutation.isPending
+                  ? t('Releasing...')
+                  : t('Unclaim Ticket')}
+              </Button>
+              <Button
+                variant='outline'
+                size='sm'
+                onClick={() => closeMutation.mutate()}
+                disabled={closeMutation.isPending}
+              >
+                {t('Close Ticket')}
+              </Button>
+            </>
+          )}
+          {adminView && <ClaimBadge ticket={ticket} />}
           <StatusBadge status={ticket.status} />
         </div>
       </div>
@@ -212,30 +331,7 @@ export function TicketDetail({
             ))}
           </div>
 
-          {isClosed ? (
-            <p className='text-muted-foreground text-sm'>
-              {t('This ticket is closed')}
-            </p>
-          ) : (
-            <div className='space-y-2'>
-              <Textarea
-                placeholder={t('Type your reply...')}
-                value={replyContent}
-                onChange={(e) => setReplyContent(e.target.value)}
-                disabled={replyMutation.isPending}
-              />
-              <Button
-                onClick={() => {
-                  if (replyContent.trim())
-                    replyMutation.mutate(replyContent.trim())
-                }}
-                disabled={replyMutation.isPending || !replyContent.trim()}
-                className='w-full sm:w-auto'
-              >
-                {replyMutation.isPending ? t('Sending...') : t('Send reply')}
-              </Button>
-            </div>
-          )}
+          {replySection}
         </CardContent>
       </Card>
     </div>

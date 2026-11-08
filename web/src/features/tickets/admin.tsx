@@ -26,7 +26,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 
 import { getAllTickets } from './api'
-import { StatusBadge, TicketDetail } from './index'
+import { ClaimBadge, StatusBadge, TicketDetail } from './index'
 import type { Ticket } from './types'
 
 function formatTime(ts: number): string {
@@ -41,6 +41,17 @@ const STATUS_FILTERS: Array<{
   { value: '', labelKey: 'All' },
   { value: 'open', labelKey: 'Open' },
   { value: 'closed', labelKey: 'Closed' },
+]
+
+type AssigneeFilter = '' | 'pending' | 'mine'
+
+const ASSIGNEE_FILTERS: Array<{
+  value: AssigneeFilter
+  labelKey: string
+}> = [
+  { value: '', labelKey: 'All claims' },
+  { value: 'pending', labelKey: 'Unclaimed' },
+  { value: 'mine', labelKey: 'Claimed by me' },
 ]
 
 function AdminTicketList({
@@ -80,7 +91,10 @@ function AdminTicketList({
               {ticket.username} · {formatTime(ticket.updated_at)}
             </p>
           </div>
-          <StatusBadge status={ticket.status} />
+          <div className='flex shrink-0 items-center gap-2'>
+            <ClaimBadge ticket={ticket} />
+            <StatusBadge status={ticket.status} />
+          </div>
         </button>
       ))}
     </div>
@@ -91,10 +105,17 @@ export function AdminTickets() {
   const { t } = useTranslation()
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [statusFilter, setStatusFilter] = useState<'' | Ticket['status']>('')
+  const [assigneeFilter, setAssigneeFilter] = useState<AssigneeFilter>('')
 
   const { data, isLoading } = useQuery({
-    queryKey: ['admin-tickets', statusFilter],
-    queryFn: () => getAllTickets(1, 100, statusFilter || undefined),
+    queryKey: ['admin-tickets', statusFilter, assigneeFilter],
+    queryFn: () =>
+      getAllTickets(
+        1,
+        100,
+        statusFilter || undefined,
+        assigneeFilter || undefined
+      ),
   })
 
   const tickets = data?.data?.items ?? []
@@ -123,13 +144,27 @@ export function AdminTickets() {
       </SectionPageLayout.Title>
       <SectionPageLayout.Content>
         <div className='space-y-4'>
-          <div className='flex flex-wrap gap-2'>
+          <div className='flex flex-wrap items-center gap-2'>
             {STATUS_FILTERS.map((filter) => (
               <Button
                 key={filter.value || 'all'}
                 variant={statusFilter === filter.value ? 'default' : 'outline'}
                 size='sm'
                 onClick={() => setStatusFilter(filter.value)}
+              >
+                {t(filter.labelKey)}
+              </Button>
+            ))}
+          </div>
+          <div className='flex flex-wrap items-center gap-2'>
+            {ASSIGNEE_FILTERS.map((filter) => (
+              <Button
+                key={filter.value || 'all-claims'}
+                variant={
+                  assigneeFilter === filter.value ? 'default' : 'outline'
+                }
+                size='sm'
+                onClick={() => setAssigneeFilter(filter.value)}
               >
                 {t(filter.labelKey)}
               </Button>
