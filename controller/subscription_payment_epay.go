@@ -87,7 +87,7 @@ func SubscriptionRequestEpay(c *gin.Context) {
 		PlanId:          plan.Id,
 		Money:           plan.PriceAmount,
 		TradeNo:         tradeNo,
-		PaymentMethod:   req.PaymentMethod,
+		PaymentMethod:   method["type"],
 		PaymentProvider: model.PaymentProviderEpay,
 		PaymentSnapshot: snapshotValue,
 		CreateTime:      time.Now().Unix(),

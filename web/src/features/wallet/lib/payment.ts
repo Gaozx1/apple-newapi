@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { getPaymentMethodKey } from '@/lib/payment-method'
 import { getServerMessage } from '@/lib/server-error-message'
 
 import {
@@ -112,7 +113,11 @@ export function isWaffoPancakePayment(paymentType: string): boolean {
 }
 
 export interface PaymentProcessors {
-  regular: (topupAmount: number, paymentType: string) => Promise<boolean>
+  regular: (
+    topupAmount: number,
+    paymentType: string,
+    methodId?: string
+  ) => Promise<boolean>
   waffo: (topupAmount: number, payMethodIndex: number) => Promise<boolean>
   waffoPancake: (topupAmount: number) => Promise<boolean>
 }
@@ -134,7 +139,11 @@ export async function dispatchSelectedPayment(
     return processors.waffoPancake(topupAmount)
   }
 
-  return processors.regular(topupAmount, paymentMethod.type)
+  return processors.regular(
+    topupAmount,
+    paymentMethod.type,
+    getPaymentMethodKey(paymentMethod)
+  )
 }
 
 /**

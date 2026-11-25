@@ -31,6 +31,7 @@ var paymentChannels = struct {
 }{}
 
 var paymentChannelID = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,32}$`)
+var paymentMethodID = regexp.MustCompile(`^[a-zA-Z0-9_.-]{1,50}$`)
 
 func GetPaymentChannels() []PaymentChannel {
 	paymentChannels.RLock()
@@ -124,9 +125,12 @@ func ValidatePaymentMethods(value string) error {
 	seen := make(map[string]bool, len(methods))
 	channels := GetPaymentChannels()
 	for _, method := range methods {
-		key := method["type"]
-		if strings.TrimSpace(key) == "" || len(key) > 50 || seen[key] || strings.TrimSpace(method["name"]) == "" {
-			return common.NewMessage("Payment method keys must be unique and names must be present")
+		kind := method["type"]
+		key := PaymentMethodKey(method)
+		id := method["id"]
+		if strings.TrimSpace(kind) == "" || len(kind) > 50 || seen[key] || strings.TrimSpace(method["name"]) == "" ||
+			(id != "" && (!paymentMethodID.MatchString(id) || (IsNativePaymentMethod(id) && id != kind))) {
+			return common.NewMessage("Payment method IDs must be unique and names must be present")
 		}
 		seen[key] = true
 		if value := method["min_topup"]; value != "" {
@@ -135,7 +139,7 @@ func ValidatePaymentMethods(value string) error {
 				return common.NewMessage("Invalid minimum top-up amount")
 			}
 		}
-		if len(method["gateway_type"]) > 50 || (IsNativePaymentMethod(key) && (method["channel_id"] != "" || method["gateway_type"] != "")) {
+		if len(method["gateway_type"]) > 50 || (IsNativePaymentMethod(kind) && (method["channel_id"] != "" || method["gateway_type"] != "")) {
 			return common.NewMessage("Native payment methods use their existing gateway settings")
 		}
 		if id := method["channel_id"]; id != "" && !slices.ContainsFunc(channels, func(channel PaymentChannel) bool { return channel.ID == id }) {
@@ -145,9 +149,18 @@ func ValidatePaymentMethods(value string) error {
 	return nil
 }
 
+// PaymentMethodKey keeps legacy methods addressable by type while allowing
+// independently configured entries to share the same provider payment type.
+func PaymentMethodKey(method map[string]string) string {
+	if id := method["id"]; id != "" {
+		return id
+	}
+	return method["type"]
+}
+
 func FindPaymentMethod(key string) map[string]string {
 	for _, method := range PayMethods {
-		if method["type"] == key {
+		if PaymentMethodKey(method) == key {
 			return maps.Clone(method)
 		}
 	}
@@ -180,6 +193,7 @@ func ResolveEpayChannel(method map[string]string) (PaymentChannel, error) {
 type EpayOrderSnapshot struct {
 	Channel     PaymentChannel `json:"channel"`
 	GatewayType string         `json:"gateway_type"`
+	MethodID    string         `json:"method_id,omitempty"`
 }
 
 func NewEpayOrderSnapshot(method map[string]string) (EpayOrderSnapshot, string, error) {
@@ -191,7 +205,7 @@ func NewEpayOrderSnapshot(method map[string]string) (EpayOrderSnapshot, string, 
 	if gatewayType == "" {
 		gatewayType = method["type"]
 	}
-	snapshot := EpayOrderSnapshot{Channel: channel, GatewayType: gatewayType}
+	snapshot := EpayOrderSnapshot{Channel: channel, GatewayType: gatewayType, MethodID: PaymentMethodKey(method)}
 	data, err := common.Marshal(snapshot)
 	return snapshot, string(data), err
 }

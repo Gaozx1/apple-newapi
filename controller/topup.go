@@ -34,7 +34,7 @@ func GetTopUpInfo(c *gin.Context) {
 			}
 		}
 		public := make(map[string]string)
-		for _, key := range []string{"name", "type", "icon", "color", "min_topup"} {
+		for _, key := range []string{"id", "name", "type", "icon", "color", "min_topup"} {
 			if value := method[key]; value != "" {
 				public[key] = value
 			}
@@ -373,7 +373,7 @@ func RequestEpay(c *gin.Context) {
 		Amount:          amount,
 		Money:           payMoney,
 		TradeNo:         tradeNo,
-		PaymentMethod:   req.PaymentMethod,
+		PaymentMethod:   method["type"],
 		PaymentProvider: model.PaymentProviderEpay,
 		PaymentSnapshot: snapshotValue,
 		CreateTime:      time.Now().Unix(),

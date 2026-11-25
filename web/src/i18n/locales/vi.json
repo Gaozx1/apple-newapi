@@ -3126,7 +3126,7 @@
     "footer.columns.related.links.oneApi": "One API",
     "footer.columns.related.title": "Các Dự Án Liên Quan",
     "footer.defaultCopyright": "Bản quyền được bảo lưu.",
-    "footer.new\u0061pi.projectAttributionSuffix": "Bản quyền được bảo lưu. Được thiết kế và phát triển bởi các cộng tác viên dự án.",
+    "footer.newapi.projectAttributionSuffix": "Bản quyền được bảo lưu. Được thiết kế và phát triển bởi các cộng tác viên dự án.",
     "For advanced custom channels this applies only to /v1/responses routes without protocol conversion.": "Với kênh tùy chỉnh nâng cao, thiết lập này chỉ áp dụng cho các route /v1/responses không chuyển đổi giao thức.",
     "For channels added after May 10, 2025, no need to remove \".\" from model names during deployment": "Đối với các kênh được thêm sau ngày 10 tháng 5 năm 2025, không cần loại bỏ \".\" khỏi tên mô hình trong quá trình triển khai",
     "For example 毛竹": "Ví dụ: 毛竹",
@@ -8214,5 +8214,7 @@
   "Invalid minimum top-up amount": "Số tiền nạp tối thiểu không hợp lệ",
   "Native payment methods use their existing gateway settings": "Phương thức tích hợp dùng cấu hình cổng hiện tại",
   "Payment channel does not exist": "Kênh thanh toán không tồn tại",
-  "Payment channel is disabled or unavailable": "Kênh thanh toán đã tắt hoặc không khả dụng"
+  "Payment channel is disabled or unavailable": "Kênh thanh toán đã tắt hoặc không khả dụng",
+  "Multiple payment methods can share this type. Each entry has its own ID and payment channel.": "Nhiều phương thức thanh toán có thể dùng chung loại này. Mỗi mục có ID và kênh thanh toán riêng.",
+  "Payment method IDs must be unique and names must be present": "ID phương thức thanh toán phải là duy nhất và tên không được để trống"
 }

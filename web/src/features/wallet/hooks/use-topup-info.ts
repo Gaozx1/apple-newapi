@@ -70,6 +70,7 @@ function parsePaymentMethods(
       const type = typeof item.type === 'string' ? item.type : ''
 
       return {
+        id: typeof item.id === 'string' ? item.id : undefined,
         name: typeof item.name === 'string' ? item.name : '',
         type,
         color: typeof item.color === 'string' ? item.color : undefined,

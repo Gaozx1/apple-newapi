@@ -50,10 +50,5 @@ func PayMethods2JsonString() string {
 }
 
 func ContainsPayMethod(method string) bool {
-	for _, payMethod := range PayMethods {
-		if payMethod["type"] == method {
-			return true
-		}
-	}
-	return false
+	return FindPaymentMethod(method) != nil
 }

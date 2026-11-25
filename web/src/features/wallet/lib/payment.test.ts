@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 
 import { PAYMENT_TYPES } from '../constants'
 import {
@@ -37,6 +37,24 @@ describe('payment type classification', () => {
 })
 
 describe('payment dispatch', () => {
+  test.each([
+    [{ id: 'pm_first', name: 'Alipay A', type: 'alipay' }, 'pm_first'],
+    [{ id: 'pm_second', name: 'Alipay B', type: 'alipay' }, 'pm_second'],
+    [{ name: 'Legacy Alipay', type: 'alipay' }, 'alipay'],
+    [{ id: 'pm_stripe', name: 'Stripe', type: 'stripe' }, 'pm_stripe'],
+  ])(
+    'preserves the selected entry identity and provider type: %j',
+    async (method, key) => {
+      const regular = vi.fn().mockResolvedValue(true)
+      await dispatchSelectedPayment(method, 20, null, {
+        regular,
+        waffo: vi.fn(),
+        waffoPancake: vi.fn(),
+      })
+      expect(regular).toHaveBeenCalledWith(20, method.type, key)
+    }
+  )
+
   test('keeps the selected Waffo method index through confirmation', async () => {
     const calls: string[] = []
     const success = await dispatchSelectedPayment(

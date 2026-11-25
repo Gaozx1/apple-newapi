@@ -3126,7 +3126,7 @@
     "footer.columns.related.links.oneApi": "One API",
     "footer.columns.related.title": "Projets liés",
     "footer.defaultCopyright": "Tous droits réservés.",
-    "footer.new\u0061pi.projectAttributionSuffix": "Tous droits réservés. Conçu et développé par les contributeurs du projet.",
+    "footer.newapi.projectAttributionSuffix": "Tous droits réservés. Conçu et développé par les contributeurs du projet.",
     "For advanced custom channels this applies only to /v1/responses routes without protocol conversion.": "Pour les canaux personnalisés avancés, ceci ne s’applique qu’aux routes /v1/responses sans conversion de protocole.",
     "For channels added after May 10, 2025, no need to remove \".\" from model names during deployment": "Pour les canaux ajoutés après le 10 mai 2025, pas besoin de supprimer \".\" des noms de modèles lors du déploiement",
     "For example 毛竹": "Par exemple 毛竹",
@@ -8214,5 +8214,7 @@
   "Invalid minimum top-up amount": "Montant minimum de recharge invalide",
   "Native payment methods use their existing gateway settings": "Les moyens natifs utilisent leurs paramètres existants",
   "Payment channel does not exist": "Le canal de paiement n’existe pas",
-  "Payment channel is disabled or unavailable": "Canal de paiement désactivé ou indisponible"
+  "Payment channel is disabled or unavailable": "Canal de paiement désactivé ou indisponible",
+  "Multiple payment methods can share this type. Each entry has its own ID and payment channel.": "Plusieurs modes de paiement peuvent partager ce type. Chaque entrée possède son propre identifiant et canal de paiement.",
+  "Payment method IDs must be unique and names must be present": "Les identifiants des modes de paiement doivent être uniques et les noms sont obligatoires"
 }

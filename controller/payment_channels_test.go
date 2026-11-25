@@ -68,6 +68,52 @@ func TestPaymentChannelConfigurationAndRouting(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestPaymentMethodsWithRepeatedTypes(t *testing.T) {
+	restorePaymentChannelsForTest(t)
+	confirmPaymentComplianceForTest(t)
+	require.NoError(t, operation_setting.UpdatePaymentChannels(`[{"id":"a","name":"A","address":"https://a.example","merchant_id":"1001","key":"fixture-a","enabled":true},{"id":"b","name":"B","address":"https://b.example","merchant_id":"1002","key":"fixture-b","enabled":true}]`))
+	config := `[{"name":"Alipay","type":"alipay","channel_id":"a"},{"id":"pm_second","name":"Alipay 0%","type":"alipay","channel_id":"b"}]`
+	require.NoError(t, operation_setting.ValidatePaymentMethods(config))
+	require.NoError(t, operation_setting.UpdatePayMethodsByJsonString(config))
+	for _, tc := range []struct{ key, channel, merchant string }{{"alipay", "a", "1001"}, {"pm_second", "b", "1002"}} {
+		method := operation_setting.FindPaymentMethod(tc.key)
+		require.NotNil(t, method)
+		assert.Equal(t, tc.channel, method["channel_id"])
+		snapshot, _, err := operation_setting.NewEpayOrderSnapshot(method)
+		require.NoError(t, err)
+		assert.Equal(t, "alipay", snapshot.GatewayType)
+		assert.Equal(t, tc.key, snapshot.MethodID)
+		assert.Equal(t, tc.merchant, snapshot.Channel.MerchantID)
+	}
+	assert.Nil(t, operation_setting.FindPaymentMethod("unknown"))
+	for _, invalid := range []string{
+		`[{"id":"same","name":"A","type":"alipay"},{"id":"same","name":"B","type":"wxpay"}]`,
+		`[{"name":"A","type":"alipay"},{"id":"alipay","name":"B","type":"wxpay"}]`,
+		`[{"id":"stripe","name":"A","type":"alipay"}]`,
+		`[{"id":"   ","name":"A","type":"alipay"}]`,
+	} {
+		require.Error(t, operation_setting.ValidatePaymentMethods(invalid))
+	}
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	GetTopUpInfo(ctx)
+	var response struct {
+		Data struct {
+			Methods []map[string]string `json:"pay_methods"`
+		} `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.GreaterOrEqual(t, len(response.Data.Methods), 2)
+	assert.Equal(t, "pm_second", response.Data.Methods[1]["id"])
+	assert.Equal(t, "alipay", response.Data.Methods[1]["type"])
+	assert.NotContains(t, recorder.Body.String(), "fixture-b")
+	// Once all entries have explicit IDs, a bare type cannot silently select one.
+	operation_setting.PayMethods[0]["id"] = "pm_first"
+	assert.Nil(t, operation_setting.FindPaymentMethod("alipay"))
+	assert.Equal(t, "a", operation_setting.FindPaymentMethod("pm_first")["channel_id"])
+	assert.Equal(t, "b", operation_setting.FindPaymentMethod("pm_second")["channel_id"])
+}
+
 func signedPaymentCallback(params url.Values, key string) string {
 	fields := make([]string, 0, len(params))
 	for _, name := range []string{"money", "name", "out_trade_no", "pid", "trade_status", "type"} {
@@ -171,7 +217,7 @@ func TestPaymentChannelsDatabaseMatrix(t *testing.T) {
 					channel := operation_setting.PaymentChannel{ID: "channel-a", Name: "A", Address: "https://pay.example", MerchantID: "1001", Key: "channel-a-secret", Enabled: true}
 					data, _ := common.Marshal([]operation_setting.PaymentChannel{channel})
 					require.NoError(t, operation_setting.UpdatePaymentChannels(string(data)))
-					method := map[string]string{"type": "usdt-tron", "channel_id": "channel-a", "gateway_type": "usdt.tron", "name": "TRON"}
+					method := map[string]string{"id": "pm_second", "type": "usdt-tron", "channel_id": "channel-a", "gateway_type": "usdt.tron", "name": "TRON"}
 					operation_setting.PayMethods = []map[string]string{method}
 					_, snapshot, err := operation_setting.NewEpayOrderSnapshot(method)
 					require.NoError(t, err)
@@ -181,6 +227,10 @@ func TestPaymentChannelsDatabaseMatrix(t *testing.T) {
 					loaded := model.GetTopUpByTradeNo(topUp.TradeNo)
 					require.NotNil(t, loaded)
 					assert.Equal(t, snapshot, loaded.PaymentSnapshot)
+					restored, err := operation_setting.ReadEpayOrderSnapshot(loaded.PaymentSnapshot, loaded.PaymentMethod)
+					require.NoError(t, err)
+					assert.Equal(t, "pm_second", restored.MethodID)
+					assert.Equal(t, "usdt-tron", loaded.PaymentMethod)
 					serialized, _ := common.Marshal(loaded)
 					assert.NotContains(t, string(serialized), "channel-a-secret")
 					assert.NotContains(t, string(serialized), "payment_snapshot")

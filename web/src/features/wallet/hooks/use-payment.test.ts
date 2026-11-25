@@ -16,10 +16,59 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { describe, expect, test } from 'vitest'
+import { act, renderHook } from '@testing-library/react'
+import { describe, expect, test, vi } from 'vitest'
 
+import { requestPayment, requestStripePayment } from '../api'
 import { PAYMENT_TYPES } from '../constants'
-import { requestPaymentAmount } from './use-payment'
+import { requestPaymentAmount, usePayment } from './use-payment'
+
+vi.mock('../api', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../api')>()),
+  requestPayment: vi.fn(),
+  requestStripePayment: vi.fn(),
+}))
+
+vi.mock('../lib', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib')>()),
+  submitPaymentForm: vi.fn(),
+}))
+
+describe('payment entry routing', () => {
+  test('submits the selected Alipay entry ID to the Epay endpoint', async () => {
+    vi.mocked(requestPayment).mockResolvedValue({
+      message: 'success',
+      data: {},
+      url: 'https://pay.example',
+    })
+    const { result } = renderHook(() => usePayment())
+    await act(async () => {
+      await result.current.processPayment(20, 'alipay', 'pm_second')
+    })
+    expect(requestPayment).toHaveBeenCalledWith({
+      amount: 20,
+      payment_method: 'pm_second',
+    })
+    expect(requestStripePayment).not.toHaveBeenCalled()
+  })
+
+  test('keeps Stripe on its native endpoint even with an independent entry ID', async () => {
+    vi.mocked(requestStripePayment).mockResolvedValue({
+      message: 'success',
+      data: { pay_link: 'https://stripe.example' },
+    })
+    vi.spyOn(window, 'open').mockImplementation(() => null)
+    const { result } = renderHook(() => usePayment())
+    await act(async () => {
+      await result.current.processPayment(20, 'stripe', 'pm_stripe')
+    })
+    expect(requestStripePayment).toHaveBeenCalledWith({
+      amount: 20,
+      payment_method: 'stripe',
+    })
+    expect(requestPayment).not.toHaveBeenCalled()
+  })
+})
 
 describe('payment amount routing', () => {
   test('uses the dedicated Waffo amount calculator', async () => {

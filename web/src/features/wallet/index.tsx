@@ -29,6 +29,7 @@ import { useStatus } from '@/hooks/use-status'
 import { useSystemConfig } from '@/hooks/use-system-config'
 import { getSelf } from '@/lib/api'
 import { handleServerError } from '@/lib/handle-server-error'
+import { getPaymentMethodKey } from '@/lib/payment-method'
 
 import { transferQuotaToUser } from './api'
 import { AffiliateRewardsCard } from './components/affiliate-rewards-card'
@@ -186,7 +187,7 @@ export function Wallet(props: WalletProps) {
   const handlePaymentMethodSelect = async (method: PaymentMethod) => {
     setSelectedPaymentMethod(method)
     setSelectedWaffoMethodIndex(null)
-    setPaymentLoading(method.type)
+    setPaymentLoading(getPaymentMethodKey(method))
 
     try {
       // Validate minimum topup

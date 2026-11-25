@@ -90,6 +90,8 @@ export interface CreemPaymentRequest {
  * Payment method configuration
  */
 export interface PaymentMethod {
+  /** Stable entry ID; absent on legacy settings. */
+  id?: string
   /** Display name of payment method */
   name: string
   /** Payment method type identifier */

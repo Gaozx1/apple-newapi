@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -26,6 +26,7 @@ import { PaymentChannelDialog } from '../payment-channel-dialog'
 import { paymentChannelSchema, type PaymentChannel } from '../payment-channels'
 import { PaymentChannelsEditor } from '../payment-channels-editor'
 import { PaymentMethodDialog } from '../payment-method-dialog'
+import { PaymentMethodsVisualEditor } from '../payment-methods-visual-editor'
 
 const channel: PaymentChannel = {
   id: 'gmpay',
@@ -49,6 +50,38 @@ vi.mock('../../hooks/use-system-options', () => ({
 }))
 
 describe('payment channel configuration', () => {
+  it('adds another Alipay method with an independent ID and channel', async () => {
+    const user = userEvent.setup()
+    const save = vi.fn()
+    render(
+      <PaymentMethodsVisualEditor
+        value={JSON.stringify([{ name: 'Alipay', type: 'alipay' }])}
+        onChange={save}
+        channels={[channel]}
+      />
+    )
+    await user.click(screen.getByRole('button', { name: 'Add method' }))
+    await user.type(screen.getByLabelText('Name'), 'Alipay 0%')
+    await user.type(
+      screen.getByPlaceholderText('Search payment type keys...'),
+      'alipay'
+    )
+    await user.selectOptions(screen.getByLabelText('Payment channel'), 'gmpay')
+    await user.click(screen.getByRole('button', { name: /^Add$/ }))
+    await waitFor(() => expect(save).toHaveBeenCalled())
+    const methods = JSON.parse(save.mock.calls[0][0])
+    expect(methods[0]).toEqual({ name: 'Alipay', type: 'alipay' })
+    expect(methods[1]).toEqual(
+      expect.objectContaining({
+        id: expect.any(String),
+        name: 'Alipay 0%',
+        type: 'alipay',
+        channel_id: 'gmpay',
+      })
+    )
+    expect(methods[1].id).not.toBe('alipay')
+  })
+
   it('keeps a saved merchant key when an edited channel leaves the key blank', async () => {
     const user = userEvent.setup()
     const save = vi.fn()
@@ -159,6 +192,7 @@ describe('payment channel configuration', () => {
     await waitFor(() =>
       expect(save).toHaveBeenCalledWith(
         expect.objectContaining({
+          id: 'usdt-button',
           type: 'usdt-button',
           channel_id: 'gmpay',
           gateway_type: 'usdt.tron',
@@ -183,5 +217,46 @@ describe('payment channel configuration', () => {
     expect(
       screen.queryByLabelText('Gateway payment type (optional)')
     ).not.toBeInTheDocument()
+  })
+
+  it('edits and deletes only the selected entry when names and types match', async () => {
+    const user = userEvent.setup()
+    const save = vi.fn()
+    const methods = [
+      { id: 'pm_first', name: 'Alipay', type: 'alipay', channel_id: '' },
+      { id: 'pm_second', name: 'Alipay', type: 'alipay', channel_id: 'gmpay' },
+    ]
+    const view = render(
+      <PaymentMethodsVisualEditor
+        value={JSON.stringify(methods)}
+        onChange={save}
+        channels={[channel]}
+      />
+    )
+    let rows = screen.getAllByRole('row')
+    await user.click(within(rows[2]).getByRole('button', { name: 'Edit' }))
+    await user.clear(screen.getByLabelText('Name'))
+    await user.type(screen.getByLabelText('Name'), 'Alipay 0%')
+    await user.click(screen.getByRole('button', { name: 'Update' }))
+    await waitFor(() => expect(save).toHaveBeenCalled())
+    const edited = JSON.parse(save.mock.calls[0][0])
+    expect(edited[0]).toEqual(methods[0])
+    expect(edited[1]).toMatchObject({
+      id: 'pm_second',
+      name: 'Alipay 0%',
+      type: 'alipay',
+      channel_id: 'gmpay',
+    })
+    view.rerender(
+      <PaymentMethodsVisualEditor
+        value={JSON.stringify(methods)}
+        onChange={save}
+        channels={[channel]}
+      />
+    )
+    rows = screen.getAllByRole('row')
+    await user.click(within(rows[2]).getByRole('button', { name: 'Open menu' }))
+    await user.click(await screen.findByRole('menuitem', { name: 'Delete' }))
+    expect(JSON.parse(save.mock.lastCall?.[0] ?? 'null')).toEqual([methods[0]])
   })
 })

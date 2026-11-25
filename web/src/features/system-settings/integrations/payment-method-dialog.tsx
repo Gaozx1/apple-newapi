@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
+import { nanoid } from 'nanoid'
 import { useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
@@ -43,7 +44,7 @@ import type { PaymentChannel } from './payment-channels'
 const createPaymentMethodDialogSchema = (t: (key: string) => string) =>
   z.object({
     name: z.string().min(1, t('Payment method name is required')),
-    type: z.string().min(1, t('Payment type key is required')),
+    type: z.string().trim().min(1, t('Payment type key is required')).max(50),
     icon: z.string().optional(),
     min_topup: z.string().optional(),
     channel_id: z.string().optional(),
@@ -57,6 +58,7 @@ type PaymentMethodDialogFormValues = z.infer<
 const PAYMENT_METHOD_FORM_ID = 'payment-method-form'
 
 export type PaymentMethodData = {
+  id?: string
   name: string
   type: string
   icon?: string
@@ -72,7 +74,6 @@ type PaymentMethodDialogProps = {
   onSave: (data: PaymentMethodData) => void
   editData?: PaymentMethodData | null
   channels?: PaymentChannel[]
-  existingTypes?: string[]
 }
 
 const PAYMENT_TYPE_ICON_NAMES: Record<string, string> = {
@@ -90,21 +91,10 @@ export function PaymentMethodDialog({
   onSave,
   editData,
   channels = [],
-  existingTypes = [],
 }: PaymentMethodDialogProps) {
   const { t } = useTranslation()
   const isEditMode = !!editData
-  const paymentMethodDialogSchema = createPaymentMethodDialogSchema(
-    t
-  ).superRefine((values, ctx) => {
-    if (values.type !== editData?.type && existingTypes.includes(values.type)) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['type'],
-        message: t('Payment type key already exists'),
-      })
-    }
-  })
+  const paymentMethodDialogSchema = createPaymentMethodDialogSchema(t)
   const paymentTypeOptions = [
     ...['tron', 'ethereum', 'polygon', 'solana'].map((network) => ({
       iconName: 'SiTether',
@@ -185,6 +175,7 @@ export function PaymentMethodDialog({
   const handleSubmit = (values: PaymentMethodDialogFormValues) => {
     const data: PaymentMethodData = {
       ...editData,
+      id: editData ? editData.id || editData.type : `pm_${nanoid(16)}`,
       name: values.name,
       type: values.type,
     }
@@ -293,7 +284,7 @@ export function PaymentMethodDialog({
                 </FormControl>
                 <FormDescription className='leading-relaxed'>
                   {t(
-                    'Used to decide the payment flow. Built-in keys include stripe for Stripe and waffo_pancake for Waffo Pancake; other values are sent to Epay as the type parameter.'
+                    'Multiple payment methods can share this type. Each entry has its own ID and payment channel.'
                   )}
                 </FormDescription>
                 <FormMessage />

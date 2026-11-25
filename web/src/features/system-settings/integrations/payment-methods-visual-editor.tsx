@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { Lightbulb, Pencil, Plus, Search, Trash2 } from 'lucide-react'
+import { nanoid } from 'nanoid'
 import { useState, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -30,6 +31,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover'
+import { getPaymentMethodKey } from '@/lib/payment-method'
 
 import { safeJsonParseWithValidation } from '../utils/json-parser'
 import { isArray } from '../utils/json-validators'
@@ -138,6 +140,7 @@ export function PaymentMethodsVisualEditor({
         'type' in item &&
         typeof item.name === 'string' &&
         typeof item.type === 'string' &&
+        (!('id' in item) || typeof item.id === 'string') &&
         (!('icon' in item) || typeof item.icon === 'string') &&
         (!('min_topup' in item) || typeof item.min_topup === 'string') &&
         (!('color' in item) || typeof item.color === 'string')
@@ -171,8 +174,8 @@ export function PaymentMethodsVisualEditor({
           item !== null &&
           'name' in item &&
           'type' in item &&
-          item.name === editData.name &&
-          item.type === editData.type
+          getPaymentMethodKey(item as PaymentMethodData) ===
+            getPaymentMethodKey(editData)
       )
       if (index !== -1) {
         updatedArray[index] = data
@@ -200,8 +203,8 @@ export function PaymentMethodsVisualEditor({
           item !== null &&
           'name' in item &&
           'type' in item &&
-          item.name === method.name &&
-          item.type === method.type
+          getPaymentMethodKey(item as PaymentMethodData) ===
+            getPaymentMethodKey(method)
         )
     )
 
@@ -225,21 +228,8 @@ export function PaymentMethodsVisualEditor({
       silent: true,
     })
 
-    // Check if template already exists
-    const exists = parsed.some(
-      (item) =>
-        typeof item === 'object' &&
-        item !== null &&
-        'type' in item &&
-        'name' in item &&
-        item.type === template.type &&
-        item.name === template.name
-    )
-
-    if (!exists) {
-      parsed.push(template)
-      onChange(JSON.stringify(parsed, null, 2))
-    }
+    parsed.push({ ...template, id: `pm_${nanoid(16)}` })
+    onChange(JSON.stringify(parsed, null, 2))
   }
 
   return (
@@ -319,7 +309,7 @@ export function PaymentMethodsVisualEditor({
           <StaticDataTable
             className='hidden rounded-none border-0 md:block'
             data={filteredMethods}
-            getRowKey={(method, index) => `${method.type}-${index}`}
+            getRowKey={getPaymentMethodKey}
             columns={[
               {
                 id: 'name',
@@ -400,15 +390,7 @@ export function PaymentMethodsVisualEditor({
           <div className='divide-y md:hidden'>
             {filteredMethods.map((method) => {
               const iconName = getEffectiveIconName(method)
-              const methodKey = [
-                method.type,
-                method.name,
-                method.icon,
-                method.min_topup,
-                method.color,
-              ]
-                .filter(Boolean)
-                .join('-')
+              const methodKey = getPaymentMethodKey(method)
 
               return (
                 <div key={methodKey} className='p-4'>
@@ -495,7 +477,6 @@ export function PaymentMethodsVisualEditor({
         onSave={handleSave}
         editData={editData}
         channels={channels}
-        existingTypes={paymentMethods.map((method) => method.type)}
       />
     </div>
   )
