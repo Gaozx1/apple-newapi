@@ -42,6 +42,7 @@ func accessTokenScopeRule(scope string) accessTokenRouteRule {
 // DeclareAccessTokenPermissionRoute when they are registered.
 var accessTokenRouteRules = map[string]accessTokenRouteRule{
 	// router/api-router.go: top level
+	"GET /api/model-fingerprint/results":  accessTokenScopeRule("profile:read"),
 	"GET /api/models":                     accessTokenScopeRule("profile:read"),
 	"GET /api/status/test":                accessTokenScopeRule("log:read"),
 	"GET /api/pricing":                    accessTokenAnyRule,
@@ -125,6 +126,8 @@ var accessTokenRouteRules = map[string]accessTokenRouteRule{
 	// router/api-router.go: /api/subscription
 	"GET /api/subscription/plans":                                    accessTokenScopeRule("wallet:read"),
 	"GET /api/subscription/self":                                     accessTokenScopeRule("wallet:read"),
+	"GET /api/subscription/reset-cards":                              accessTokenScopeRule("wallet:read"),
+	"POST /api/subscription/reset-cards/use":                         accessTokenScopeRule("wallet:write"),
 	"PUT /api/subscription/self/preference":                          accessTokenScopeRule("wallet:write"),
 	"POST /api/subscription/balance/pay":                             accessTokenScopeRule("wallet:write"),
 	"POST /api/subscription/epay/pay":                                accessTokenScopeRule("wallet:write"),
@@ -142,6 +145,11 @@ var accessTokenRouteRules = map[string]accessTokenRouteRule{
 	"POST /api/subscription/admin/users/:id/subscriptions/reset":     accessTokenScopeRule("billing:write"),
 	"POST /api/subscription/admin/user_subscriptions/:id/invalidate": accessTokenScopeRule("billing:write"),
 	"DELETE /api/subscription/admin/user_subscriptions/:id":          accessTokenScopeRule("billing:write"),
+	"GET /api/subscription/admin/reset-cards":                        accessTokenScopeRule("billing:read"),
+	"POST /api/subscription/admin/reset-cards/grant":                 accessTokenScopeRule("billing:write"),
+	"POST /api/subscription/admin/reset-cards/:id/disable":           accessTokenScopeRule("billing:write"),
+	"DELETE /api/subscription/admin/reset-cards/:id":                 accessTokenScopeRule("billing:write"),
+	"GET /api/subscription/admin/users/:id/reset-cards":              accessTokenScopeRule("billing:read"),
 
 	// router/api-router.go: /api/jailbreak (admin review of intercepted prompts)
 	"GET /api/jailbreak/records": accessTokenScopeRule("log:read"),
@@ -322,7 +330,7 @@ var accessTokenRouteRules = map[string]accessTokenRouteRule{
 	"GET /api/prefill_group/":                accessTokenScopeRule("group:read"),
 	"POST /api/prefill_group/":               accessTokenScopeRule("group:write"),
 	"PUT /api/prefill_group/":                accessTokenScopeRule("group:write"),
-	"DELETE /api/prefill_group/:id": accessTokenScopeRule("group:write"),
+	"DELETE /api/prefill_group/:id":          accessTokenScopeRule("group:write"),
 
 	// router/api-router.go: /api/mj, /api/task
 	"GET /api/mj/self":                 accessTokenScopeRule("usage:read"),

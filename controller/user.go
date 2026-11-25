@@ -1171,6 +1171,7 @@ type ManageRequest struct {
 	Action string `json:"action"`
 	Value  int    `json:"value"`
 	Mode   string `json:"mode"`
+	Reason string `json:"reason"`
 }
 
 // InviteBindingRequest is the admin payload for previewing or applying an
@@ -1322,13 +1323,17 @@ func ManageUser(c *gin.Context) {
 		manageUserQuota(c, req)
 		return
 	}
-	user := model.User{
-		Id: req.Id,
+	if req.Id <= 0 {
+		common.ApiErrorT(c, "Invalid parameters")
+		return
 	}
-	// Fill attributes
-	model.DB.Unscoped().Where(&user).First(&user)
-	if user.Id == 0 {
-		common.ApiErrorT(c, "User does not exist")
+	user := model.User{}
+	if err := model.DB.Unscoped().First(&user, req.Id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			common.ApiErrorT(c, "User does not exist")
+		} else {
+			common.ApiError(c, err)
+		}
 		return
 	}
 	myRole := c.GetInt("role")
@@ -1337,14 +1342,15 @@ func ManageUser(c *gin.Context) {
 		return
 	}
 	switch req.Action {
-	case "disable":
-		user.Status = common.UserStatusDisabled
-		if user.Role == common.RoleRootUser {
+	case "disable", "enable":
+		if req.Action == "disable" && user.Role == common.RoleRootUser {
 			common.ApiErrorT(c, "Cannot disable super administrator user")
 			return
 		}
-	case "enable":
-		user.Status = common.UserStatusEnabled
+		if req.Action == "disable" && !model.ValidUserBanReason(req.Reason) {
+			common.ApiErrorT(c, "Enter a public ban reason of up to 200 characters")
+			return
+		}
 	case "delete":
 		if user.Role == common.RoleRootUser {
 			common.ApiErrorT(c, "Cannot delete super administrator account")
@@ -1405,9 +1411,22 @@ func ManageUser(c *gin.Context) {
 	if authorization == nil {
 		return
 	}
-	if req.Action == "demote" {
+	switch req.Action {
+	case "disable", "enable":
+		updated, err := model.SetManualUserBan(user.Id, myRole, req.Action == "disable", req.Reason)
+		if errors.Is(err, model.ErrUserBanForbidden) {
+			common.ApiErrorT(c, "No permission to update users of same or higher permission level")
+			return
+		}
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		user = updated
+	case "demote":
 		if err := model.DB.Transaction(func(tx *gorm.DB) error {
-			if err := user.UpdateWithTx(tx, false); err != nil {
+			roleUpdate := model.User{Id: user.Id, Role: user.Role}
+			if err := roleUpdate.UpdateWithTx(tx, false); err != nil {
 				return err
 			}
 			return authz.ClearUserAuthorizationInTx(tx, user.Id)
@@ -1427,18 +1446,18 @@ func ManageUser(c *gin.Context) {
 			common.ApiError(c, err)
 			return
 		}
-	} else {
-		if err := user.Update(false); err != nil {
+	case "promote":
+		roleUpdate := model.User{Id: user.Id, Role: user.Role}
+		if err := roleUpdate.Update(false); err != nil {
 			common.ApiError(c, err)
 			return
 		}
+		user = roleUpdate
 	}
-	// Update/UpdateWithTx has already published the new user hash and revoked
-	// browser sessions exactly once. Only PAT/relay token caches still need an
-	// explicit invalidation; deleting the user hash here would discard the
-	// freshly published auth-version floor.
-	if err := model.InvalidateUserTokensCache(user.Id); err != nil {
-		common.SysLog(common.LogText("failed to invalidate tokens cache for user %d: %s", user.Id, err.Error()))
+	if req.Action == "promote" || req.Action == "demote" {
+		if err := model.InvalidateUserTokensCache(user.Id); err != nil {
+			common.SysLog(common.LogText("failed to invalidate tokens cache for user %d: %s", user.Id, err.Error()))
+		}
 	}
 	recordManageAuditFor(c, user.Id, "user.manage", map[string]any{
 		"action":              req.Action,

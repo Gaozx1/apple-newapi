@@ -40,8 +40,16 @@ export function LoadingState(props: LoadingStateProps) {
 
   if (props.inline) {
     return (
-      <span className={cn('inline-flex items-center gap-2', props.className)}>
-        <Loader2 className={cn(iconSize, 'animate-spin')} />
+      <span
+        role='status'
+        aria-live='polite'
+        aria-label={props.message == null ? t('Loading...') : undefined}
+        className={cn('inline-flex items-center gap-2', props.className)}
+      >
+        <Loader2
+          aria-hidden='true'
+          className={cn(iconSize, 'animate-spin motion-reduce:animate-none')}
+        />
         {props.message != null && (
           <span className='text-muted-foreground text-sm'>{props.message}</span>
         )}
@@ -51,12 +59,17 @@ export function LoadingState(props: LoadingStateProps) {
 
   return (
     <div
+      role='status'
+      aria-live='polite'
       className={cn(
         'flex min-h-[200px] flex-col items-center justify-center gap-3',
         props.className
       )}
     >
-      <div className='animate-spin'>
+      <div
+        aria-hidden='true'
+        className='animate-spin motion-reduce:animate-none'
+      >
         <Loader2 className={iconSize} />
       </div>
       <p className='text-muted-foreground text-sm'>

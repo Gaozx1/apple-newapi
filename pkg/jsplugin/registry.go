@@ -1955,6 +1955,13 @@ func integerSliceMetaField(object map[string]any, name string) ([]int, error) {
 // on MySQL.
 const MaxMetaBaseURLLength = 191
 
+// ValidateChannelBaseURL checks an explicitly configured task-plugin destination
+// against the same URL rules used for a plugin's default destination.
+func ValidateChannelBaseURL(raw string) error {
+	_, err := normalizeMetaBaseURL(raw)
+	return err
+}
+
 // normalizeMetaBaseURL admits an absolute http(s) URL that a channel can adopt
 // verbatim as its base URL: no credentials, query, or fragment, an ASCII
 // lowercase host, and no trailing slash so plugins can concatenate paths.

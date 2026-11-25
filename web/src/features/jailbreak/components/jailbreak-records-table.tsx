@@ -88,7 +88,9 @@ function useJailbreakRecordColumns(
         id: 'reason',
         header: t('Reason'),
         cell: ({ row }) => (
-          <span className='text-sm'>{row.original.reason || '-'}</span>
+          <span className='text-sm'>
+            {row.original.reason ? t(row.original.reason) : '-'}
+          </span>
         ),
       },
       {
@@ -208,7 +210,7 @@ export function JailbreakRecordsTable() {
         isFetching={isFetching}
         emptyTitle={t('No jailbreak records')}
         emptyDescription={t(
-          'Nothing has been flagged yet. Enable the anti-jailbreak guard on a channel to start judging its traffic.'
+          'Nothing has been flagged yet. Enable the anti-jailbreak guard in System Settings to start reviewing requests.'
         )}
         skeletonKeyPrefix='jailbreak-records-skeleton'
         applyHeaderSize

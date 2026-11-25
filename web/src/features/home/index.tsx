@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { PublicLayout } from '@/components/layout'
@@ -25,14 +25,8 @@ import { useTheme } from '@/context/theme-provider'
 import { isLikelyHtml } from '@/lib/content-format'
 import { useAuthStore } from '@/stores/auth-store'
 
-import {
-  CTA,
-  Features,
-  Hero,
-  HowItWorks,
-  OpenPlatform,
-  Stats,
-} from './components'
+import { Hero } from './components/sections/hero'
+import { HowItWorks } from './components/sections/how-it-works'
 import { useHomePageContent } from './hooks'
 
 export function Home() {
@@ -64,76 +58,63 @@ export function Home() {
     }
   }, [isUrl, syncIframePreferences])
 
+  const contentIsHtml = !!content && !isUrl && isLikelyHtml(content)
+  const isMarkdown = !!content && !isUrl && !contentIsHtml
+
+  let main: ReactNode
   if (!isLoaded) {
-    return (
-      <PublicLayout showMainContainer={false}>
-        <div className='flex min-h-screen items-center justify-center'>
-          <div className='text-muted-foreground'>{t('Loading...')}</div>
-        </div>
-      </PublicLayout>
+    main = (
+      <div className='flex min-h-screen items-center justify-center'>
+        <div className='text-muted-foreground'>{t('Loading...')}</div>
+      </div>
     )
-  }
-
-  if (content) {
-    if (isUrl) {
-      return (
-        <PublicLayout showMainContainer={false}>
-          {/*
-            allow-top-navigation-by-user-activation: the custom home page URL is
-            admin-configured (trusted); this lets its target="_top" nav/menu links
-            navigate the top-level window on user click. The default sandbox blocks
-            this on desktop, while some mobile browsers allow it via allow-popups,
-            causing inconsistent behavior. This token only permits user-activated
-            top-level navigation and does NOT grant same-origin access.
-          */}
-          <iframe
-            ref={iframeRef}
-            src={content}
-            className='h-screen w-full border-none'
-            title={t('Custom Home Page')}
-            sandbox='allow-forms allow-popups allow-popups-to-escape-sandbox allow-scripts allow-top-navigation-by-user-activation'
-            onLoad={syncIframePreferences}
-          />
-        </PublicLayout>
-      )
-    }
-
-    const contentIsHtml = isLikelyHtml(content)
-
-    if (contentIsHtml) {
-      return (
-        <PublicLayout showMainContainer={false}>
-          <RichContent
-            mode='html'
-            htmlVariant='isolated'
-            content={content}
-            className='custom-home-content'
-          />
-        </PublicLayout>
-      )
-    }
-
-    return (
-      <PublicLayout>
-        <div className='mx-auto max-w-6xl px-4 py-8'>
-          <RichContent
-            mode='markdown'
-            content={content}
-            className='custom-home-content'
-          />
-        </div>
-      </PublicLayout>
+  } else if (isUrl) {
+    // User activation allows links from the configured page to open in the
+    // top-level window without granting the page same-origin access.
+    main = (
+      <iframe
+        ref={iframeRef}
+        src={content}
+        className='h-screen w-full border-none'
+        title={t('Custom Home Page')}
+        sandbox='allow-forms allow-popups allow-popups-to-escape-sandbox allow-scripts allow-top-navigation-by-user-activation'
+        onLoad={syncIframePreferences}
+      />
+    )
+  } else if (contentIsHtml) {
+    main = (
+      <RichContent
+        mode='html'
+        htmlVariant='isolated'
+        content={content}
+        className='custom-home-content'
+      />
+    )
+  } else if (isMarkdown) {
+    main = (
+      <div className='mx-auto max-w-6xl px-4 py-8'>
+        <RichContent
+          mode='markdown'
+          content={content}
+          className='custom-home-content'
+        />
+      </div>
+    )
+  } else {
+    main = (
+      <>
+        <Hero isAuthenticated={isAuthenticated} />
+        <HowItWorks />
+      </>
     )
   }
 
   return (
-    <PublicLayout showMainContainer={false} showFooter>
-      <Hero isAuthenticated={isAuthenticated} />
-      <OpenPlatform isAuthenticated={isAuthenticated} />
-      <Stats />
-      <Features />
-      <HowItWorks />
-      <CTA isAuthenticated={isAuthenticated} />
+    <PublicLayout
+      showMainContainer={false}
+      showFooter={isLoaded && (!content || isMarkdown)}
+    >
+      {main}
     </PublicLayout>
   )
 }

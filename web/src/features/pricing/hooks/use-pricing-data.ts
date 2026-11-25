@@ -28,7 +28,7 @@ import { getPricing } from '../api'
 export function usePricingData(enabled = true) {
   const { status } = useStatus()
 
-  const { data, isLoading, error, refetch } = useQuery({
+  const { data, isLoading, isFetching, error, refetch } = useQuery({
     queryKey: ['pricing'],
     queryFn: async () => requireServerSuccess(await getPricing()),
     staleTime: 5 * 60 * 1000,
@@ -74,6 +74,8 @@ export function usePricingData(enabled = true) {
     endpointMap: data?.supported_endpoint ?? {},
     autoGroups: data?.auto_groups ?? [],
     isLoading,
+    isFetching,
+    hasData: data !== undefined,
     error,
     refetch,
     priceRate,

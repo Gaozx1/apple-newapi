@@ -142,20 +142,6 @@ export type DataTableToolbarProps<TData> = {
   className?: string
 }
 
-/**
- * Unified data-table filter panel — Ant Design Pro inspired.
- *
- * Layout (single flex-wrap row):
- * - Filters (search input + additional inputs + filter chips + expandable
- *   inputs) flow horizontally and wrap as needed.
- * - The action cluster (Reset / Search / View / Expand) hugs the right
- *   edge via `ms-auto`. When filters fill a row, the cluster naturally
- *   wraps to the next line — still right-aligned — matching the
- *   collapsed/expanded states from the user's reference design.
- *
- * No background panel, no row separators — relies on whitespace and the
- * adjacent table border for visual hierarchy.
- */
 export function DataTableToolbar<TData>(props: DataTableToolbarProps<TData>) {
   const { t } = useTranslation()
   const [expanded, setExpanded] = useState(false)
@@ -353,7 +339,7 @@ export function DataTableToolbar<TData>(props: DataTableToolbarProps<TData>) {
     return (
       <DataTableMobileFilterPanel
         compact
-        className={props.className}
+        className={cn('studio-filter-bar', props.className)}
         actions={
           <>
             {props.leftActions}
@@ -378,7 +364,9 @@ export function DataTableToolbar<TData>(props: DataTableToolbarProps<TData>) {
 
   if (hasLeftActions) {
     return (
-      <div className={cn('flex flex-col gap-2', props.className)}>
+      <div
+        className={cn('studio-filter-bar flex flex-col gap-2', props.className)}
+      >
         <div className='flex flex-wrap items-center gap-2 sm:gap-3'>
           {props.customSearch !== undefined ? props.customSearch : searchInput}
           {props.additionalSearch}
@@ -411,7 +399,7 @@ export function DataTableToolbar<TData>(props: DataTableToolbarProps<TData>) {
   return (
     <div
       className={cn(
-        'flex flex-wrap items-center gap-2 sm:gap-3',
+        'studio-filter-bar flex flex-wrap items-center gap-2 sm:gap-3',
         props.className
       )}
     >

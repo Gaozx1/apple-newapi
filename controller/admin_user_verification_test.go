@@ -20,6 +20,7 @@ import (
 func setupAdminUserTest(t *testing.T) (*model.User, service.AuthIdentity, *model.User) {
 	t.Helper()
 	operator, identity := setupSecurityEnrollmentTest(t)
+	require.NoError(t, model.DB.AutoMigrate(&model.UserBan{}))
 	require.NoError(t, model.DB.Model(operator).Update("role", common.RoleRootUser).Error)
 	require.NoError(t, model.PublishUserAuthCache(operator.Id))
 	password, err := common.Password2Hash("managed-password")
@@ -68,7 +69,9 @@ func TestAdminUserRiskOperationsRequireProofBeforeMutation(t *testing.T) {
 		},
 		{
 			name: "manage disable", method: http.MethodPost, path: "/api/user/manage", handler: ManageUser,
-			body: func(target *model.User) string { return fmt.Sprintf(`{"id":%d,"action":"disable"}`, target.Id) },
+			body: func(target *model.User) string {
+				return fmt.Sprintf(`{"id":%d,"action":"disable","reason":"Policy violation"}`, target.Id)
+			},
 			unchanged: func(t *testing.T, target *model.User) {
 				stored, err := model.GetUserById(target.Id, false)
 				require.NoError(t, err)
@@ -250,7 +253,7 @@ func TestAdminUserProofIsBoundToTargetAndActionAndConsumedOnce(t *testing.T) {
 		handler          gin.HandlerFunc
 	}{
 		{"different action", fmt.Sprintf(`{"id":%d,"action":"enable"}`, target.Id), "SECURITY_PROOF_CONTEXT_MISMATCH", nil, ManageUser},
-		{"different user", fmt.Sprintf(`{"id":%d,"action":"disable"}`, other.Id), "SECURITY_PROOF_CONTEXT_MISMATCH", nil, ManageUser},
+		{"different user", fmt.Sprintf(`{"id":%d,"action":"disable","reason":"Policy violation"}`, other.Id), "SECURITY_PROOF_CONTEXT_MISMATCH", nil, ManageUser},
 		{"different scope", "", "SECURITY_PROOF_SCOPE_MISMATCH", gin.Params{{Key: "id", Value: fmt.Sprint(target.Id)}}, DeleteUser},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -267,7 +270,7 @@ func TestAdminUserProofIsBoundToTargetAndActionAndConsumedOnce(t *testing.T) {
 		assert.Equal(t, common.UserStatusEnabled, stored.Status)
 	}
 
-	response := adminUserRequest(http.MethodPost, "/api/user/manage", fmt.Sprintf(`{"id":%d,"action":"disable"}`, target.Id), proof, identity, common.RoleRootUser, nil, ManageUser)
+	response := adminUserRequest(http.MethodPost, "/api/user/manage", fmt.Sprintf(`{"id":%d,"action":"disable","reason":"Policy violation"}`, target.Id), proof, identity, common.RoleRootUser, nil, ManageUser)
 	var result securityEnrollmentResponse
 	require.NoError(t, common.Unmarshal(response.Body.Bytes(), &result))
 	require.True(t, result.Success, response.Body.String())
@@ -287,7 +290,7 @@ func TestAdminUserProofIsBoundToTargetAndActionAndConsumedOnce(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotContains(t, string(auditJSON), proof)
 
-	response = adminUserRequest(http.MethodPost, "/api/user/manage", fmt.Sprintf(`{"id":%d,"action":"disable"}`, target.Id), proof, identity, common.RoleRootUser, nil, ManageUser)
+	response = adminUserRequest(http.MethodPost, "/api/user/manage", fmt.Sprintf(`{"id":%d,"action":"disable","reason":"Policy violation"}`, target.Id), proof, identity, common.RoleRootUser, nil, ManageUser)
 	require.NoError(t, common.Unmarshal(response.Body.Bytes(), &result))
 	assert.Equal(t, http.StatusForbidden, response.Code)
 	assert.Equal(t, "SECURITY_PROOF_CONSUMED", result.Code)

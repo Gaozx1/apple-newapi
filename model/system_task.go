@@ -16,12 +16,13 @@ const (
 	SystemTaskStatusSucceeded SystemTaskStatus = "succeeded"
 	SystemTaskStatusFailed    SystemTaskStatus = "failed"
 
-	SystemTaskTypeLogCleanup     = "log_cleanup"
-	SystemTaskTypeChannelTest    = "channel_test"
-	SystemTaskTypeModelUpdate    = "model_update"
-	SystemTaskTypeMidjourneyPoll = "midjourney_poll"
-	SystemTaskTypeAsyncTaskPoll  = "async_task_poll"
-	SystemTaskTypeOfflineImage   = "offline_image"
+	SystemTaskTypeLogCleanup       = "log_cleanup"
+	SystemTaskTypeModelFingerprint = "model_fingerprint"
+	SystemTaskTypeChannelTest      = "channel_test"
+	SystemTaskTypeModelUpdate      = "model_update"
+	SystemTaskTypeMidjourneyPoll   = "midjourney_poll"
+	SystemTaskTypeAsyncTaskPoll    = "async_task_poll"
+	SystemTaskTypeOfflineImage     = "offline_image"
 	// SystemTaskTypeStoreChannelHealth refreshes the rolling error sample of the
 	// user-uploaded store channels and disables the unhealthy ones.
 	SystemTaskTypeStoreChannelHealth = "store_channel_health"

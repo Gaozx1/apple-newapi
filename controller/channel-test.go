@@ -269,13 +269,8 @@ func testChannelWithKeyIndex(ctx context.Context, channel *model.Channel, testUs
 	info.IsChannelTest = true
 	info.InitChannelMeta(c)
 
-	err = attachTestBillingRequestInput(info, request)
-	if err != nil {
-		return testResult{
-			context:     c,
-			localErr:    err,
-			newAPIError: types.NewError(err, types.ErrorCodeJsonMarshalFailed),
-		}
+	if err := attachTestBillingRequestInput(info, request); err != nil {
+		return testResult{context: c, localErr: err, newAPIError: types.NewError(err, types.ErrorCodeJsonMarshalFailed)}
 	}
 
 	err = helper.ModelMappedHelper(c, info, request)
@@ -323,11 +318,7 @@ func testChannelWithKeyIndex(ctx context.Context, channel *model.Channel, testUs
 
 	priceData, err := helper.ModelPriceHelper(c, info, 0, request.GetTokenCountMeta())
 	if err != nil {
-		return testResult{
-			context:     c,
-			localErr:    err,
-			newAPIError: types.NewError(err, types.ErrorCodeModelPriceError, types.ErrOptionWithStatusCode(http.StatusBadRequest)),
-		}
+		return testResult{context: c, localErr: err, newAPIError: types.NewError(err, types.ErrorCodeModelPriceError, types.ErrOptionWithStatusCode(http.StatusBadRequest))}
 	}
 
 	adaptor.Init(info)

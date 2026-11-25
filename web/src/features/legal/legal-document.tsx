@@ -46,7 +46,7 @@ export function LegalDocument({
   const { data, isLoading } = useQuery({
     queryKey: [queryKey],
     queryFn: fetchDocument,
-    staleTime: 10 * 60 * 1000,
+    staleTime: 0,
   })
 
   const rawContent = data?.data?.trim() ?? ''

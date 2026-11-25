@@ -42,6 +42,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuShortcut,
 } from '@/components/ui/dropdown-menu'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 import {
   Tooltip,
   TooltipContent,
@@ -86,6 +88,9 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
     requestVerification,
     verificationActive,
   } = useUsers()
+  const [disableOpen, setDisableOpen] = useState(false)
+  const [banReason, setBanReason] = useState('')
+  const [managePending, setManagePending] = useState(false)
   const [resetPasskeyOpen, setResetPasskeyOpen] = useState(false)
   const [resetTwoFAOpen, setResetTwoFAOpen] = useState(false)
   const [bindingDialogOpen, setBindingDialogOpen] = useState(false)
@@ -102,7 +107,15 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
     setOpen('delete')
   }
 
+  const trimmedBanReason = banReason.trim()
+  const validBanReason =
+    /[^\p{White_Space}\p{Cc}\p{Cf}]/u.test(trimmedBanReason) &&
+    !trimmedBanReason.includes('\0') &&
+    [...trimmedBanReason].length <= 200
+
   const handleManage = async (action: AdminUserManageAction) => {
+    if (managePending || (action === 'disable' && !validBanReason)) return
+    setManagePending(true)
     try {
       const proof = await requestVerification({
         scope: 'admin.user.manage',
@@ -114,8 +127,15 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
         ),
       })
       if (!proof) return
-      const result = await manageUser(user.id, action, proof.proof_token)
+      const result = await manageUser(
+        user.id,
+        action,
+        proof.proof_token,
+        action === 'disable' ? trimmedBanReason : undefined
+      )
       if (result.success) {
+        setDisableOpen(false)
+        setBanReason('')
         toast.success(t(getUserActionMessage(action)))
         triggerRefresh()
       } else {
@@ -126,6 +146,8 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
         AuthOperationError.from(error),
         t(ERROR_MESSAGES.UNEXPECTED)
       )
+    } finally {
+      setManagePending(false)
     }
   }
 
@@ -226,7 +248,10 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
           </DropdownMenuItem>
         ) : (
           <DropdownMenuItem
-            onClick={() => handleManage('disable')}
+            onSelect={(event) => {
+              event.preventDefault()
+              setDisableOpen(true)
+            }}
             disabled={isRoot}
           >
             {t('Disable')}
@@ -331,6 +356,42 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
           </DropdownMenuShortcut>
         </DropdownMenuItem>
       </DataTableRowActionMenu>
+
+      <ConfirmDialog
+        open={disableOpen && !verificationActive}
+        onOpenChange={(open) => {
+          setDisableOpen(open)
+          if (!open) setBanReason('')
+        }}
+        title={t('Disable')}
+        desc={t(
+          'This reason will be shown on the public ban board. Do not include personal information or secrets.'
+        )}
+        confirmText={t('Continue')}
+        handleConfirm={() => handleManage('disable')}
+        disabled={!validBanReason}
+        isLoading={managePending}
+        destructive
+      >
+        <div className='grid gap-2'>
+          <Label htmlFor={`ban-reason-${user.id}`}>
+            {t('Public ban reason')}
+          </Label>
+          <Textarea
+            id={`ban-reason-${user.id}`}
+            value={banReason}
+            onChange={(event) => setBanReason(event.target.value)}
+            aria-describedby={`ban-reason-help-${user.id}`}
+            required
+          />
+          <p
+            id={`ban-reason-help-${user.id}`}
+            className='text-muted-foreground text-xs'
+          >
+            {t('Enter a public ban reason of up to 200 characters')}
+          </p>
+        </div>
+      </ConfirmDialog>
 
       <ConfirmDialog
         open={resetPasskeyOpen && !verificationActive}

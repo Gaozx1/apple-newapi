@@ -92,6 +92,59 @@ func TestListModelsSupportsOpenAIAndGeminiAuthentication(t *testing.T) {
 	}
 }
 
+func TestDeepSeekToolsRelayHandsMatchingRequestsToPluginRoute(t *testing.T) {
+	setupRelayRouterTestDB(t)
+	require.NoError(t, i18n.Init())
+	user := model.User{Username: "tools-user", Status: common.UserStatusEnabled, Group: "default", Quota: 100}
+	require.NoError(t, model.DB.Create(&user).Error)
+	require.NoError(t, model.DB.Create(&model.Token{UserId: user.Id, Key: "toolstestkey", Status: common.TokenStatusEnabled, ExpiredTime: -1, UnlimitedQuota: true}).Error)
+
+	engine := gin.New()
+	SetRelayRouter(engine)
+	registry := jsplugin.NewRegistry()
+	_, err := registry.RegisterFactory(routerPluginSource("builtin-tools", "1.0.0", `[
+		{method: "POST", path: "/v1/tools/:model", type: "submit"}
+	]`), jsplugin.Options{})
+	require.NoError(t, err)
+	// The plugin route authenticates as in production, then names itself.
+	handlers := func(generation *jsplugin.RoutingGeneration, group jsplugin.RouteGroup) []gin.HandlerFunc {
+		production := productionPluginRouteHandlers(generation, group)
+		return []gin.HandlerFunc{production[0], production[1], production[2], func(c *gin.Context) {
+			c.String(http.StatusOK, "plugin %s for user %d", group.Bindings[0].Plugin.Meta.Key, c.GetInt("id"))
+		}}
+	}
+	require.NoError(t, registry.SetGenerationPreparer(newPluginGenerationBuilder(engine.Routes(), nil, handlers).prepare))
+	require.Empty(t, registry.RoutingErrors())
+	require.Empty(t, registry.Generation().SkippedRoutes())
+	previousRegistry := defaultPluginDispatcher.registry
+	defaultPluginDispatcher.registry = registry
+	t.Cleanup(func() { defaultPluginDispatcher.registry = previousRegistry })
+	engine.NoRoute(defaultPluginDispatcher.dispatch)
+
+	// The DeepSeek tools endpoints hand the request to the plugin route before
+	// their own relay runs.
+	for _, path := range []string{"/v1/tools/search", "/v1/tools/fetch"} {
+		request := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{"model":"model"}`))
+		request.Header.Set("Authorization", "Bearer toolstestkey")
+		recorder := httptest.NewRecorder()
+		engine.ServeHTTP(recorder, request)
+
+		assert.Equal(t, fmt.Sprintf("plugin builtin-tools for user %d", user.Id), recorder.Body.String(), path)
+	}
+
+	// Without a matching plugin route the DeepSeek tools relay answers as before.
+	defaultPluginDispatcher.registry = jsplugin.NewRegistry()
+	request := httptest.NewRequest(http.MethodPost, "/v1/tools/search", strings.NewReader(`{"model":"model"}`))
+	request.Header.Set("Authorization", "Bearer toolstestkey")
+	recorder := httptest.NewRecorder()
+	engine.ServeHTTP(recorder, request)
+
+	// The search operation looks for a deepseek-search channel; there is none.
+	assert.NotContains(t, recorder.Body.String(), "plugin builtin-tools")
+	assert.Equal(t, http.StatusServiceUnavailable, recorder.Code)
+	assert.Contains(t, recorder.Body.String(), `"code":"model_not_found"`)
+}
+
 func TestGeminiRelayHandsLongRunningPredictionToPluginRoute(t *testing.T) {
 	setupRelayRouterTestDB(t)
 	require.NoError(t, i18n.Init())

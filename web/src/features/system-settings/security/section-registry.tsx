@@ -16,13 +16,41 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { RateLimitSection } from '../request-limits/rate-limit-section'
-import { SSRFSection } from '../request-limits/ssrf-section'
-import { TokenLimitSection } from '../request-limits/token-limit-section'
+import { lazy } from 'react'
+
 import type { SecuritySettings } from '../types'
 import { createSectionRegistry } from '../utils/section-registry'
 
+// Navigation reads this registry eagerly; load each form only when rendered.
+const RateLimitSection = lazy(() =>
+  import('../request-limits/rate-limit-section').then((module) => ({
+    default: module.RateLimitSection,
+  }))
+)
+const SSRFSection = lazy(() =>
+  import('../request-limits/ssrf-section').then((module) => ({
+    default: module.SSRFSection,
+  }))
+)
+const TokenLimitSection = lazy(() =>
+  import('../request-limits/token-limit-section').then((module) => ({
+    default: module.TokenLimitSection,
+  }))
+)
+const ReviewSettingsSection = lazy(() =>
+  import('./review-settings-section').then((module) => ({
+    default: module.ReviewSettingsSection,
+  }))
+)
+
 const SECURITY_SECTIONS = [
+  {
+    id: 'review',
+    titleKey: 'Review Settings',
+    build: (settings: SecuritySettings) => (
+      <ReviewSettingsSection defaultValues={settings} />
+    ),
+  },
   {
     id: 'rate-limit',
     titleKey: 'Rate Limiting',

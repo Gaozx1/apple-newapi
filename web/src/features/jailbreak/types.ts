@@ -36,8 +36,8 @@ export const jailbreakRecordSchema = z.object({
   reason: z.string().default(''),
   content: z.string().default(''),
   raw_verdict: z.string().default(''),
-  // banned / already_banned / skipped_staff
-  action: z.string().default('banned'),
+  // warned / banned / already_banned / skipped_staff
+  action: z.string().default('warned'),
   banned_at: z.number().default(0),
   created_at: z.number().default(0),
 })

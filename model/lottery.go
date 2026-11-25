@@ -301,6 +301,12 @@ func DrawLottery(userId int) (*DrawLotteryResult, error) {
 			if !plan.Enabled {
 				return fmt.Errorf("lottery subscription prize plan %d is disabled", prize.PlanId)
 			}
+			if plan.IsResetCardPlan() {
+				if _, err := IssueResetCardsFromPlanTx(tx, userId, plan, ResetCardSourceLottery, ""); err != nil {
+					return err
+				}
+				break
+			}
 			sub, err := CreateUserSubscriptionFromPlanTx(tx, userId, plan, "lottery")
 			if err != nil {
 				return err

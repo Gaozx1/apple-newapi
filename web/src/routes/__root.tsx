@@ -23,6 +23,7 @@ import {
   Outlet,
   redirect,
   useNavigate,
+  useRouterState,
 } from '@tanstack/react-router'
 import { TanStackRouterDevtools } from '@tanstack/react-router-devtools'
 import { useEffect } from 'react'
@@ -33,6 +34,8 @@ import { ThemeCustomizationProvider } from '@/context/theme-customization-provid
 import { saveAffiliateCode } from '@/features/auth/lib/storage'
 import { GeneralError } from '@/features/errors/general-error'
 import { NotFoundError } from '@/features/errors/not-found-error'
+import { UserAgreementGate } from '@/features/legal/user-agreement-gate'
+import { TrainingConsentGate } from '@/features/profile/components/training-consent'
 import { getSetupStatus } from '@/features/setup/api'
 import { useSystemConfig } from '@/hooks/use-system-config'
 import {
@@ -47,6 +50,12 @@ import { useAuthStore } from '@/stores/auth-store'
 function RootComponent() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const skipConsent = useRouterState({
+    select: (state) =>
+      ['/setup', '/user-agreement', '/privacy-policy'].includes(
+        state.location.pathname.replace(/\/$/, '')
+      ),
+  })
 
   // Load system configuration (logo, system name, etc.) from backend
   useSystemConfig({ autoLoad: true })
@@ -95,7 +104,15 @@ function RootComponent() {
   return (
     <ThemeCustomizationProvider>
       <NavigationProgress />
-      <Outlet />
+      {skipConsent ? (
+        <Outlet />
+      ) : (
+        <UserAgreementGate>
+          <TrainingConsentGate>
+            <Outlet />
+          </TrainingConsentGate>
+        </UserAgreementGate>
+      )}
       <Toaster closeButton duration={5000} position='top-center' richColors />
       {import.meta.env.MODE === 'development' && (
         <>

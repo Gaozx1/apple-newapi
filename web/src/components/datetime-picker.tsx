@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { ChevronDownIcon } from 'lucide-react'
 import * as React from 'react'
-import { enUS, fr, ja, ru, vi, zhCN, zhTW } from 'react-day-picker/locale'
+import { enUS, fr, ja, ru, vi } from 'react-day-picker/locale'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
@@ -34,8 +34,6 @@ import { cn } from '@/lib/utils'
 
 const calendarLocales = {
   en: enUS,
-  zhCN,
-  zhTW,
   fr,
   ru,
   ja,

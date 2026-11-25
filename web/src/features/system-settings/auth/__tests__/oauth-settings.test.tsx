@@ -32,8 +32,8 @@ import { I18nextProvider } from 'react-i18next'
 import { toast } from 'sonner'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import zhTW from '@/i18n/locales/zh-TW.json'
-import zh from '@/i18n/locales/zh.json'
+import zhTW from '@/i18n/__fixtures__/legacy-zh-TW.json'
+import zh from '@/i18n/__fixtures__/legacy-zh.json'
 import { api } from '@/lib/api'
 
 import { SettingsPageProvider } from '../../components/settings-page-context'

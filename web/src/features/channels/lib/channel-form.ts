@@ -283,13 +283,6 @@ export const channelFormSchema = z
     system_prompt: z.string().optional(),
     system_prompt_role: z.enum(['system', 'user']).optional(),
     system_prompt_override: z.boolean().optional(),
-    // Anti-jailbreak guard (settings JSON): a classifier model plus the
-    // behaviour list it must intercept.
-    anti_jailbreak_enabled: z.boolean().optional(),
-    anti_jailbreak_base_url: z.string().optional(),
-    anti_jailbreak_key: z.string().optional(),
-    anti_jailbreak_model: z.string().optional(),
-    anti_jailbreak_prompt: z.string().optional(),
     // Type-specific settings (stored in settings JSON)
     is_enterprise_account: z.boolean().optional(), // OpenRouter specific
     vertex_key_type: z.enum(['json', 'api_key']).optional(), // Vertex AI specific
@@ -494,11 +487,6 @@ export const CHANNEL_FORM_DEFAULT_VALUES: ChannelFormValues = {
   system_prompt: '',
   system_prompt_role: 'system',
   system_prompt_override: false,
-  anti_jailbreak_enabled: false,
-  anti_jailbreak_base_url: '',
-  anti_jailbreak_key: '',
-  anti_jailbreak_model: '',
-  anti_jailbreak_prompt: '',
   // Type-specific settings
   is_enterprise_account: false,
   vertex_key_type: 'json',
@@ -551,11 +539,6 @@ export function transformChannelToFormDefaults(
     system_prompt: '',
     system_prompt_role: 'system' as 'system' | 'user',
     system_prompt_override: false,
-    anti_jailbreak_enabled: false,
-    anti_jailbreak_base_url: '',
-    anti_jailbreak_key: '',
-    anti_jailbreak_model: '',
-    anti_jailbreak_prompt: '',
   }
 
   if (channel.setting) {
@@ -582,11 +565,6 @@ export function transformChannelToFormDefaults(
         system_prompt_role:
           parsed.system_prompt_role === 'user' ? 'user' : 'system',
         system_prompt_override: parsed.system_prompt_override || false,
-        anti_jailbreak_enabled: parsed.anti_jailbreak_enabled === true,
-        anti_jailbreak_base_url: parsed.anti_jailbreak_base_url || '',
-        anti_jailbreak_key: parsed.anti_jailbreak_key || '',
-        anti_jailbreak_model: parsed.anti_jailbreak_model || '',
-        anti_jailbreak_prompt: parsed.anti_jailbreak_prompt || '',
       }
     } catch (error) {
       // eslint-disable-next-line no-console
@@ -748,11 +726,6 @@ export function buildSettingJSON(formData: ChannelFormValues): string {
     system_prompt_role:
       formData.system_prompt_role === 'user' ? 'user' : 'system',
     system_prompt_override: formData.system_prompt_override || false,
-    anti_jailbreak_enabled: formData.anti_jailbreak_enabled === true,
-    anti_jailbreak_base_url: (formData.anti_jailbreak_base_url || '').trim(),
-    anti_jailbreak_key: (formData.anti_jailbreak_key || '').trim(),
-    anti_jailbreak_model: (formData.anti_jailbreak_model || '').trim(),
-    anti_jailbreak_prompt: formData.anti_jailbreak_prompt || '',
   }
 
   const protocol = normalizeHttpProtocol(formData.http_protocol)

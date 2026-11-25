@@ -20,7 +20,7 @@ import { createInstance } from 'i18next'
 import { assert, afterEach, describe, expect, test, vi } from 'vitest'
 
 import { getTieredBillingSummary } from '@/features/usage-logs/lib/format'
-import zh from '@/i18n/locales/zh.json'
+import zh from '@/i18n/__fixtures__/legacy-zh.json'
 
 import contract from '../../../../../../pkg/billingexpr/testdata/frontend_simulation.json'
 import {

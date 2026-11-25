@@ -23,7 +23,7 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -92,17 +92,35 @@ describe('public header mobile navigation dialog', () => {
   it('marks the overlay as the controlled dialog while open', async () => {
     const banner = await renderHeader()
     const user = userEvent.setup()
-
-    await user.click(
-      within(banner).getByRole('button', { name: 'Toggle navigation menu' })
-    )
+    const toggle = within(banner).getByRole('button', {
+      name: 'Toggle navigation menu',
+    })
+    await user.click(toggle)
 
     const dialog = screen.getByRole('dialog', { name: 'Header navigation' })
     expect(dialog).toHaveAttribute('id', 'mobile-nav')
     expect(dialog).toHaveAttribute('aria-modal', 'true')
-    expect(
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.queryByRole('banner')).not.toBeInTheDocument()
+  })
+
+  it('links to the public ban board in the desktop and mobile menus', async () => {
+    const banner = await renderHeader()
+    const link = { name: 'Ban Board', exact: true }
+    expect(within(banner).getByRole('link', link)).toHaveAttribute(
+      'href',
+      '/user-bans'
+    )
+
+    const user = userEvent.setup()
+    await user.click(
       within(banner).getByRole('button', { name: 'Toggle navigation menu' })
-    ).toHaveAttribute('aria-expanded', 'true')
+    )
+    const dialog = screen.getByRole('dialog', { name: 'Header navigation' })
+    expect(within(dialog).getByRole('link', link)).toHaveAttribute(
+      'href',
+      '/user-bans'
+    )
   })
 
   it('closes the mobile dialog when Escape is pressed', async () => {
@@ -117,9 +135,25 @@ describe('public header mobile navigation dialog', () => {
     expect(
       within(banner).getByRole('button', { name: 'Toggle navigation menu' })
     ).toHaveAttribute('aria-expanded', 'false')
-    expect(document.querySelector('#mobile-nav')).toHaveAttribute(
-      'aria-hidden',
-      'true'
+    expect(
+      screen.queryByRole('dialog', { name: 'Header navigation' })
+    ).not.toBeInTheDocument()
+  })
+
+  it('moves keyboard focus into the mobile menu and restores it when closed', async () => {
+    const banner = await renderHeader()
+    const user = userEvent.setup()
+    const toggle = within(banner).getByRole('button', {
+      name: 'Toggle navigation menu',
+    })
+    await user.click(toggle)
+    const dialog = screen.getByRole('dialog', { name: 'Header navigation' })
+    await waitFor(() =>
+      expect(dialog.contains(document.activeElement)).toBe(true)
     )
+    await user.tab({ shift: true })
+    expect(dialog.contains(document.activeElement)).toBe(true)
+    await user.keyboard('{Escape}')
+    await waitFor(() => expect(toggle).toHaveFocus())
   })
 })

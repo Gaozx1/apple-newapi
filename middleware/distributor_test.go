@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -17,12 +18,69 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting"
+	"github.com/QuantumNous/new-api/setting/config"
 	"github.com/QuantumNous/new-api/setting/group_region_setting"
 	"github.com/QuantumNous/new-api/setting/model_setting"
+	"github.com/QuantumNous/new-api/setting/system_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestSystemReviewUsesAccountGroupAndRunsOnceAcrossChannelRetries(t *testing.T) {
+	requests := make(chan string, 2)
+	judge := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload map[string]string
+		if err := common.DecodeJson(r.Body, &payload); err != nil {
+			t.Error(err)
+			return
+		}
+		_, _ = w.Write([]byte(`{"label":"safe","attack_score":0,"threshold":0.97060826420784,"truncated":false}`))
+		requests <- payload["text"]
+	}))
+	defer judge.Close()
+	before := system_setting.GetJailbreakSettings()
+	common.OptionMapRWMutex.Lock()
+	settings := config.GlobalConfig.Get("jailbreak_setting").(*system_setting.JailbreakSettings)
+	*settings = system_setting.JailbreakSettings{Enabled: true, BaseURL: judge.URL, APIKey: "judge-key", BlacklistGroups: []string{"staff", "trusted"}}
+	common.OptionMapRWMutex.Unlock()
+	t.Cleanup(func() {
+		common.OptionMapRWMutex.Lock()
+		defer common.OptionMapRWMutex.Unlock()
+		*settings = before
+	})
+	for _, group := range []string{"staff", "trusted"} {
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"input":"exempt"}`))
+		c.Set("id", 1)
+		common.SetContextKey(c, constant.ContextKeyUserGroup, group)
+		common.SetContextKey(c, constant.ContextKeyUsingGroup, "default")
+		dispatchAntiJailbreakCheck(c, &model.Channel{Id: 1}, "test-model")
+		// Exempt accounts should not even consume body storage.
+		assert.NotContains(t, c.Keys, common.KeyBodyStorage)
+	}
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"input":"checked"}`))
+	c.Set("id", 1)
+	common.SetContextKey(c, constant.ContextKeyUserGroup, "default")
+	common.SetContextKey(c, constant.ContextKeyUsingGroup, "trusted")
+	dispatchAntiJailbreakCheck(c, &model.Channel{Id: 1}, "test-model")
+	dispatchAntiJailbreakCheck(c, &model.Channel{Id: 2}, "test-model")
+	storage, err := common.GetBodyStorage(c)
+	require.NoError(t, err)
+	defer common.CleanupBodyStorage(c)
+	body, err := storage.Bytes()
+	require.NoError(t, err)
+	assert.Equal(t, `{"input":"checked"}`, string(body), "relay body remains available")
+	select {
+	case content := <-requests:
+		assert.Equal(t, "checked", content)
+	case <-time.After(5 * time.Second):
+		t.Fatal("detector did not receive the non-exempt account request")
+	}
+	judge.Close()
+	assert.Empty(t, requests, "retrying another channel must not launch another review")
+}
 
 func TestChannelMatchesExpectedTaskPluginUsesGenericChannelSetting(t *testing.T) {
 	channel := &model.Channel{Type: constant.ChannelTypeTaskPlugin}
@@ -190,6 +248,23 @@ func TestGetModelRequestAssignsDeepSeekToolRoutingNames(t *testing.T) {
 		require.NoError(t, err, tc.body)
 		assert.True(t, shouldSelectChannel, tc.body)
 		assert.Equal(t, tc.want, modelRequest.Model, tc.body)
+	}
+	// A task plugin's native route answers these paths before the relay and
+	// already resolved the model it bills, so the DeepSeek routing names must
+	// not replace it.
+	for _, tc := range []struct{ path, body, model string }{
+		{"/v1/tools/search", `{"query":"deepseek","count":3}`, "search"},
+		{"/v1/tools/fetch", `{"url":"https://example.com/"}`, "fetch"},
+	} {
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Request = httptest.NewRequest(http.MethodPost, tc.path, strings.NewReader(tc.body))
+		c.Request.Header.Set("Content-Type", "application/json")
+		c.Set(jsplugin.ContextKeyRouteRequest, struct{}{})
+		c.Set("resolved_task_model", tc.model)
+		modelRequest, shouldSelectChannel, err := getModelRequest(c)
+		require.NoError(t, err, tc.body)
+		assert.True(t, shouldSelectChannel, tc.body)
+		assert.Equal(t, tc.model, modelRequest.Model, tc.path)
 	}
 }
 

@@ -29,19 +29,7 @@ type ChannelSettings struct {
 	// user message, which always applies (SystemPromptOverride is not consulted
 	// in that mode because the client's system prompt is left untouched).
 	SystemPromptRole string `json:"system_prompt_role,omitempty"`
-	// AntiJailbreakEnabled turns on this channel's anti-jailbreak guard: every
-	// relay request routed to the channel is judged asynchronously by
-	// AntiJailbreakModel, and a confirmed hit disables the caller's account.
-	AntiJailbreakEnabled bool `json:"anti_jailbreak_enabled,omitempty"`
-	// AntiJailbreakBaseURL / AntiJailbreakKey / AntiJailbreakModel address the
-	// classifier. Any OpenAI-compatible chat completions endpoint works; the base
-	// URL may already include /chat/completions.
-	AntiJailbreakBaseURL string `json:"anti_jailbreak_base_url,omitempty"`
-	AntiJailbreakKey     string `json:"anti_jailbreak_key,omitempty"`
-	AntiJailbreakModel   string `json:"anti_jailbreak_model,omitempty"`
-	// AntiJailbreakPrompt lists the behaviour the classifier must intercept and
-	// is sent as its system prompt. A hit bans an account, so keep it precise.
-	AntiJailbreakPrompt string `json:"anti_jailbreak_prompt,omitempty"`
+
 	// TaskExtendPluginKeys lists the task plugins a New API channel (type 60)
 	// is extended with. The upstream gateway may host many plugins, so the
 	// channel serves every listed plugin's models while the request still pins
@@ -132,28 +120,6 @@ func (s *ChannelSettings) ValidateHTTPTransport() error {
 	}
 	if protocol == HTTPProtocolHTTP1 && s.HTTP2ConnectionShards > 1 {
 		return fmt.Errorf("http2_connection_shards must be 1 when http_protocol is http1")
-	}
-	return nil
-}
-
-// ValidateAntiJailbreak rejects save-time anti-jailbreak settings that could not
-// reach a classifier: an enabled guard without endpoint, key, model or criteria
-// would silently never judge anything.
-func (s *ChannelSettings) ValidateAntiJailbreak() error {
-	if s == nil || !s.AntiJailbreakEnabled {
-		return nil
-	}
-	if strings.TrimSpace(s.AntiJailbreakBaseURL) == "" {
-		return fmt.Errorf("anti_jailbreak_base_url is required when the anti-jailbreak guard is enabled")
-	}
-	if strings.TrimSpace(s.AntiJailbreakKey) == "" {
-		return fmt.Errorf("anti_jailbreak_key is required when the anti-jailbreak guard is enabled")
-	}
-	if strings.TrimSpace(s.AntiJailbreakModel) == "" {
-		return fmt.Errorf("anti_jailbreak_model is required when the anti-jailbreak guard is enabled")
-	}
-	if strings.TrimSpace(s.AntiJailbreakPrompt) == "" {
-		return fmt.Errorf("anti_jailbreak_prompt is required when the anti-jailbreak guard is enabled")
 	}
 	return nil
 }

@@ -25,6 +25,12 @@ import {
 } from './section-registry.tsx'
 
 const defaultSecuritySettings: SecuritySettings = {
+  'jailbreak_setting.enabled': false,
+  'jailbreak_setting.base_url': '',
+  'jailbreak_setting.api_key': '',
+  'jailbreak_setting.blacklist_groups': [],
+  'jailbreak_setting.warning_limit': 3,
+  JailbreakKeyConfigured: false,
   ModelRequestRateLimitEnabled: false,
   ModelRequestRateLimitCount: 0,
   ModelRequestRateLimitSuccessCount: 1000,

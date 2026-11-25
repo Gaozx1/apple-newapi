@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Crown, RefreshCw, Sparkles, Check } from 'lucide-react'
+import { Crown, RefreshCw, Sparkles, Check, Ticket } from 'lucide-react'
 import {
   useState,
   useEffect,
@@ -27,10 +27,12 @@ import {
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
+import { CopyButton } from '@/components/copy-button'
 import {
   StatusBadge,
   dotColorMap,
   textColorMap,
+  type StatusVariant,
 } from '@/components/status-badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
@@ -53,14 +55,21 @@ import {
 } from '@/components/ui/tooltip'
 import {
   getPublicPlans,
+  getSelfResetCards,
   getSelfSubscriptionFull,
   updateBillingPreference,
 } from '@/features/subscriptions/api'
 import { SubscriptionPurchaseDialog } from '@/features/subscriptions/components/dialogs/subscription-purchase-dialog'
+import { UseResetCardDialog } from '@/features/subscriptions/components/dialogs/use-reset-card-dialog'
 import { SubscriptionWindowUsage } from '@/features/subscriptions/components/subscription-window-usage'
-import { formatDuration, formatResetPeriod } from '@/features/subscriptions/lib'
+import {
+  formatDuration,
+  formatResetPeriod,
+  formatTimestamp,
+} from '@/features/subscriptions/lib'
 import type {
   PlanRecord,
+  ResetCard,
   UserSubscriptionRecord,
 } from '@/features/subscriptions/types'
 import { formatQuota } from '@/lib/format'
@@ -101,6 +110,26 @@ function getBillingPreferenceLabel(
   }
 }
 
+function getResetCardSourceLabel(
+  source: string | undefined,
+  t: (key: string) => string
+): string {
+  switch (source) {
+    case 'admin':
+      return t('Admin')
+    case 'order':
+      return t('Order')
+    case 'balance':
+      return t('Balance')
+    case 'redemption':
+      return t('Redemption')
+    case 'lottery':
+      return t('Lottery')
+    default:
+      return source || '-'
+  }
+}
+
 export function SubscriptionPlansCard({
   topupInfo,
   onAvailabilityChange,
@@ -116,6 +145,7 @@ export function SubscriptionPlansCard({
   const [allSubscriptions, setAllSubscriptions] = useState<
     UserSubscriptionRecord[]
   >([])
+  const [resetCards, setResetCards] = useState<ResetCard[]>([])
   const [billingPreference, setBillingPreference] =
     useState('subscription_first')
   const [loading, setLoading] = useState(true)
@@ -123,6 +153,8 @@ export function SubscriptionPlansCard({
 
   const [purchaseOpen, setPurchaseOpen] = useState(false)
   const [selectedPlan, setSelectedPlan] = useState<PlanRecord | null>(null)
+  const [useCardOpen, setUseCardOpen] = useState(false)
+  const [selectedCard, setSelectedCard] = useState<ResetCard | null>(null)
 
   const enableStripe = !!topupInfo?.enable_stripe_topup
   const enableCreem = !!topupInfo?.enable_creem_topup
@@ -160,19 +192,35 @@ export function SubscriptionPlansCard({
     }
   }, [])
 
+  const fetchResetCards = useCallback(async () => {
+    try {
+      const res = requireServerSuccess(await getSelfResetCards())
+      if (res.success) {
+        setResetCards(res.data || [])
+      }
+    } catch (error) {
+      handleServerError(error)
+      setResetCards([])
+    }
+  }, [])
+
   useEffect(() => {
     const init = async () => {
       setLoading(true)
-      await Promise.all([fetchPlans(), fetchSelfSubscription()])
+      await Promise.all([
+        fetchPlans(),
+        fetchSelfSubscription(),
+        fetchResetCards(),
+      ])
       setLoading(false)
     }
     init()
-  }, [fetchPlans, fetchSelfSubscription])
+  }, [fetchPlans, fetchSelfSubscription, fetchResetCards])
 
   const handleRefresh = async () => {
     setRefreshing(true)
     try {
-      await fetchSelfSubscription()
+      await Promise.all([fetchSelfSubscription(), fetchResetCards()])
     } finally {
       setRefreshing(false)
     }
@@ -199,7 +247,8 @@ export function SubscriptionPlansCard({
 
   const hasActive = activeSubscriptions.length > 0
   const hasAny = allSubscriptions.length > 0
-  const isAvailable = loading || plans.length > 0 || hasAny
+  const hasResetCards = resetCards.length > 0
+  const isAvailable = loading || plans.length > 0 || hasAny || hasResetCards
   const disablePref = !hasActive
   const isSubPref =
     billingPreference === 'subscription_first' ||
@@ -273,7 +322,7 @@ export function SubscriptionPlansCard({
     )
   }
 
-  if (plans.length === 0 && !hasAny) {
+  if (plans.length === 0 && !hasAny && !hasResetCards) {
     return null
   }
 
@@ -639,6 +688,99 @@ export function SubscriptionPlansCard({
           )}
         </div>
 
+        {/* My reset cards */}
+        <div className='rounded-xl border p-3 sm:p-4'>
+          <div className='flex flex-wrap items-center justify-between gap-2.5 sm:gap-3'>
+            <span className='text-sm font-medium'>{t('My Reset Cards')}</span>
+          </div>
+
+          {resetCards.length === 0 ? (
+            <p className='text-muted-foreground mt-2 text-xs'>
+              {t('No reset cards')}
+            </p>
+          ) : (
+            <>
+              <Separator className='my-3' />
+              <div className='max-h-64 space-y-2 overflow-y-auto pr-1'>
+                {resetCards.map((card) => {
+                  const isExpired =
+                    card.expires_at > 0 && card.expires_at <= Date.now() / 1000
+                  const canUse = card.status === 'unused' && !isExpired
+                  let statusLabel = t('Expired')
+                  let statusVariant: StatusVariant = 'neutral'
+                  if (card.status === 'unused') {
+                    statusLabel = t('Unused')
+                    statusVariant = 'success'
+                  } else if (card.status === 'used') {
+                    statusLabel = t('Used')
+                    statusVariant = 'info'
+                  } else if (card.status === 'disabled') {
+                    statusLabel = t('Disabled')
+                    statusVariant = 'warning'
+                  }
+                  return (
+                    <div
+                      key={card.id}
+                      className='bg-background flex flex-wrap items-center gap-x-3 gap-y-2 rounded-md border p-3 text-xs'
+                    >
+                      <div className='flex min-w-0 flex-1 items-center gap-2'>
+                        <code className='min-w-0 truncate font-mono'>
+                          {card.card_key}
+                        </code>
+                        <CopyButton
+                          value={card.card_key}
+                          className='size-6'
+                          iconClassName='size-3'
+                          aria-label={t('Copy card key')}
+                        />
+                        <StatusBadge
+                          label={statusLabel}
+                          variant={statusVariant}
+                          copyable={false}
+                        />
+                      </div>
+                      <div className='text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-1'>
+                        {card.plan_title && <span>{card.plan_title}</span>}
+                        {(card.target_subscription_id || 0) > 0 && (
+                          <span>
+                            {t('Resettable Subscription')}: #
+                            {card.target_subscription_id}
+                            {card.target_subscription_plan_title
+                              ? ` (${card.target_subscription_plan_title})`
+                              : ''}
+                          </span>
+                        )}
+                        <span>
+                          {t('Expires at')}:{' '}
+                          {card.expires_at === 0
+                            ? t('Never expires')
+                            : formatTimestamp(card.expires_at)}
+                        </span>
+                        <span>
+                          {t('Source')}:{' '}
+                          {getResetCardSourceLabel(card.source, t)}
+                        </span>
+                      </div>
+                      {canUse && (
+                        <Button
+                          variant='outline'
+                          size='xs'
+                          onClick={() => {
+                            setSelectedCard(card)
+                            setUseCardOpen(true)
+                          }}
+                        >
+                          {t('Use')}
+                        </Button>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </>
+          )}
+        </div>
+
         {/* Available plans grid */}
         {plans.length > 0 ? (
           <div className='grid grid-cols-1 gap-3 2xl:grid-cols-2 2xl:gap-4'>
@@ -648,6 +790,8 @@ export function SubscriptionPlansCard({
               const totalAmount = Number(plan.total_amount || 0)
               const price = Number(plan.price_amount || 0).toFixed(2)
               const isPopular = index === 0 && plans.length > 1
+              const isResetCardPlan = plan.plan_type === 'reset_card'
+              const resetCardCount = Number(plan.reset_card_count || 1)
               const limit = Number(plan.max_purchase_per_user || 0)
               const count = planPurchaseCountMap.get(plan.id) || 0
               const reached = limit > 0 && count >= limit
@@ -660,51 +804,67 @@ export function SubscriptionPlansCard({
                 .map((g) => g.trim())
                 .filter(Boolean)
 
-              let quotaLine: string
-              if (planTokenBuckets.length > 0) {
-                // Token buckets are denominated in raw token counts.
-                quotaLine = `${t('Per-model token buckets')}: ${planTokenBuckets
-                  .map(
-                    ([modelName, tokens]) =>
-                      `${modelName} ${tokens.toLocaleString()} ${t('tokens')}`
-                  )
-                  .join(' / ')}`
-              } else if (planBuckets.length > 0) {
-                // With per-model buckets the shared pool is not used for
-                // funding, so show the buckets instead of the total quota.
-                quotaLine = `${t('Per-model quota buckets')}: ${planBuckets
-                  .map(
-                    ([modelName, quota]) => `${modelName} ${formatQuota(quota)}`
-                  )
-                  .join(' / ')}`
-              } else if (totalAmount > 0) {
-                quotaLine = `${t('Total Quota')}: ${formatQuota(totalAmount)}`
-              } else if (totalAmount < 0) {
-                quotaLine = `${t('Total Quota')}: ${t('Per-model buckets only')}`
+              let benefits: string[]
+              if (isResetCardPlan) {
+                // The plan duration is the expiry of the cards bought.
+                benefits = [
+                  `${t('Validity Period')}: ${formatDuration(plan, t)}`,
+                  `${t('Reset Cards')}: ${t(
+                    '{{count}} reset cards per purchase',
+                    {
+                      count: resetCardCount,
+                    }
+                  )}`,
+                  limit > 0 ? `${t('Purchase Limit')}: ${limit}` : null,
+                ].filter(Boolean) as string[]
               } else {
-                quotaLine = `${t('Total Quota')}: ${t('Unlimited')}`
-              }
+                let quotaLine: string
+                if (planTokenBuckets.length > 0) {
+                  // Token buckets are denominated in raw token counts.
+                  quotaLine = `${t('Per-model token buckets')}: ${planTokenBuckets
+                    .map(
+                      ([modelName, tokens]) =>
+                        `${modelName} ${tokens.toLocaleString()} ${t('tokens')}`
+                    )
+                    .join(' / ')}`
+                } else if (planBuckets.length > 0) {
+                  // With per-model buckets the shared pool is not used for
+                  // funding, so show the buckets instead of the total quota.
+                  quotaLine = `${t('Per-model quota buckets')}: ${planBuckets
+                    .map(
+                      ([modelName, quota]) =>
+                        `${modelName} ${formatQuota(quota)}`
+                    )
+                    .join(' / ')}`
+                } else if (totalAmount > 0) {
+                  quotaLine = `${t('Total Quota')}: ${formatQuota(totalAmount)}`
+                } else if (totalAmount < 0) {
+                  quotaLine = `${t('Total Quota')}: ${t('Per-model buckets only')}`
+                } else {
+                  quotaLine = `${t('Total Quota')}: ${t('Unlimited')}`
+                }
 
-              const benefits = [
-                `${t('Validity Period')}: ${formatDuration(plan, t)}`,
-                formatResetPeriod(plan, t) !== t('No Reset')
-                  ? `${t('Quota Reset')}: ${formatResetPeriod(plan, t)}`
-                  : null,
-                quotaLine,
-                Number(plan.window_5h_amount || 0) > 0
-                  ? `${t('5-hour limit')}: ${formatQuota(Number(plan.window_5h_amount))}`
-                  : null,
-                Number(plan.window_7d_amount || 0) > 0
-                  ? `${t('7-day limit')}: ${formatQuota(Number(plan.window_7d_amount))}`
-                  : null,
-                planGroups.length > 0
-                  ? `${t('Usable Groups')}: ${planGroups.join(', ')}`
-                  : null,
-                limit > 0 ? `${t('Purchase Limit')}: ${limit}` : null,
-                plan.upgrade_group
-                  ? `${t('Upgrade Group')}: ${plan.upgrade_group}`
-                  : null,
-              ].filter(Boolean) as string[]
+                benefits = [
+                  `${t('Validity Period')}: ${formatDuration(plan, t)}`,
+                  formatResetPeriod(plan, t) !== t('No Reset')
+                    ? `${t('Quota Reset')}: ${formatResetPeriod(plan, t)}`
+                    : null,
+                  quotaLine,
+                  Number(plan.window_5h_amount || 0) > 0
+                    ? `${t('5-hour limit')}: ${formatQuota(Number(plan.window_5h_amount))}`
+                    : null,
+                  Number(plan.window_7d_amount || 0) > 0
+                    ? `${t('7-day limit')}: ${formatQuota(Number(plan.window_7d_amount))}`
+                    : null,
+                  planGroups.length > 0
+                    ? `${t('Usable Groups')}: ${planGroups.join(', ')}`
+                    : null,
+                  limit > 0 ? `${t('Purchase Limit')}: ${limit}` : null,
+                  plan.upgrade_group
+                    ? `${t('Upgrade Group')}: ${plan.upgrade_group}`
+                    : null,
+                ].filter(Boolean) as string[]
+              }
 
               return (
                 <Card
@@ -715,9 +875,21 @@ export function SubscriptionPlansCard({
                   <CardContent className='flex h-full flex-col p-3.5 sm:p-4'>
                     <div className='mb-2 flex items-start justify-between gap-3'>
                       <div className='min-w-0'>
-                        <h4 className='truncate font-semibold'>
-                          {plan.title || t('Subscription Plans')}
-                        </h4>
+                        <div className='flex min-w-0 flex-wrap items-center gap-1.5'>
+                          <h4 className='truncate font-semibold'>
+                            {plan.title || t('Subscription Plans')}
+                          </h4>
+                          {isResetCardPlan && (
+                            <StatusBadge
+                              variant='warning'
+                              copyable={false}
+                              className='shrink-0'
+                            >
+                              <Ticket className='h-3 w-3' />
+                              {t('Reset Card')}
+                            </StatusBadge>
+                          )}
+                        </div>
                         {plan.subtitle && (
                           <p className='text-muted-foreground truncate text-xs'>
                             {plan.subtitle}
@@ -776,7 +948,9 @@ export function SubscriptionPlansCard({
                           setPurchaseOpen(true)
                         }}
                       >
-                        {t('Subscribe Now')}
+                        {isResetCardPlan
+                          ? t('Buy Reset Card')
+                          : t('Subscribe Now')}
                       </Button>
                     )}
                   </CardContent>
@@ -797,6 +971,7 @@ export function SubscriptionPlansCard({
           setPurchaseOpen(open)
           if (!open) {
             fetchSelfSubscription()
+            fetchResetCards()
           }
         }}
         plan={selectedPlan}
@@ -817,6 +992,21 @@ export function SubscriptionPlansCard({
             ? planPurchaseCountMap.get(selectedPlan.plan.id)
             : undefined
         }
+      />
+
+      <UseResetCardDialog
+        open={useCardOpen}
+        onOpenChange={(open) => {
+          setUseCardOpen(open)
+          if (!open) {
+            setSelectedCard(null)
+          }
+        }}
+        card={selectedCard}
+        subscriptions={activeSubscriptions}
+        onSuccess={async () => {
+          await Promise.all([fetchResetCards(), fetchSelfSubscription()])
+        }}
       />
     </>
   )

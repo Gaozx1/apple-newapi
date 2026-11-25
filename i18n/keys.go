@@ -87,6 +87,10 @@ const (
 	MsgSecurityEventLoginLinked          = "email.security_event.login_linked"
 	MsgSecurityEventLoginUnlinked        = "email.security_event.login_unlinked"
 	MsgSecurityEventWeChatLinked         = "email.security_event.wechat_linked"
+
+	MsgEmailJailbreakWarningSubject = "email.jailbreak_warning.subject"
+	MsgEmailJailbreakWarningIntro   = "email.jailbreak_warning.intro"
+	MsgEmailJailbreakWarningAction  = "email.jailbreak_warning.action"
 )
 
 // Low-quota notices, in the recipient's saved language

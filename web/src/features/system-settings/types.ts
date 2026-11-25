@@ -408,6 +408,12 @@ export type OperationsSettings = {
 }
 
 export type SecuritySettings = {
+  'jailbreak_setting.enabled': boolean
+  'jailbreak_setting.base_url': string
+  'jailbreak_setting.api_key': string
+  'jailbreak_setting.blacklist_groups': string[]
+  'jailbreak_setting.warning_limit': number
+  JailbreakKeyConfigured: boolean
   ModelRequestRateLimitEnabled: boolean
   ModelRequestRateLimitCount: number
   ModelRequestRateLimitSuccessCount: number

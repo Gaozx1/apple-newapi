@@ -177,6 +177,8 @@ export function SubscriptionsMutateDrawer({
 
   const durationUnit = form.watch('duration_unit')
   const resetPeriod = form.watch('quota_reset_period')
+  const planType = form.watch('plan_type')
+  const isResetCardPlan = planType === 'reset_card'
   // Gate "+ Create on Pancake" on the same checks the mint handler runs.
   const watchedTitle = form.watch('title')
   const watchedPrice = form.watch('price_amount')
@@ -356,6 +358,49 @@ export function SubscriptionsMutateDrawer({
                 )}
               />
 
+              <FormField
+                control={form.control}
+                name='plan_type'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Plan Type')}</FormLabel>
+                    <Select
+                      items={[
+                        {
+                          value: 'subscription',
+                          label: t('Subscription Plan'),
+                        },
+                        { value: 'reset_card', label: t('Reset Card Plan') },
+                      ]}
+                      onValueChange={field.onChange}
+                      value={field.value}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent alignItemWithTrigger={false}>
+                        <SelectGroup>
+                          <SelectItem value='subscription'>
+                            {t('Subscription Plan')}
+                          </SelectItem>
+                          <SelectItem value='reset_card'>
+                            {t('Reset Card Plan')}
+                          </SelectItem>
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                    <FormDescription>
+                      {t(
+                        'A reset card plan sells reset cards instead of creating a subscription. The plan duration is the card validity period.'
+                      )}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
               <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
                 <FormField
                   control={form.control}
@@ -386,46 +431,86 @@ export function SubscriptionsMutateDrawer({
                   )}
                 />
 
-                <FormField
-                  control={form.control}
-                  name='total_amount'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>
-                        {t('Quota ({{currency}})', { currency: currencyLabel })}
-                      </FormLabel>
-                      <FormControl>
-                        <Input
-                          {...field}
-                          type='number'
-                          min={-1}
-                          step={tokensOnly ? 1 : 0.01}
-                          placeholder={
-                            tokensOnly
-                              ? t('Enter quota in tokens')
-                              : t('Enter quota in {{currency}}', {
-                                  currency: currencyLabel,
-                                })
-                          }
-                          onChange={(e) =>
-                            field.onChange(
-                              Number.parseFloat(e.target.value) || 0
-                            )
-                          }
-                        />
-                      </FormControl>
-                      <FormDescription>
-                        {t(
-                          'Total quota included in the plan, usable per billing period. 0 means unlimited; -1 means no shared pool (fund only via per-model buckets).'
-                        )}
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                {isResetCardPlan ? (
+                  <FormField
+                    control={form.control}
+                    name='reset_card_count'
+                    render={({ field: cardCountField }) => (
+                      <FormItem>
+                        <FormLabel>{t('Reset Cards per Purchase')}</FormLabel>
+                        <FormControl>
+                          <Input
+                            {...cardCountField}
+                            type='number'
+                            min={1}
+                            max={100}
+                            step={1}
+                            onChange={(e) =>
+                              cardCountField.onChange(
+                                Number.parseInt(e.target.value, 10) || 1
+                              )
+                            }
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          {t(
+                            'How many reset cards one purchase of this plan delivers.'
+                          )}
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                ) : (
+                  <FormField
+                    control={form.control}
+                    name='total_amount'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>
+                          {t('Quota ({{currency}})', {
+                            currency: currencyLabel,
+                          })}
+                        </FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            type='number'
+                            min={-1}
+                            step={tokensOnly ? 1 : 0.01}
+                            placeholder={
+                              tokensOnly
+                                ? t('Enter quota in tokens')
+                                : t('Enter quota in {{currency}}', {
+                                    currency: currencyLabel,
+                                  })
+                            }
+                            onChange={(e) =>
+                              field.onChange(
+                                Number.parseFloat(e.target.value) || 0
+                              )
+                            }
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          {t(
+                            'Total quota included in the plan, usable per billing period. 0 means unlimited; -1 means no shared pool (fund only via per-model buckets).'
+                          )}
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
               </div>
 
-              <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
+              <div
+                className={
+                  isResetCardPlan
+                    ? 'hidden'
+                    : 'grid grid-cols-1 gap-3 sm:grid-cols-2'
+                }
+              >
                 <FormField
                   control={form.control}
                   name='window_5h_amount'
@@ -671,7 +756,9 @@ export function SubscriptionsMutateDrawer({
             </SideDrawerSection>
 
             {/* Quota Buckets & Groups */}
-            <SideDrawerSection>
+            <SideDrawerSection
+              className={isResetCardPlan ? 'hidden' : undefined}
+            >
               <h3 className='flex items-center gap-2 text-sm font-medium'>
                 <IconBadge tone='chart-2' size='xs'>
                   <Boxes />
@@ -984,7 +1071,9 @@ export function SubscriptionsMutateDrawer({
             </SideDrawerSection>
 
             {/* Quota Reset */}
-            <SideDrawerSection>
+            <SideDrawerSection
+              className={isResetCardPlan ? 'hidden' : undefined}
+            >
               <h3 className='flex items-center gap-2 text-sm font-medium'>
                 <IconBadge tone='success' size='xs'>
                   <RefreshCw />

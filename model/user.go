@@ -122,6 +122,9 @@ type User struct {
 	LastLoginAt         int64                      `json:"last_login_at" gorm:"default:0;column:last_login_at"`
 	AuthVersion         int64                      `json:"-" gorm:"type:bigint;not null;default:1;column:auth_version"`
 	AdminPermissions    map[string]map[string]bool `json:"admin_permissions,omitempty" gorm:"-:all"`
+
+	TrainingConsent           TrainingConsent `json:"-" gorm:"size:36;not null;default:''"`
+	AcceptedAgreementRevision string          `json:"-" gorm:"size:64;not null;default:''"`
 }
 
 func (user *User) ToBaseUser() *UserBase {
@@ -776,7 +779,7 @@ func (user *User) TransferAffQuotaToQuota(quota int) error {
 	user.Quota += quota
 
 	// 保存用户状态
-	if err := tx.Save(user).Error; err != nil {
+	if err := tx.Omit("training_consent", "accepted_agreement_revision").Save(user).Error; err != nil {
 		return err
 	}
 
@@ -1095,6 +1098,8 @@ func (user *User) UpdateWithTx(tx *gorm.DB, updatePassword bool) error {
 	}
 	if err = tx.Model(&current).Omit(
 		"access_token",
+		"training_consent",
+		"accepted_agreement_revision",
 		"quota",
 		"used_quota",
 		"request_count",

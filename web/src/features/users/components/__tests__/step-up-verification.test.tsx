@@ -159,7 +159,7 @@ it('cancelling verification leaves the user untouched and returns to the confirm
   expect(del).not.toHaveBeenCalled()
 })
 
-it('disabling a user from the row menu binds the proof to the user and action', async () => {
+it('disabling a user requires a public reason and binds the proof to the user and action', async () => {
   const proof = mockVerification('admin.user.manage', 'manage-proof')
   const post = vi.spyOn(api, 'post').mockImplementation(async (url) => {
     if (url === '/api/verify') return proof
@@ -173,6 +173,14 @@ it('disabling a user from the row menu binds the proof to the user and action', 
   await userEvent.click(
     await screen.findByRole('menuitem', { name: 'Disable' })
   )
+  const submit = await screen.findByRole('button', { name: 'Continue' })
+  const reason = screen.getByLabelText('Public ban reason')
+  expect(submit).toBeDisabled()
+  await userEvent.type(reason, '   ')
+  expect(submit).toBeDisabled()
+  expect(post).not.toHaveBeenCalled()
+  await userEvent.type(reason, 'Repeated policy violations')
+  await userEvent.click(submit)
   expect(post).not.toHaveBeenCalledWith(
     '/api/user/manage',
     expect.anything(),
@@ -182,7 +190,7 @@ it('disabling a user from the row menu binds the proof to the user and action', 
   await waitFor(() =>
     expect(post).toHaveBeenCalledWith(
       '/api/user/manage',
-      { id: 2, action: 'disable' },
+      { id: 2, action: 'disable', reason: 'Repeated policy violations' },
       expect.objectContaining({
         headers: { 'X-Security-Proof': 'manage-proof' },
         singleUseAuthorization: true,

@@ -195,7 +195,12 @@ func GetAbout(c *gin.Context) {
 }
 
 func GetUserAgreement(c *gin.Context) {
-	serveRevalidatedJSON(c, system_setting.GetLegalSettings().UserAgreement)
+	content, err := model.GetCurrentUserAgreement(c.Request.Context())
+	if err != nil {
+		common.ApiErrorStatus(c, http.StatusInternalServerError, common.NewMessage("Please try again later."))
+		return
+	}
+	serveRevalidatedJSON(c, content)
 }
 
 func GetPrivacyPolicy(c *gin.Context) {

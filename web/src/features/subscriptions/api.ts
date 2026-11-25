@@ -30,6 +30,10 @@ import type {
   SubscriptionPayResponse,
   SubscriptionPayRequest,
   SelfSubscriptionData,
+  ResetCard,
+  AdminGrantResetCardsRequest,
+  AdminGrantResetCardsResponse,
+  UseResetCardRequest,
 } from './types'
 
 // ============================================================================
@@ -126,6 +130,68 @@ export async function resetPlanSubscriptions(
   const res = await api.post(
     `/api/subscription/admin/plans/${planId}/subscriptions/reset`,
     data
+  )
+  return res.data
+}
+
+// ============================================================================
+// Reset Cards
+// ============================================================================
+
+export async function getSelfResetCards(): Promise<ApiResponse<ResetCard[]>> {
+  const res = await api.get('/api/subscription/reset-cards')
+  return res.data
+}
+
+export async function useResetCard(
+  data: UseResetCardRequest
+): Promise<ApiResponse<UserSubscriptionRecord>> {
+  const res = await api.post('/api/subscription/reset-cards/use', data)
+  return res.data
+}
+
+export async function getAdminResetCards(params: {
+  keyword?: string
+  status?: string
+  user_id?: number
+  p?: number
+  page_size?: number
+}): Promise<
+  ApiResponse<{
+    items: ResetCard[]
+    total: number
+    page: number
+    page_size: number
+  }>
+> {
+  const res = await api.get('/api/subscription/admin/reset-cards', { params })
+  return res.data
+}
+
+export async function adminGrantResetCards(
+  data: AdminGrantResetCardsRequest
+): Promise<ApiResponse<AdminGrantResetCardsResponse>> {
+  const res = await api.post('/api/subscription/admin/reset-cards/grant', data)
+  return res.data
+}
+
+export async function adminDisableResetCard(id: number): Promise<ApiResponse> {
+  const res = await api.post(
+    `/api/subscription/admin/reset-cards/${id}/disable`
+  )
+  return res.data
+}
+
+export async function adminDeleteResetCard(id: number): Promise<ApiResponse> {
+  const res = await api.delete(`/api/subscription/admin/reset-cards/${id}`)
+  return res.data
+}
+
+export async function adminListUserResetCards(
+  userId: number
+): Promise<ApiResponse<ResetCard[]>> {
+  const res = await api.get(
+    `/api/subscription/admin/users/${userId}/reset-cards`
   )
   return res.data
 }

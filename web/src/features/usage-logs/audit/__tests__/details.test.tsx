@@ -30,7 +30,7 @@ import type { ReactElement } from 'react'
 import { I18nextProvider } from 'react-i18next'
 import { afterEach, expect, it, vi } from 'vitest'
 
-import zh from '@/i18n/locales/zh.json'
+import zh from '@/i18n/__fixtures__/legacy-zh.json'
 import type { PermissionResourceDef } from '@/lib/admin-permissions'
 import { api } from '@/lib/api'
 import dayjs from '@/lib/dayjs'

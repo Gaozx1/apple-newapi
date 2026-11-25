@@ -16,11 +16,27 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { lazy } from 'react'
+
 import { createSectionRegistry } from '../utils/section-registry'
-import { ChannelHealthSection } from './channel-health-section'
 import type { RequestPolicySettings } from './defaults'
-import { RequestChecksSection } from './request-checks-section'
-import { RoutingPolicySection } from './routing-section'
+
+// Navigation reads this registry eagerly; load each form only when rendered.
+const ChannelHealthSection = lazy(() =>
+  import('./channel-health-section').then((module) => ({
+    default: module.ChannelHealthSection,
+  }))
+)
+const RequestChecksSection = lazy(() =>
+  import('./request-checks-section').then((module) => ({
+    default: module.RequestChecksSection,
+  }))
+)
+const RoutingPolicySection = lazy(() =>
+  import('./routing-section').then((module) => ({
+    default: module.RoutingPolicySection,
+  }))
+)
 
 const POLICY_SECTIONS = [
   {

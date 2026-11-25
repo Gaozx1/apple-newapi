@@ -142,12 +142,34 @@ func InvalidateSubscriptionPlanCache(planId int) {
 	_ = infoCache.Purge()
 }
 
+// Subscription plan types
+const (
+	// SubscriptionPlanTypeSubscription is the regular plan that creates a
+	// user subscription on purchase.
+	SubscriptionPlanTypeSubscription = "subscription"
+	// SubscriptionPlanTypeResetCard sells reset cards instead of creating a
+	// user subscription. The plan's duration settings define the card expiry.
+	SubscriptionPlanTypeResetCard = "reset_card"
+)
+
+func NormalizePlanType(planType string) string {
+	if strings.TrimSpace(planType) == SubscriptionPlanTypeResetCard {
+		return SubscriptionPlanTypeResetCard
+	}
+	return SubscriptionPlanTypeSubscription
+}
+
 // Subscription plan
 type SubscriptionPlan struct {
 	Id int `json:"id"`
 
 	Title    string `json:"title" gorm:"type:varchar(128);not null"`
 	Subtitle string `json:"subtitle" gorm:"type:varchar(255);default:''"`
+
+	// PlanType selects what a purchase delivers: a regular subscription or
+	// reset cards. ResetCardCount is the number of cards issued per purchase.
+	PlanType       string `json:"plan_type" gorm:"type:varchar(16);not null;default:'subscription'"`
+	ResetCardCount int    `json:"reset_card_count" gorm:"type:int;not null;default:1"`
 
 	// Display money amount (follow existing code style: float64 for money)
 	PriceAmount float64 `json:"price_amount" gorm:"type:decimal(10,6);not null;default:0"`
@@ -235,6 +257,16 @@ func (p *SubscriptionPlan) NormalizeDefaults() {
 	if p.AllowWalletOverflow == nil {
 		p.AllowWalletOverflow = common.GetPointer(true)
 	}
+	p.PlanType = NormalizePlanType(p.PlanType)
+	if p.PlanType == SubscriptionPlanTypeResetCard && p.ResetCardCount <= 0 {
+		p.ResetCardCount = 1
+	}
+}
+
+// IsResetCardPlan reports whether buying this plan issues reset cards instead
+// of creating a user subscription.
+func (p *SubscriptionPlan) IsResetCardPlan() bool {
+	return p != nil && NormalizePlanType(p.PlanType) == SubscriptionPlanTypeResetCard
 }
 
 // ParseModelQuotas returns the plan's per-model quota buckets. Malformed or
@@ -774,15 +806,22 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string, expectedP
 		if err := lockForUpdate(tx).Select("id").Where("id = ?", order.UserId).First(&userRow).Error; err != nil {
 			return err
 		}
-		subscription, err := CreateUserSubscriptionFromPlanTx(tx, order.UserId, plan, "order")
-		if err != nil {
-			return err
+		var subscription *UserSubscription
+		if plan.IsResetCardPlan() {
+			if _, err := IssueResetCardsFromPlanTx(tx, order.UserId, plan, ResetCardSourceOrder, order.TradeNo); err != nil {
+				return err
+			}
+		} else {
+			subscription, err = CreateUserSubscriptionFromPlanTx(tx, order.UserId, plan, "order")
+			if err != nil {
+				return err
+			}
 		}
 		// 订阅购买按其实际支付金额计入累计充值
 		if err := creditRechargeAmount(tx, order.UserId, order.Money, 0); err != nil {
 			return err
 		}
-		if subscription.PrevUserGroup != "" {
+		if subscription != nil && subscription.PrevUserGroup != "" {
 			upgradeGroup = strings.TrimSpace(subscription.UpgradeGroup)
 		}
 		if err := upsertSubscriptionTopUpTx(tx, &order); err != nil {
@@ -880,7 +919,8 @@ func ExpireSubscriptionOrder(tradeNo string, expectedPaymentProvider string) err
 	})
 }
 
-// Admin bind (no payment). Creates a UserSubscription from a plan.
+// Admin bind (no payment). Creates a UserSubscription from a plan, or issues
+// reset cards when the plan sells reset cards instead.
 func AdminBindSubscription(userId int, planId int, sourceNote string) (*common.Message, error) {
 	if userId <= 0 || planId <= 0 {
 		return nil, errors.New("invalid userId or planId")
@@ -894,6 +934,10 @@ func AdminBindSubscription(userId int, planId int, sourceNote string) (*common.M
 		// 与 CompleteSubscriptionOrder 一致：先锁用户行，再做购买次数检查。
 		var userRow User
 		if err := lockForUpdate(tx).Select("id").Where("id = ?", userId).First(&userRow).Error; err != nil {
+			return err
+		}
+		if plan.IsResetCardPlan() {
+			_, err := IssueResetCardsFromPlanTx(tx, userId, plan, ResetCardSourceAdmin, "")
 			return err
 		}
 		subscription, err := CreateUserSubscriptionFromPlanTx(tx, userId, plan, "admin")
@@ -949,6 +993,15 @@ func PurchaseSubscriptionWithBalance(userId int, planId int) error {
 		if plan.AllowBalancePay != nil && !*plan.AllowBalancePay {
 			return common.NewMessage("This plan does not allow balance redemption")
 		}
+		if plan.IsResetCardPlan() && plan.MaxPurchasePerUser > 0 {
+			count, err := CountResetCardPlanPurchases(userId, plan.Id)
+			if err != nil {
+				return err
+			}
+			if count >= int64(plan.MaxPurchasePerUser) {
+				return common.NewMessage("Purchase limit for this plan has been reached")
+			}
+		}
 
 		requiredQuota, err := calcSubscriptionBalanceQuota(plan.PriceAmount)
 		if err != nil {
@@ -969,9 +1022,18 @@ func PurchaseSubscriptionWithBalance(userId int, planId int) error {
 			}
 		}
 
-		subscription, err := CreateUserSubscriptionFromPlanTx(tx, userId, plan, PaymentMethodBalance)
-		if err != nil {
-			return err
+		now := common.GetTimestamp()
+		tradeNo := fmt.Sprintf("SUBBALUSR%dNO%s%d", userId, common.GetRandomString(6), time.Now().UnixNano())
+		var subscription *UserSubscription
+		if plan.IsResetCardPlan() {
+			if _, err := IssueResetCardsFromPlanTx(tx, userId, plan, ResetCardSourceBalance, tradeNo); err != nil {
+				return err
+			}
+		} else {
+			subscription, err = CreateUserSubscriptionFromPlanTx(tx, userId, plan, PaymentMethodBalance)
+			if err != nil {
+				return err
+			}
 		}
 
 		// 余额购买订阅同样计入累计充值，金额为套餐价格
@@ -979,8 +1041,6 @@ func PurchaseSubscriptionWithBalance(userId int, planId int) error {
 			return err
 		}
 
-		now := common.GetTimestamp()
-		tradeNo := fmt.Sprintf("SUBBALUSR%dNO%s%d", userId, common.GetRandomString(6), time.Now().UnixNano())
 		order := &SubscriptionOrder{
 			UserId:          userId,
 			PlanId:          plan.Id,
@@ -1000,7 +1060,7 @@ func PurchaseSubscriptionWithBalance(userId int, planId int) error {
 		logPlanTitle = plan.Title
 		logMoney = plan.PriceAmount
 		chargedQuota = requiredQuota
-		if subscription.PrevUserGroup != "" {
+		if subscription != nil && subscription.PrevUserGroup != "" {
 			upgradeGroup = strings.TrimSpace(subscription.UpgradeGroup)
 		}
 		return nil

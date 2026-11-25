@@ -137,7 +137,7 @@ function FilterSection(props: FilterSectionProps) {
         <ChevronDown className='text-muted-foreground size-4 transition-transform group-data-[panel-open]:rotate-180' />
       </CollapsibleTrigger>
       <CollapsibleContent>
-        <div className='flex flex-wrap gap-1.5'>
+        <div className='studio-catalog-filter-options flex gap-1.5'>
           {props.options.map((option) => (
             <FilterChip
               key={option.value}
@@ -274,7 +274,7 @@ export const PricingSidebar = memo(function PricingSidebar(
   ]
 
   return (
-    <aside className={cn('surface-glass rounded-2xl p-4', props.className)}>
+    <aside className={cn('studio-catalog-filters p-4', props.className)}>
       <div className='mb-2.5 flex items-center justify-between gap-2'>
         <div>
           <h2 className='text-foreground text-sm font-bold'>{t('Filter')}</h2>

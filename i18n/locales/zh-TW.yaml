@@ -279,3 +279,8 @@ channel.upstream_update_added_models: "新增模型範例（顯示 {{.Shown}}/{{
 channel.upstream_update_removed_models: "刪除模型範例（顯示 {{.Shown}}/{{.Total}}）：{{.Models}}"
 channel.upstream_update_failed_channels: "失敗管道 ID（顯示 {{.Shown}}/{{.Total}}）：{{.Ids}}"
 channel.upstream_update_more_omitted: "（其餘 {{.Count}} 個已省略）"
+
+# 破甲警告郵件
+email.jailbreak_warning.subject: "{{.SystemName}} — 破甲嘗試警告"
+email.jailbreak_warning.intro: "您的請求被判定為疑似破甲（提示詞注入）嘗試。這是第 {{.Warning}} 次警告，共 {{.Limit}} 次。"
+email.jailbreak_warning.action: "累計達到 {{.Limit}} 次確認嘗試後，帳戶將被自動封禁。剩餘警告次數：{{.Remaining}}。"

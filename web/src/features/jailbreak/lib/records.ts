@@ -25,6 +25,8 @@ export type JailbreakActionVariant = 'danger' | 'warning' | 'neutral'
 /** i18n key of the action the guard took. */
 export function actionLabelKey(action: string): string {
   switch (action) {
+    case 'warned':
+      return 'Warning email sent'
     case 'banned':
       return 'Account banned'
     case 'already_banned':
@@ -41,6 +43,8 @@ export function jailbreakActionVariant(action: string): JailbreakActionVariant {
   switch (action) {
     case 'banned':
       return 'danger'
+    case 'warned':
+      return 'warning'
     case 'already_banned':
       return 'warning'
     default:

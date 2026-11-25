@@ -63,10 +63,15 @@ var defaultPluginDispatcher = &pluginRouteDispatcher{registry: jsplugin.DefaultR
 // pluginHandoffRoutes are the host routes that offer matching requests to the
 // plugin routes before their own handlers run, so a plugin route may overlap
 // them: GET /v1/videos/:task_id offers a task to its own plugin's query route
-// (handOffNativeTaskQuery) and the Gemini relay offers :predictLongRunning.
+// (handOffNativeTaskQuery), the Gemini relay offers :predictLongRunning, and the
+// DeepSeek tools relay offers /v1/tools/search and /v1/tools/fetch, whose
+// dispatch runs before that group's authentication. Only the trailing-slash
+// redirect these routes cause still answers a plugin route first.
 var pluginHandoffRoutes = map[string]struct{}{
 	http.MethodGet + " /v1/videos/:task_id":   {},
 	http.MethodPost + " /v1beta/models/*path": {},
+	http.MethodPost + " /v1/tools/search":     {},
+	http.MethodPost + " /v1/tools/fetch":      {},
 }
 
 func SetPluginRouter(outer *gin.Engine) gin.HandlerFunc {

@@ -22,6 +22,7 @@ import {
   ClipboardList,
   CreditCard,
   FileText,
+  Fingerprint,
   FlaskConical,
   Gift,
   Images,
@@ -90,6 +91,11 @@ export function useSidebarData(badges: SidebarBadges = {}): SidebarData {
             title: t('Dashboard'),
             url: '/dashboard/models',
             icon: LayoutDashboard,
+          },
+          {
+            title: t('Model Fingerprinting'),
+            url: '/model-fingerprint',
+            icon: Fingerprint,
           },
           {
             title: t('API Keys'),

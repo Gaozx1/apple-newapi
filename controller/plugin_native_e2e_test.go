@@ -687,3 +687,147 @@ func TestDoubaoRelayedImageStreamSettlement(t *testing.T) {
 		})
 	}
 }
+
+// The tools plugin relays standard OpenAI tool calls and bills one call per
+// delivered answer: a 2xx reply settles the per-call price, and a 2xx body that
+// carries an OpenAI error envelope settles to zero so the reservation is
+// refunded.
+func TestToolsPluginBillsOneCallPerDeliveredAnswer(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	service.InitHttpClient()
+
+	previousDB := model.DB
+	previousLogDB := model.LOG_DB
+	previousMainType, previousLogType := common.MainDatabaseType(), common.LogDatabaseType()
+	previousMemoryCache := common.MemoryCacheEnabled
+	previousRedisEnabled := common.RedisEnabled
+	previousIsMaster := common.IsMasterNode
+	previousSQLitePath := common.SQLitePath
+	previousPrices := ratio_setting.ModelPrice2JSONString()
+	previousGroups := ratio_setting.GroupRatio2JSONString()
+
+	common.SetDatabaseTypes(common.DatabaseTypeSQLite, common.DatabaseTypeSQLite)
+	common.IsMasterNode = true
+	common.MemoryCacheEnabled = false
+	common.BatchUpdateEnabled = false
+	common.LogConsumeEnabled = false
+	common.RedisEnabled = false
+	common.SQLitePath = filepath.Join(t.TempDir(), "tools-route.db")
+	t.Setenv("SQL_DSN", "")
+	t.Setenv("LOG_SQL_DSN", "")
+	require.NoError(t, model.InitDB())
+	require.NoError(t, model.InitLogDB())
+	database := model.DB
+	require.NotNil(t, database)
+
+	t.Cleanup(func() {
+		model.DB = previousDB
+		model.LOG_DB = previousLogDB
+		common.SetDatabaseTypes(previousMainType, previousLogType)
+		common.MemoryCacheEnabled = previousMemoryCache
+		common.RedisEnabled = previousRedisEnabled
+		common.IsMasterNode = previousIsMaster
+		common.SQLitePath = previousSQLitePath
+		_ = ratio_setting.UpdateModelPriceByJSONString(previousPrices)
+		_ = ratio_setting.UpdateGroupRatioByJSONString(previousGroups)
+		if sqlDB, err := database.DB(); err == nil {
+			_ = sqlDB.Close()
+		}
+	})
+
+	// 10,000 quota per delivered call.
+	require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(`{"search":0.02}`))
+	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"default":1}`))
+
+	var upstreamPath, upstreamAuthorization, upstreamBody string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upstreamPath = r.URL.Path
+		upstreamAuthorization = r.Header.Get("Authorization")
+		raw, _ := io.ReadAll(r.Body)
+		upstreamBody = string(raw)
+		w.Header().Set("Content-Type", "application/json")
+		if strings.Contains(upstreamBody, "refuse") {
+			_, _ = w.Write([]byte(`{"error":{"message":"tool refused the call"}}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"results":[{"title":"deepseek"}]}`))
+	}))
+	defer upstream.Close()
+
+	require.NoError(t, database.Create(&model.User{
+		Id: 1, Username: "tools", Group: "default", Quota: 1_000_000, Status: common.UserStatusEnabled,
+		AffCode: "tools1",
+	}).Error)
+	token := &model.Token{
+		Id: 1, UserId: 1, Key: "toolscode", Name: "tools", Status: common.TokenStatusEnabled,
+		ExpiredTime: -1, UnlimitedQuota: true, Group: "default",
+	}
+	require.NoError(t, database.Create(token).Error)
+	setting := `{"task_plugin_key":"tools"}`
+	channel := model.Channel{
+		Id: 1, Type: constant.ChannelTypeTaskPlugin, Name: "tools", Key: "tok-123",
+		BaseURL: &upstream.URL, Models: "search", Group: "default",
+		Status: common.ChannelStatusEnabled, Setting: &setting,
+	}
+	require.NoError(t, database.Create(&channel).Error)
+
+	generation := pluginruntime.DefaultRegistry.Generation()
+	require.NotNil(t, generation)
+	binding, found := generation.LookupDeclaredRoute(http.MethodPost, "/v1/tools/:model")
+	require.True(t, found)
+
+	currentQuota := func() int {
+		var refreshed model.User
+		require.NoError(t, database.First(&refreshed, 1).Error)
+		return refreshed.Quota
+	}
+	submit := func(body string) *httptest.ResponseRecorder {
+		recorder := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(recorder)
+		c.Request = httptest.NewRequest(http.MethodPost, "/v1/tools/search", bytes.NewBufferString(body))
+		c.Request.Header.Set("Content-Type", "application/json")
+		c.Params = gin.Params{{Key: "s2", Value: "search"}}
+		c.Set(pluginruntime.ContextKeyPinnedRoute, pluginruntime.PinnedRoute{
+			Generation: generation, Plugin: binding.Plugin, Route: binding.Route,
+		})
+		c.Set(pluginruntime.ContextKeyPinnedPlugin, pluginruntime.PinnedPlugin{
+			Generation: generation, Plugin: binding.Plugin,
+		})
+		middleware.PrepareTaskPluginRoute()(c)
+		require.False(t, c.IsAborted(), recorder.Body.String())
+		require.Nil(t, middleware.SetupContextForSelectedChannel(c, &channel, "search"))
+		common.SetContextKey(c, constant.ContextKeyUserId, 1)
+		common.SetContextKey(c, constant.ContextKeyUserGroup, "default")
+		common.SetContextKey(c, constant.ContextKeyUsingGroup, "default")
+		common.SetContextKey(c, constant.ContextKeyUserQuota, currentQuota())
+		require.NoError(t, middleware.SetupContextForToken(c, token))
+		RelayTask(c)
+		return recorder
+	}
+
+	recorder := submit(`{"query":"deepseek","count":3}`)
+	require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+	assert.Contains(t, recorder.Body.String(), `"results":[{"title":"deepseek"}]`)
+	assert.Equal(t, "/v1/tools/search", upstreamPath)
+	assert.Equal(t, "Bearer tok-123", upstreamAuthorization)
+	assert.JSONEq(t, `{"query":"deepseek","count":3}`, upstreamBody)
+	assert.Equal(t, 1_000_000-10_000, currentQuota(), "a delivered call bills the per-call price")
+
+	var delivered model.Task
+	require.NoError(t, database.Where("platform = ?", "tools").Order("id desc").First(&delivered).Error)
+	assert.Equal(t, model.TaskStatus(model.TaskStatusSuccess), delivered.Status)
+	assert.Equal(t, 10_000, delivered.Quota)
+
+	// The vendor answered 2xx with an error envelope: nothing was delivered, so
+	// the reservation is refunded.
+	recorder = submit(`{"query":"refuse"}`)
+	require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+	assert.Contains(t, recorder.Body.String(), "tool refused the call")
+	assert.Contains(t, recorder.Body.String(), "tool_call_failed")
+	assert.Equal(t, 1_000_000-10_000, currentQuota(), "an answer with an error envelope is not charged")
+
+	var refused model.Task
+	require.NoError(t, database.Where("platform = ?", "tools").Order("id desc").First(&refused).Error)
+	assert.Equal(t, model.TaskStatus(model.TaskStatusFailure), refused.Status)
+	assert.Equal(t, 0, refused.Quota)
+}

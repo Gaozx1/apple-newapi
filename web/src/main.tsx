@@ -51,8 +51,8 @@ const queryClient = createAppQueryClient(() => {
 const router = createRouter({
   routeTree,
   context: { queryClient },
-  defaultPreload: 'intent',
-  defaultPreloadStaleTime: 0,
+  // Fetch a route when the visitor opens it, including on touch devices.
+  defaultPreload: false,
 })
 
 // Register the router instance for type safety

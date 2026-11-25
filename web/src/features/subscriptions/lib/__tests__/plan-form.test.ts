@@ -46,9 +46,39 @@ function makePlan(overrides: Partial<SubscriptionPlan>): SubscriptionPlan {
     allow_wallet_overflow: true,
     max_purchase_per_user: 0,
     total_amount: 0,
+    plan_type: 'subscription',
+    reset_card_count: 1,
     ...overrides,
   }
 }
+
+describe('plan-form reset card plans', () => {
+  it('loads a reset card plan with its card count', () => {
+    const values = planToFormValues(
+      makePlan({ plan_type: 'reset_card', reset_card_count: 5 })
+    )
+    expect(values.plan_type).toBe('reset_card')
+    expect(values.reset_card_count).toBe(5)
+  })
+
+  it('sends the reset card plan type and count on save', () => {
+    const payload = formValuesToPlanPayload({
+      ...planToFormValues(makePlan({ plan_type: 'reset_card' })),
+      reset_card_count: 3,
+    })
+    expect(payload.plan.plan_type).toBe('reset_card')
+    expect(payload.plan.reset_card_count).toBe(3)
+  })
+
+  it('clears the card count for regular subscription plans', () => {
+    const payload = formValuesToPlanPayload({
+      ...planToFormValues(makePlan({ plan_type: 'subscription' })),
+      reset_card_count: 4,
+    })
+    expect(payload.plan.plan_type).toBe('subscription')
+    expect(payload.plan.reset_card_count).toBe(0)
+  })
+})
 
 describe('plan-form token buckets', () => {
   it('parses model_token_quotas JSON into editable rows', () => {

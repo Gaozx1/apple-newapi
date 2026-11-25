@@ -66,9 +66,19 @@ func SetRelayRouter(router *gin.Engine) {
 	playgroundRouter.Use(middleware.SystemPerformanceCheck())
 	playgroundRouter.Use(middleware.UserAuth(), middleware.Distribute())
 	{
-		playgroundRouter.POST("/chat/completions", controller.Playground)
+		playgroundRouter.POST("/chat/completions", middleware.PlaygroundTrainingChat(), controller.Playground)
 	}
 	relayV1Router := router.Group("/v1")
+	// The DeepSeek Search and Fetch endpoints are plugin routes too: a plugin
+	// declaring POST /v1/tools/:model answers the requests its routes match
+	// before this group's auth, rate limit and channel selection, and without
+	// one the request stays with the DeepSeek tools relay. Only /v1/tools takes
+	// this path, so the rest of /v1 keeps its routing.
+	relayV1Router.Use(func(c *gin.Context) {
+		if strings.HasPrefix(c.Request.URL.Path, "/v1/tools/") {
+			defaultPluginDispatcher.dispatch(c)
+		}
+	})
 	relayV1Router.Use(middleware.RouteTag("relay"))
 	relayV1Router.Use(middleware.SystemPerformanceCheck())
 	relayV1Router.Use(middleware.TokenAuth())

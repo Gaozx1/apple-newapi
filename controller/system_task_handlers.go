@@ -18,11 +18,40 @@ import (
 // service.StartSystemTaskRunner.
 func RegisterScheduledSystemTasks() {
 	service.RegisterSystemTaskHandler(channelTestHandler{})
+	service.RegisterSystemTaskHandler(modelFingerprintHandler{})
 	service.RegisterSystemTaskHandler(modelUpdateHandler{})
 	service.RegisterSystemTaskHandler(midjourneyPollHandler{})
 	service.RegisterSystemTaskHandler(asyncTaskPollHandler{})
 	service.RegisterSystemTaskHandler(offlineImageHandler{})
 	service.RegisterSystemTaskHandler(storeChannelHealthHandler{})
+}
+
+// The system task runner owns the lease, cadence and run history across masters.
+type modelFingerprintHandler struct{}
+
+func (modelFingerprintHandler) Type() string  { return model.SystemTaskTypeModelFingerprint }
+func (modelFingerprintHandler) Enabled() bool { return configuredFingerprintSchedule().Enabled }
+func (modelFingerprintHandler) Interval() time.Duration {
+	return time.Duration(configuredFingerprintSchedule().Minutes) * time.Minute
+}
+func (modelFingerprintHandler) NewPayload() any { return nil }
+func (h modelFingerprintHandler) Run(ctx context.Context, task *model.SystemTask, runnerID string) {
+	// A queued task may have been disabled before a runner claimed it.
+	if !h.Enabled() {
+		finishSystemTaskHandler(task, runnerID, model.SystemTaskStatusSucceeded, nil, nil)
+		return
+	}
+	id, err := resolveChannelTestUserID(nil)
+	if err != nil {
+		finishSystemTaskHandler(task, runnerID, model.SystemTaskStatusFailed, nil, err)
+		return
+	}
+	run, err := runFingerprintCheck(ctx, id, "")
+	if err != nil {
+		finishSystemTaskHandler(task, runnerID, model.SystemTaskStatusFailed, nil, err)
+		return
+	}
+	finishSystemTaskHandler(task, runnerID, model.SystemTaskStatusSucceeded, map[string]any{"checked_at": run.CheckedAt, "targets": len(run.Results)}, nil)
 }
 
 // channelTestHandler runs the scheduled "test all channels" job. Enablement and

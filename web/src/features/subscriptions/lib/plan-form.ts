@@ -27,6 +27,8 @@ export function getPlanFormSchema(t: TFunction) {
   return z.object({
     title: z.string().min(1, t('Please enter plan title')),
     subtitle: z.string().optional(),
+    plan_type: z.enum(['subscription', 'reset_card']),
+    reset_card_count: z.coerce.number().min(1).max(100),
     price_amount: z.coerce.number().min(0, t('Please enter amount')),
     duration_unit: z.enum(['year', 'month', 'day', 'hour', 'custom']),
     duration_value: z.coerce.number().min(1),
@@ -75,6 +77,8 @@ export type PlanFormValues = z.infer<ReturnType<typeof getPlanFormSchema>>
 export const PLAN_FORM_DEFAULTS: PlanFormValues = {
   title: '',
   subtitle: '',
+  plan_type: 'subscription',
+  reset_card_count: 1,
   price_amount: 0,
   duration_unit: 'month',
   duration_value: 1,
@@ -173,6 +177,8 @@ export function planToFormValues(plan: SubscriptionPlan): PlanFormValues {
   return {
     title: plan.title || '',
     subtitle: plan.subtitle || '',
+    plan_type: plan.plan_type === 'reset_card' ? 'reset_card' : 'subscription',
+    reset_card_count: Number(plan.reset_card_count || 1),
     price_amount: Number(plan.price_amount || 0),
     duration_unit: plan.duration_unit || 'month',
     duration_value: Number(plan.duration_value || 1),
@@ -209,6 +215,11 @@ export function formValuesToPlanPayload(values: PlanFormValues): PlanPayload {
   return {
     plan: {
       ...values,
+      plan_type: values.plan_type || 'subscription',
+      reset_card_count:
+        values.plan_type === 'reset_card'
+          ? Number(values.reset_card_count || 1)
+          : 0,
       price_amount: Number(values.price_amount || 0),
       currency: 'USD',
       duration_value: Number(values.duration_value || 0),

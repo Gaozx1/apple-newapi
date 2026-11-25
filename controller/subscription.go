@@ -119,6 +119,29 @@ func SubscriptionRequestBalancePay(c *gin.Context) {
 
 // ---- Admin APIs ----
 
+// validatePlanPurchaseLimit enforces a plan's per-user purchase limit. Regular
+// plans count user subscriptions; reset-card plans count previously issued
+// cards, so re-buying the same reset-card plan is capped the same way.
+func validatePlanPurchaseLimit(plan *model.SubscriptionPlan, userId int) error {
+	if plan == nil || plan.MaxPurchasePerUser <= 0 {
+		return nil
+	}
+	var count int64
+	var err error
+	if plan.IsResetCardPlan() {
+		count, err = model.CountResetCardPlanPurchases(userId, plan.Id)
+	} else {
+		count, err = model.CountUserSubscriptionsByPlan(userId, plan.Id)
+	}
+	if err != nil {
+		return err
+	}
+	if count >= int64(plan.MaxPurchasePerUser) {
+		return common.NewMessage("Purchase limit for this plan has been reached")
+	}
+	return nil
+}
+
 func AdminListSubscriptionPlans(c *gin.Context) {
 	var plans []model.SubscriptionPlan
 	if err := model.DB.Order("sort_order desc, id desc").Find(&plans).Error; err != nil {
@@ -153,6 +176,30 @@ func AdminCreateSubscriptionPlan(c *gin.Context) {
 	if strings.TrimSpace(req.Plan.Title) == "" {
 		common.ApiErrorT(c, "Subscription plan title cannot be empty")
 		return
+	}
+	req.Plan.PlanType = model.NormalizePlanType(req.Plan.PlanType)
+	if req.Plan.PlanType == model.SubscriptionPlanTypeResetCard {
+		if req.Plan.ResetCardCount <= 0 {
+			req.Plan.ResetCardCount = 1
+		}
+		if req.Plan.ResetCardCount > 100 {
+			common.ApiErrorT(c, "Reset card count cannot exceed 100")
+			return
+		}
+		// Reset-card plans deliver cards only; subscription-specific
+		// benefits and group transitions do not apply.
+		req.Plan.TotalAmount = 0
+		req.Plan.Window5hAmount = 0
+		req.Plan.Window7dAmount = 0
+		req.Plan.ModelQuotas = ""
+		req.Plan.ModelTokenQuotas = ""
+		req.Plan.UsableGroups = ""
+		req.Plan.UpgradeGroup = ""
+		req.Plan.DowngradeGroup = ""
+		req.Plan.QuotaResetPeriod = model.SubscriptionResetNever
+		req.Plan.QuotaResetCustomSeconds = 0
+	} else {
+		req.Plan.ResetCardCount = 0
 	}
 	if req.Plan.PriceAmount < 0 {
 		common.ApiErrorT(c, "Price cannot be negative")
@@ -238,6 +285,28 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 		common.ApiErrorT(c, "Subscription plan title cannot be empty")
 		return
 	}
+	req.Plan.PlanType = model.NormalizePlanType(req.Plan.PlanType)
+	if req.Plan.PlanType == model.SubscriptionPlanTypeResetCard {
+		if req.Plan.ResetCardCount <= 0 {
+			req.Plan.ResetCardCount = 1
+		}
+		if req.Plan.ResetCardCount > 100 {
+			common.ApiErrorT(c, "Reset card count cannot exceed 100")
+			return
+		}
+		req.Plan.TotalAmount = 0
+		req.Plan.Window5hAmount = 0
+		req.Plan.Window7dAmount = 0
+		req.Plan.ModelQuotas = ""
+		req.Plan.ModelTokenQuotas = ""
+		req.Plan.UsableGroups = ""
+		req.Plan.UpgradeGroup = ""
+		req.Plan.DowngradeGroup = ""
+		req.Plan.QuotaResetPeriod = model.SubscriptionResetNever
+		req.Plan.QuotaResetCustomSeconds = 0
+	} else {
+		req.Plan.ResetCardCount = 0
+	}
 	if req.Plan.PriceAmount < 0 {
 		common.ApiErrorT(c, "Price cannot be negative")
 		return
@@ -295,6 +364,8 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 		updateMap := map[string]any{
 			"title":                      req.Plan.Title,
 			"subtitle":                   req.Plan.Subtitle,
+			"plan_type":                  req.Plan.PlanType,
+			"reset_card_count":           req.Plan.ResetCardCount,
 			"price_amount":               req.Plan.PriceAmount,
 			"currency":                   req.Plan.Currency,
 			"duration_unit":              req.Plan.DurationUnit,

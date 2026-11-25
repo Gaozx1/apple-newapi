@@ -36,7 +36,7 @@ import {
 } from 'vitest'
 
 import en from '@/i18n/locales/en.json'
-import zh from '@/i18n/locales/zh.json'
+import zh from '@/i18n/__fixtures__/legacy-zh.json'
 import {
   DEFAULT_CURRENCY_CONFIG,
   useSystemConfigStore,

@@ -16,15 +16,47 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { SystemBehaviorSection } from '../general/system-behavior-section'
-import { EmailSettingsSection } from '../integrations/email-settings-section'
-import { MonitoringSettingsSection } from '../integrations/monitoring-settings-section'
-import { WorkerSettingsSection } from '../integrations/worker-settings-section'
-import { LogSettingsSection } from '../maintenance/log-settings-section'
-import { PerformanceSection } from '../maintenance/performance-section'
-import { UpdateCheckerSection } from '../maintenance/update-checker-section'
+import { lazy } from 'react'
+
 import type { OperationsSettings } from '../types'
 import { createSectionRegistry } from '../utils/section-registry'
+
+// Navigation reads this registry eagerly; load each form only when rendered.
+const SystemBehaviorSection = lazy(() =>
+  import('../general/system-behavior-section').then((module) => ({
+    default: module.SystemBehaviorSection,
+  }))
+)
+const EmailSettingsSection = lazy(() =>
+  import('../integrations/email-settings-section').then((module) => ({
+    default: module.EmailSettingsSection,
+  }))
+)
+const MonitoringSettingsSection = lazy(() =>
+  import('../integrations/monitoring-settings-section').then((module) => ({
+    default: module.MonitoringSettingsSection,
+  }))
+)
+const WorkerSettingsSection = lazy(() =>
+  import('../integrations/worker-settings-section').then((module) => ({
+    default: module.WorkerSettingsSection,
+  }))
+)
+const LogSettingsSection = lazy(() =>
+  import('../maintenance/log-settings-section').then((module) => ({
+    default: module.LogSettingsSection,
+  }))
+)
+const PerformanceSection = lazy(() =>
+  import('../maintenance/performance-section').then((module) => ({
+    default: module.PerformanceSection,
+  }))
+)
+const UpdateCheckerSection = lazy(() =>
+  import('../maintenance/update-checker-section').then((module) => ({
+    default: module.UpdateCheckerSection,
+  }))
+)
 
 const OPERATIONS_SECTIONS = [
   {

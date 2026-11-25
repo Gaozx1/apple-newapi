@@ -37,8 +37,8 @@ import userEvent from '@testing-library/user-event'
 import i18next from 'i18next'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
-import zhTW from '@/i18n/locales/zh-TW.json'
-import zh from '@/i18n/locales/zh.json'
+import zhTW from '@/i18n/__fixtures__/legacy-zh-TW.json'
+import zh from '@/i18n/__fixtures__/legacy-zh.json'
 import { api } from '@/lib/api'
 
 import { CommonLogsFilterBar } from '../common-logs-filter-bar'

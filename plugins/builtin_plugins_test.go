@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var expectedKeys = []string{"alibaba", "d1jiema", "doubao", "google", "hailuo", "jimeng", "kling", "sora", "sunoapi", "vertex-ai", "vidu", "xai"}
+var expectedKeys = []string{"alibaba", "d1jiema", "doubao", "google", "hailuo", "jimeng", "kling", "sora", "sunoapi", "tools", "vertex-ai", "vidu", "xai"}
 
 func TestBuiltInVendorPluginsDeclareNativeRoutesAndLegacyChannelTypes(t *testing.T) {
 	generation := jsplugin.DefaultRegistry.Generation()
@@ -458,4 +458,65 @@ func TestBuiltInPluginsAddressNewAPIUpstreamOnNativeRoutes(t *testing.T) {
 			})
 		}
 	})
+}
+
+func TestBuiltInToolsOCRSubmission(t *testing.T) {
+	plugin, ok := jsplugin.DefaultRegistry.Get("tools")
+	require.True(t, ok)
+	const base = "http://127.0.0.1:8765"
+	for _, tc := range []struct {
+		name      string
+		body      map[string]any
+		files     []map[string]any
+		want      map[string]any
+		wantError string
+	}{
+		{
+			name: "public URL",
+			body: map[string]any{"kind": "json", "value": map[string]any{"file": "https://example.com/image.png"}},
+			want: map[string]any{"body": map[string]any{"url": "https://example.com/image.png"}},
+		},
+		{
+			name:  "file part",
+			body:  map[string]any{"kind": "multipart", "fields": map[string]any{"purpose": []string{"text_recognition"}}},
+			files: []map[string]any{{"field": "file", "ref": "request_file:file"}},
+			want: map[string]any{
+				"bodyType": "multipart",
+				"parts":    []any{map[string]any{"name": "file", "fileRef": "request_file:file"}, map[string]any{"name": "purpose", "value": "text_recognition"}},
+			},
+		},
+		{
+			name:      "local file rejected",
+			body:      map[string]any{"kind": "json", "value": map[string]any{"file": "test-fixture.png"}},
+			wantError: "OCR requires an uploaded file or an absolute HTTP(S) URL",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if len(tc.files) > 0 {
+				tc.body["files"] = tc.files
+			}
+			var intent struct {
+				Model       string         `json:"model"`
+				RequestBody map[string]any `json:"requestBody"`
+			}
+			err := plugin.Engine.CallPathInto(t.Context(), &intent, "native", []string{"toolCall"}, map[string]any{
+				"params": map[string]any{"model": "ocr"}, "body": tc.body,
+			})
+			require.NoError(t, err)
+			assert.Equal(t, "ocr", intent.Model)
+			var request map[string]any
+			err = plugin.Engine.CallInto(t.Context(), &request, "buildSubmitRequest", map[string]any{
+				"model": intent.Model, "requestBody": intent.RequestBody, "baseUrl": base, "apiKey": "test-key", "files": tc.files,
+			})
+			if tc.wantError != "" {
+				require.ErrorContains(t, err, tc.wantError)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, base+"/v1/tools/ocr", request["url"])
+			for key, value := range tc.want {
+				assert.Equal(t, value, request[key])
+			}
+		})
+	}
 }

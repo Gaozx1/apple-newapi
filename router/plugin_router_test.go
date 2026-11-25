@@ -510,6 +510,68 @@ func TestSharedPluginRoutesRegisterOnceWithEveryCandidate(t *testing.T) {
 	assert.Equal(t, "shared-beta map[job_id:task_2]", performPluginRequest(outer, http.MethodGet, "/shared-beta/probe/v1/jobs/task_2").Body.String())
 }
 
+// The DeepSeek Search and Fetch routes offer matching requests to plugin routes
+// first, so a built-in plugin serves POST /v1/tools/:model at that top-level
+// path; a third-party plugin declaring the same route still meets the host
+// namespace rule.
+func TestDeepSeekToolsRoutesOfferMatchingRequestsToPluginRoutes(t *testing.T) {
+	const routes = `[
+		{method: "POST", path: "/v1/tools/:model", type: "submit"}
+	]`
+	handlers := testPluginRouteHandlers(func(c *gin.Context, _ *jsplugin.RoutingGeneration, binding jsplugin.RouteBinding) {
+		c.String(http.StatusOK, "plugin %s", jsplugin.RouteParams(c.Params, binding.Route)["model"])
+	})
+
+	t.Run("built-in plugin serves the top-level route", func(t *testing.T) {
+		outer := newOuterPluginTestEngine()
+		outer.POST("/v1/tools/search", func(c *gin.Context) { c.String(http.StatusOK, "host search") })
+		outer.POST("/v1/tools/fetch", func(c *gin.Context) { c.String(http.StatusOK, "host fetch") })
+		registry := jsplugin.NewRegistry()
+		_, err := registry.RegisterFactory(routerPluginSource("builtin-tools", "1.0.0", routes), jsplugin.Options{})
+		require.NoError(t, err)
+		builder := newPluginGenerationBuilder(outer.Routes(), nil, handlers)
+		require.NoError(t, registry.SetGenerationPreparer(builder.prepare))
+		outer.NoRoute(
+			(&pluginRouteDispatcher{registry: registry}).dispatch,
+			func(c *gin.Context) { c.String(http.StatusOK, "fallback") },
+		)
+
+		assert.Empty(t, registry.RoutingErrors())
+		assert.Empty(t, registry.Generation().SkippedRoutes())
+		groups := make([]string, 0)
+		for _, group := range registry.Generation().RouteGroups() {
+			groups = append(groups, group.Method+" "+group.Shape)
+		}
+		assert.ElementsMatch(t, []string{"POST /v1/tools/:", "POST /builtin-tools/v1/tools/:"}, groups)
+		assert.Equal(t, "plugin weather", performPluginRequest(outer, http.MethodPost, "/v1/tools/weather").Body.String())
+		assert.Equal(t, "plugin search", performPluginRequest(outer, http.MethodPost, "/builtin-tools/v1/tools/search").Body.String())
+		assert.Equal(t, "host search", performPluginRequest(outer, http.MethodPost, "/v1/tools/search").Body.String())
+	})
+
+	t.Run("third-party plugin stays in its own namespace", func(t *testing.T) {
+		outer := newOuterPluginTestEngine()
+		outer.POST("/v1/tools/search", func(c *gin.Context) { c.String(http.StatusOK, "host search") })
+		registry := jsplugin.NewRegistry()
+		third := compileRouterPlugin(t, "third-tools", "1.0.0", routes)
+		require.NoError(t, registry.ReplaceOverrides([]*jsplugin.LoadedPlugin{third}))
+		builder := newPluginGenerationBuilder(outer.Routes(), nil, handlers)
+		require.NoError(t, registry.SetGenerationPreparer(builder.prepare))
+		outer.NoRoute(
+			(&pluginRouteDispatcher{registry: registry}).dispatch,
+			func(c *gin.Context) { c.String(http.StatusOK, "fallback") },
+		)
+
+		assert.Empty(t, registry.RoutingErrors())
+		assert.Equal(t, []jsplugin.SkippedRoute{{PluginKey: "third-tools", Route: third.Meta.Routes[0], Reason: "host_namespace"}}, registry.Generation().SkippedRoutes())
+		groups := make([]string, 0)
+		for _, group := range registry.Generation().RouteGroups() {
+			groups = append(groups, group.Method+" "+group.Shape)
+		}
+		assert.Equal(t, []string{"POST /third-tools/v1/tools/:"}, groups)
+		assert.Equal(t, "fallback", performPluginRequest(outer, http.MethodPost, "/v1/tools/weather").Body.String())
+	})
+}
+
 func TestBuiltInPluginRoutesAreServedBesideHostRoutes(t *testing.T) {
 	require.Empty(t, jsplugin.DefaultRegistry.RoutingErrors())
 	builtIns := jsplugin.DefaultRegistry.Generation().Plugins()

@@ -22,6 +22,8 @@ import (
 type Option struct {
 	Key   string `json:"key" gorm:"primaryKey"`
 	Value string `json:"value"`
+
+	AgreementRevision string `json:"-" gorm:"size:36;not null;default:''"`
 }
 
 func AllOption() ([]*Option, error) {
@@ -279,6 +281,9 @@ func validateOptionValue(key string, value string) error {
 }
 
 func UpdateOption(key string, value string) error {
+	if key == userAgreementOptionKey {
+		return UpdateOptionsBulk(map[string]string{key: value})
+	}
 	if IsRequestPolicyOption(key) {
 		return UpdateRequestPolicyOptions(map[string]string{key: value})
 	}
@@ -349,6 +354,12 @@ func UpdateOptionsBulk(values map[string]string) error {
 
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		for k, v := range values {
+			if k == userAgreementOptionKey {
+				if err := updateUserAgreement(tx, v); err != nil {
+					return err
+				}
+				continue
+			}
 			option := Option{Key: k}
 			if err := tx.FirstOrCreate(&option, Option{Key: k}).Error; err != nil {
 				return err

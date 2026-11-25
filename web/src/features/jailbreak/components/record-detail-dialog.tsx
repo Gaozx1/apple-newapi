@@ -74,7 +74,9 @@ export function JailbreakRecordDetailDialog(props: Props) {
             copyable={false}
           />
         </Field>
-        <Field label={t('Reason')}>{record.reason || '-'}</Field>
+        <Field label={t('Reason')}>
+          {record.reason ? t(record.reason) : '-'}
+        </Field>
         <Field label={t('Detected At')}>
           {new Date((record.created_at || 0) * 1000).toLocaleString()}
         </Field>

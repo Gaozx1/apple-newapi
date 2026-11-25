@@ -16,16 +16,52 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { IoNetDeploymentSettingsSection } from '../integrations/ionet-deployment-settings-section'
+import { lazy } from 'react'
+
 import type { ModelSettings } from '../types'
 import { createSectionRegistry } from '../utils/section-registry'
-import { ClaudeSettingsCard } from './claude-settings-card'
-import { GeminiSettingsCard } from './gemini-settings-card'
-import { GlobalSettingsCard } from './global-settings-card'
-import { GrokSettingsCard } from './grok-settings-card'
-import { GroupRegionSettingsSection } from './group-region-settings-section'
-import { ToolInjectionSettings } from './tool-injection-settings'
-import { UserLevelSettingsSection } from './user-level-settings-section'
+
+// Navigation reads this registry eagerly; load each form only when rendered.
+const IoNetDeploymentSettingsSection = lazy(() =>
+  import('../integrations/ionet-deployment-settings-section').then(
+    (module) => ({ default: module.IoNetDeploymentSettingsSection })
+  )
+)
+const ClaudeSettingsCard = lazy(() =>
+  import('./claude-settings-card').then((module) => ({
+    default: module.ClaudeSettingsCard,
+  }))
+)
+const GeminiSettingsCard = lazy(() =>
+  import('./gemini-settings-card').then((module) => ({
+    default: module.GeminiSettingsCard,
+  }))
+)
+const GlobalSettingsCard = lazy(() =>
+  import('./global-settings-card').then((module) => ({
+    default: module.GlobalSettingsCard,
+  }))
+)
+const GrokSettingsCard = lazy(() =>
+  import('./grok-settings-card').then((module) => ({
+    default: module.GrokSettingsCard,
+  }))
+)
+const GroupRegionSettingsSection = lazy(() =>
+  import('./group-region-settings-section').then((module) => ({
+    default: module.GroupRegionSettingsSection,
+  }))
+)
+const ToolInjectionSettings = lazy(() =>
+  import('./tool-injection-settings').then((module) => ({
+    default: module.ToolInjectionSettings,
+  }))
+)
+const UserLevelSettingsSection = lazy(() =>
+  import('./user-level-settings-section').then((module) => ({
+    default: module.UserLevelSettingsSection,
+  }))
+)
 
 function formatJsonForEditor(value: string, fallback: string) {
   const raw = (value ?? '').toString().trim()

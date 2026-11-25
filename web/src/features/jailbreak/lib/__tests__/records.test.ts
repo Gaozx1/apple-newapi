@@ -26,6 +26,9 @@ import {
 
 describe('jailbreak record display helpers', () => {
   it('maps the stored action to its label key and badge variant', () => {
+    expect(actionLabelKey('warned')).toBe('Warning email sent')
+    expect(jailbreakActionVariant('warned')).toBe('warning')
+
     expect(actionLabelKey('banned')).toBe('Account banned')
     expect(jailbreakActionVariant('banned')).toBe('danger')
 

@@ -26,6 +26,13 @@ import { NotificationPopover } from '@/components/notification-popover'
 import { ProfileDropdown } from '@/components/profile-dropdown'
 import { ThemeSwitch } from '@/components/theme-switch'
 import { Button } from '@/components/ui/button'
+import {
+  Sheet,
+  SheetTrigger,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet'
 import { Skeleton } from '@/components/ui/skeleton'
 import { SystemUpdateAction } from '@/features/system-update/system-update-action'
 import { useNotifications } from '@/hooks/use-notifications'
@@ -77,7 +84,6 @@ export function PublicHeader(props: PublicHeaderProps) {
 
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const [scrolled, setScrolled] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [authPromptTarget, setAuthPromptTarget] =
     useState<AuthPromptTarget | null>(null)
@@ -140,31 +146,13 @@ export function PublicHeader(props: PublicHeaderProps) {
   if (loading) authContent = <Skeleton className='h-9 w-24 rounded-full' />
 
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 20)
-    onScroll()
-    window.addEventListener('scroll', onScroll, { passive: true })
-    return () => window.removeEventListener('scroll', onScroll)
+    const desktop = window.matchMedia('(min-width: 1024px)')
+    const closeOnDesktop = (event: MediaQueryListEvent) => {
+      if (event.matches) setMobileOpen(false)
+    }
+    desktop.addEventListener('change', closeOnDesktop)
+    return () => desktop.removeEventListener('change', closeOnDesktop)
   }, [])
-
-  useEffect(() => {
-    document.body.style.overflow = mobileOpen ? 'hidden' : ''
-    return () => {
-      document.body.style.overflow = ''
-    }
-  }, [mobileOpen])
-
-  useEffect(() => {
-    if (!mobileOpen) return
-
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setMobileOpen(false)
-      }
-    }
-
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [mobileOpen])
 
   useEffect(() => {
     if (!authPromptTarget) return
@@ -229,20 +217,11 @@ export function PublicHeader(props: PublicHeaderProps) {
 
   return (
     <>
-      <header className='pointer-events-none fixed inset-x-0 top-0 z-50'>
-        <div
-          className={cn(
-            'pointer-events-auto mx-auto max-w-7xl px-3 pt-3 sm:px-6'
-          )}
-        >
-          <nav
-            className={cn(
-              'bg-background/90 ring-border/70 flex h-14 items-center justify-between gap-2 rounded-2xl pr-2 pl-3 ring-1 backdrop-blur-xl transition-shadow duration-200 sm:pr-3 sm:pl-5',
-              scrolled ? 'shadow-popover' : 'shadow-card'
-            )}
-          >
+      <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
+        <header className='site-public-header'>
+          <div className='studio-rail-inner'>
             {/* Logo */}
-            <div className='@container/system-brand flex min-w-0 flex-1 items-center gap-1 lg:min-w-36'>
+            <div className='studio-rail-brand @container/system-brand'>
               <Link
                 to={homeUrl}
                 className='group flex min-w-0 items-center gap-2.5'
@@ -265,7 +244,10 @@ export function PublicHeader(props: PublicHeaderProps) {
             </div>
 
             {/* Desktop nav */}
-            <div className='hidden min-w-0 items-center gap-0.5 lg:flex'>
+            <nav
+              className='studio-rail-links hidden lg:flex'
+              aria-label={t('Header navigation')}
+            >
               {links.map((link) => {
                 const isActive = pathname === link.href
                 if (link.external) {
@@ -280,7 +262,7 @@ export function PublicHeader(props: PublicHeaderProps) {
                       tabIndex={link.disabled ? -1 : undefined}
                       onClick={(event) => handleNavLinkClick(event, link)}
                       className={cn(
-                        'text-muted-foreground hover:text-foreground min-w-0 truncate rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors duration-200',
+                        'studio-rail-link',
                         link.disabled && 'pointer-events-none opacity-50'
                       )}
                     >
@@ -297,10 +279,7 @@ export function PublicHeader(props: PublicHeaderProps) {
                     disabled={link.disabled}
                     onClick={(event) => handleNavLinkClick(event, link)}
                     className={cn(
-                      'min-w-0 truncate rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors duration-200',
-                      isActive
-                        ? 'bg-primary/10 text-primary'
-                        : 'text-muted-foreground hover:text-foreground',
+                      'studio-rail-link',
                       link.disabled && 'pointer-events-none opacity-50'
                     )}
                   >
@@ -308,33 +287,29 @@ export function PublicHeader(props: PublicHeaderProps) {
                   </Link>
                 )
               })}
+            </nav>
 
-              {(showLanguageSwitcher ||
-                showThemeSwitch ||
-                showNotifications) && (
-                <div className='bg-border/40 mx-2 h-4 w-px' />
-              )}
-
-              {showLanguageSwitcher && <LanguageSwitcher />}
-              {showThemeSwitch && <ThemeSwitch />}
-              {showNotifications && (
-                <NotificationPopover
-                  open={notifications.popoverOpen}
-                  onOpenChange={notifications.setPopoverOpen}
-                  unreadCount={notifications.unreadCount}
-                  activeTab={notifications.activeTab}
-                  onTabChange={notifications.setActiveTab}
-                  notice={notifications.notice}
-                  announcements={notifications.announcements}
-                  loading={notifications.loading}
-                />
-              )}
-
+            <div className='studio-rail-actions hidden lg:grid'>
+              <div className='flex flex-wrap items-center gap-1'>
+                {showLanguageSwitcher && <LanguageSwitcher />}
+                {showThemeSwitch && <ThemeSwitch />}
+                {showNotifications && (
+                  <NotificationPopover
+                    open={notifications.popoverOpen}
+                    onOpenChange={notifications.setPopoverOpen}
+                    unreadCount={notifications.unreadCount}
+                    activeTab={notifications.activeTab}
+                    onTabChange={notifications.setActiveTab}
+                    notice={notifications.notice}
+                    announcements={notifications.announcements}
+                    loading={notifications.loading}
+                  />
+                )}
+              </div>
               {showAuthButtons && (
-                <>
-                  <div className='bg-border/40 mx-1 h-4 w-px' />
+                <div className='flex flex-wrap items-center gap-2'>
                   {authContent}
-                </>
+                </div>
               )}
             </div>
 
@@ -344,12 +319,9 @@ export function PublicHeader(props: PublicHeaderProps) {
               {showAuthButtons && !loading && isAuthenticated && (
                 <ProfileDropdown />
               )}
-              <Button
-                type='button'
-                variant='ghost'
-                size='icon'
+              <SheetTrigger
+                render={<Button type='button' variant='ghost' size='icon' />}
                 className='size-9'
-                onClick={() => setMobileOpen((v) => !v)}
                 aria-label={t('Toggle navigation menu')}
                 aria-expanded={mobileOpen}
                 aria-controls='mobile-nav'
@@ -375,106 +347,105 @@ export function PublicHeader(props: PublicHeaderProps) {
                     )}
                   />
                 </div>
-              </Button>
+              </SheetTrigger>
             </div>
-          </nav>
-        </div>
-      </header>
+          </div>
+        </header>
 
-      {/* Mobile full-screen overlay */}
-      <div
-        id='mobile-nav'
-        role='dialog'
-        aria-modal='true'
-        aria-label={t('Header navigation')}
-        aria-hidden={!mobileOpen}
-        inert={!mobileOpen}
-        className={cn(
-          'bg-background/98 fixed inset-0 z-40 backdrop-blur-2xl transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] lg:pointer-events-none lg:hidden',
-          mobileOpen
-            ? 'pointer-events-auto opacity-100'
-            : 'pointer-events-none opacity-0'
-        )}
-      >
-        <div className='flex h-full flex-col justify-between px-8 pt-20 pb-10'>
-          <nav className='flex flex-col gap-1'>
-            {links.map((link, i) => {
-              const isActive = pathname === link.href
-              const linkClassName = cn(
-                'flex items-center gap-3 py-3 text-base font-medium tracking-tight transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]',
-                mobileOpen
-                  ? 'translate-y-0 opacity-100'
-                  : 'translate-y-4 opacity-0',
-                isActive ? 'text-foreground' : 'text-muted-foreground',
-                link.disabled && 'pointer-events-none opacity-50'
-              )
-              const transitionStyle = {
-                transitionDelay: mobileOpen ? `${100 + i * 50}ms` : '0ms',
-              }
-              if (link.external) {
+        <SheetContent
+          id='mobile-nav'
+          className='w-full max-w-sm gap-0'
+          aria-modal='true'
+        >
+          <SheetHeader className='border-b px-6 py-5'>
+            <SheetTitle className='sr-only'>
+              {t('Header navigation')}
+            </SheetTitle>
+            <p className='truncate pr-8 text-base font-semibold'>
+              {displaySiteName}
+            </p>
+          </SheetHeader>
+          <div className='flex min-h-0 flex-1 flex-col justify-between gap-8 overflow-y-auto overscroll-contain px-6 py-6'>
+            <nav className='flex flex-col gap-1'>
+              {links.map((link, i) => {
+                const isActive = pathname === link.href
+                const linkClassName = cn(
+                  'studio-rail-link flex items-center gap-3 transition-all duration-200',
+                  mobileOpen
+                    ? 'translate-y-0 opacity-100'
+                    : 'translate-y-4 opacity-0',
+                  isActive ? 'text-foreground' : 'text-muted-foreground',
+                  link.disabled && 'pointer-events-none opacity-50'
+                )
+                const transitionStyle = {
+                  transitionDelay: mobileOpen ? `${100 + i * 50}ms` : '0ms',
+                }
+                if (link.external) {
+                  return (
+                    <a
+                      key={`${link.title}:${link.href}`}
+                      href={link.href}
+                      target='_blank'
+                      rel='noopener noreferrer'
+                      aria-disabled={link.disabled}
+                      tabIndex={link.disabled ? -1 : undefined}
+                      onClick={(event) => handleNavLinkClick(event, link, true)}
+                      className={linkClassName}
+                      style={transitionStyle}
+                    >
+                      {t(link.title)}
+                    </a>
+                  )
+                }
                 return (
-                  <a
+                  <Link
                     key={`${link.title}:${link.href}`}
-                    href={link.href}
-                    target='_blank'
-                    rel='noopener noreferrer'
-                    aria-disabled={link.disabled}
-                    tabIndex={link.disabled ? -1 : undefined}
+                    to={link.href}
+                    disabled={link.disabled}
+                    aria-current={isActive ? 'page' : undefined}
                     onClick={(event) => handleNavLinkClick(event, link, true)}
                     className={linkClassName}
                     style={transitionStyle}
                   >
                     {t(link.title)}
-                  </a>
-                )
-              }
-              return (
-                <Link
-                  key={`${link.title}:${link.href}`}
-                  to={link.href}
-                  disabled={link.disabled}
-                  onClick={(event) => handleNavLinkClick(event, link, true)}
-                  className={linkClassName}
-                  style={transitionStyle}
-                >
-                  {t(link.title)}
-                </Link>
-              )
-            })}
-          </nav>
-
-          <div
-            className={cn(
-              'flex flex-col gap-3 transition-all duration-500',
-              mobileOpen
-                ? 'translate-y-0 opacity-100'
-                : 'translate-y-4 opacity-0'
-            )}
-            style={{ transitionDelay: mobileOpen ? '250ms' : '0ms' }}
-          >
-            {showAuthButtons && (
-              <div className='flex flex-col gap-3'>
-                {!isAuthenticated && registrationOpen && (
-                  <Link
-                    to='/sign-up'
-                    onClick={() => setMobileOpen(false)}
-                    className='border-border/60 bg-card/70 text-foreground hover:bg-muted/70 inline-flex h-10 items-center justify-center rounded-full border text-sm font-medium backdrop-blur-sm transition-colors'
-                  >
-                    {t('Sign up')}
                   </Link>
-                )}
-                <Link
-                  to={isAuthenticated ? '/dashboard' : '/sign-in'}
-                  onClick={() => setMobileOpen(false)}
-                  className='shadow-glow text-primary-foreground inline-flex h-10 items-center justify-center rounded-full bg-[image:var(--gradient-brand)] text-sm font-medium transition-opacity hover:opacity-90 active:opacity-80'
-                >
-                  {isAuthenticated ? t('Go to Dashboard') : t('Sign in')}
-                </Link>
-              </div>
-            )}
+                )
+              })}
+            </nav>
+
+            <div
+              className={cn(
+                'flex flex-col gap-3 transition-all duration-500',
+                mobileOpen
+                  ? 'translate-y-0 opacity-100'
+                  : 'translate-y-4 opacity-0'
+              )}
+              style={{ transitionDelay: mobileOpen ? '250ms' : '0ms' }}
+            >
+              {showAuthButtons && (
+                <div className='flex flex-col gap-3'>
+                  {!isAuthenticated && registrationOpen && (
+                    <Link
+                      to='/sign-up'
+                      onClick={() => setMobileOpen(false)}
+                      className='border-border/60 bg-card/70 text-foreground hover:bg-muted/70 inline-flex h-10 items-center justify-center rounded-full border text-sm font-medium backdrop-blur-sm transition-colors'
+                    >
+                      {t('Sign up')}
+                    </Link>
+                  )}
+                  <Link
+                    to={isAuthenticated ? '/dashboard' : '/sign-in'}
+                    onClick={() => setMobileOpen(false)}
+                    className='shadow-glow text-primary-foreground inline-flex h-10 items-center justify-center rounded-full bg-[image:var(--gradient-brand)] text-sm font-medium transition-opacity hover:opacity-90 active:opacity-80'
+                  >
+                    {isAuthenticated ? t('Go to Dashboard') : t('Sign in')}
+                  </Link>
+                </div>
+              )}
+            </div>
           </div>
-        </div>
-      </div>
+        </SheetContent>
+      </Sheet>
 
       <Dialog
         open={!!authPromptTarget}

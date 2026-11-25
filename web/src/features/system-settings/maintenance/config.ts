@@ -62,6 +62,7 @@ export const SIDEBAR_MODULES_DEFAULT: SidebarModulesAdminConfig = {
   console: {
     enabled: true,
     detail: true,
+    model_fingerprint: true,
     token: true,
     log: true,
     audit: true,

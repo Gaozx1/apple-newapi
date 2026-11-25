@@ -66,6 +66,18 @@ export function parseTaskResult() { return {}; }
 	channel := &model.Channel{Type: constant.ChannelTypeTaskPlugin, Setting: &bound, BaseURL: &explicit}
 	require.NoError(t, validateChannel(channel, false))
 	assert.Equal(t, explicit, *channel.BaseURL, "an administrator value is never replaced by the plugin default")
+
+	for _, invalid := range []string{"127.0.0.1:8765", "//127.0.0.1:8765", "ftp://example.com", "https://user@example.com", "https://example.com?q=1", "https://example.com#fragment"} {
+		channel.BaseURL = &invalid
+		channel.Key = "test-key"
+		require.ErrorContains(t, validateChannel(channel, true), "Enter an absolute HTTP(S) URL", invalid)
+		require.ErrorContains(t, validateChannel(channel, false), "Enter an absolute HTTP(S) URL", invalid)
+	}
+
+	loopback := "http://127.0.0.1:8765"
+	channel.BaseURL = &loopback
+	require.NoError(t, validateChannel(channel, false))
+	assert.Equal(t, loopback, *channel.BaseURL)
 }
 
 func TestValidateNewAPIChannelTaskPluginExtensions(t *testing.T) {

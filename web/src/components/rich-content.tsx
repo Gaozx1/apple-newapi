@@ -16,8 +16,21 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { HtmlContent, type HtmlContentVariant } from '@/components/html-content'
-import { Markdown } from '@/components/ui/markdown'
+import { lazy, Suspense } from 'react'
+
+import type { HtmlContentVariant } from '@/components/html-content'
+import { LoadingState } from '@/components/loading-state'
+
+const HtmlContent = lazy(() =>
+  import('@/components/html-content').then((module) => ({
+    default: module.HtmlContent,
+  }))
+)
+const Markdown = lazy(() =>
+  import('@/components/ui/markdown').then((module) => ({
+    default: module.Markdown,
+  }))
+)
 
 type RichContentMode = 'markdown' | 'html'
 
@@ -30,19 +43,21 @@ interface RichContentProps {
 }
 
 export function RichContent(props: RichContentProps) {
-  if (props.mode === 'html') {
-    return (
-      <HtmlContent
-        content={props.content}
-        className={props.className}
-        variant={props.htmlVariant}
-      />
-    )
-  }
+  if (!props.content) return null
 
   return (
-    <Markdown breaks={props.breaks} className={props.className}>
-      {props.content}
-    </Markdown>
+    <Suspense fallback={<LoadingState inline size='sm' />}>
+      {props.mode === 'html' ? (
+        <HtmlContent
+          content={props.content}
+          className={props.className}
+          variant={props.htmlVariant}
+        />
+      ) : (
+        <Markdown breaks={props.breaks} className={props.className}>
+          {props.content}
+        </Markdown>
+      )}
+    </Suspense>
   )
 }

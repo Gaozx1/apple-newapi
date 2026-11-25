@@ -80,6 +80,19 @@ func runSubscriptionQuotaResetOnce() {
 			break
 		}
 	}
+	for {
+		n, err := model.ExpireDueResetCards(subscriptionResetBatchSize)
+		if err != nil {
+			logger.LogWarn(ctx, common.LogText("reset card expire task failed: %v", err))
+			return
+		}
+		if n == 0 {
+			break
+		}
+		if n < subscriptionResetBatchSize {
+			break
+		}
+	}
 	lastCleanup := time.Unix(subscriptionCleanupLast.Load(), 0)
 	if time.Since(lastCleanup) >= subscriptionCleanupInterval {
 		if _, err := model.CleanupSubscriptionPreConsumeRecords(7 * 24 * 3600); err == nil {

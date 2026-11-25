@@ -23,7 +23,7 @@ import { I18nextProvider } from 'react-i18next'
 import { expect, test, vi } from 'vitest'
 
 import en from '@/i18n/locales/en.json'
-import zh from '@/i18n/locales/zh.json'
+import zh from '@/i18n/__fixtures__/legacy-zh.json'
 
 import { ModelMappingEditor } from '../model-mapping-editor'
 

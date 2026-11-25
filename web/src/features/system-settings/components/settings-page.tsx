@@ -17,11 +17,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useParams } from '@tanstack/react-router'
-import { useMemo, useState, type ReactNode } from 'react'
+import { Suspense, useMemo, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { ErrorState } from '@/components/error-state'
 import { SectionPageLayout } from '@/components/layout'
+import { LoadingState } from '@/components/loading-state'
 
 import { useSystemOptions, getOptionValue } from '../hooks/use-system-options'
 import type { SystemOption } from '../types'
@@ -157,7 +158,12 @@ export function SettingsPage<
 
   return (
     <SettingsPageFrame title={t(sectionMeta.titleKey)}>
-      {sectionContent}
+      <Suspense
+        key={activeSection}
+        fallback={<LoadingState message={t(loadingMessage)} />}
+      >
+        {sectionContent}
+      </Suspense>
     </SettingsPageFrame>
   )
 }

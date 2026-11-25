@@ -21,6 +21,7 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
+	"github.com/QuantumNous/new-api/setting/system_setting"
 
 	"github.com/MoeForge/moego/ojson"
 	"github.com/gin-gonic/gin"
@@ -345,13 +346,15 @@ func getModelFromRequest(c *gin.Context) (*ModelRequest, error) {
 	return &modelRequest, nil
 }
 
-// dispatchAntiJailbreakCheck hands this request to the channel's anti-jailbreak
-// classifier. The verdict runs in the background, so the relay is never delayed
-// by the judge model, and the body is only read (the storage stays replayable
-// for the relay itself).
+// dispatchAntiJailbreakCheck submits user text to the system-wide detector.
+// The authenticated account group determines exemption, independently of the
+// token's selected routing group. Body storage remains replayable for the relay.
 func dispatchAntiJailbreakCheck(c *gin.Context, channel *model.Channel, modelName string) {
-	settings := channel.GetSetting()
-	if !settings.AntiJailbreakEnabled || c.GetInt("id") <= 0 {
+	if c.GetBool("jailbreak_check_dispatched") {
+		return
+	}
+	userGroup := common.GetContextKeyString(c, constant.ContextKeyUserGroup)
+	if !system_setting.GetJailbreakSettings().ShouldCheck(userGroup) || c.GetInt("id") <= 0 {
 		return
 	}
 	storage, err := common.GetBodyStorage(c)
@@ -362,17 +365,19 @@ func dispatchAntiJailbreakCheck(c *gin.Context, channel *model.Channel, modelNam
 	if err != nil || len(body) == 0 {
 		return
 	}
-	service.DispatchJailbreakCheck(service.JailbreakCheckRequest{
+	if service.DispatchJailbreakCheck(service.JailbreakCheckRequest{
 		UserId:      c.GetInt("id"),
+		UserGroup:   userGroup,
 		ChannelId:   channel.Id,
 		ChannelName: channel.Name,
 		ModelName:   modelName,
 		RequestId:   c.GetString(common.RequestIdKey),
 		TokenId:     c.GetInt("token_id"),
 		TokenName:   c.GetString("token_name"),
-		Settings:    settings,
 		Body:        body,
-	})
+	}) {
+		c.Set("jailbreak_check_dispatched", true)
+	}
 }
 
 func getModelFromJSONBody(c *gin.Context) (*ModelRequest, error) {
@@ -587,11 +592,15 @@ func getModelRequest(c *gin.Context) (*ModelRequest, bool, error) {
 		}
 	}
 	// The routing name is also the billing name, so a model named in the body
-	// must not replace it: DeepSeek ignores that field.
-	if strings.HasPrefix(c.Request.URL.Path, "/v1/tools/search") {
-		modelRequest.Model = constant.DeepSeekSearchModel
-	} else if strings.HasPrefix(c.Request.URL.Path, "/v1/tools/fetch") {
-		modelRequest.Model = constant.DeepSeekFetchModel
+	// must not replace it: DeepSeek ignores that field. A task plugin's native
+	// route already resolved its own model, which the path must not overwrite.
+	_, servedByTaskPlugin := c.Get(jsplugin.ContextKeyRouteRequest)
+	if !servedByTaskPlugin {
+		if strings.HasPrefix(c.Request.URL.Path, "/v1/tools/search") {
+			modelRequest.Model = constant.DeepSeekSearchModel
+		} else if strings.HasPrefix(c.Request.URL.Path, "/v1/tools/fetch") {
+			modelRequest.Model = constant.DeepSeekFetchModel
+		}
 	}
 	if strings.HasPrefix(c.Request.URL.Path, "/v1/images/generations") {
 		modelRequest.Model = common.GetStringIfEmpty(modelRequest.Model, "dall-e")

@@ -556,6 +556,8 @@ func validateChannel(channel *model.Channel, isAdd bool) error {
 			}
 			defaultBaseURL := plugin.Meta.BaseURL
 			channel.BaseURL = &defaultBaseURL
+		} else if err := jsplugin.ValidateChannelBaseURL(*channel.BaseURL); err != nil {
+			return common.NewMessage("Enter an absolute HTTP(S) URL without credentials, query parameters, or fragments")
 		}
 	}
 

@@ -310,28 +310,11 @@ describe('New API channel task plugin extensions', () => {
     expect(legacy.system_prompt_role).toBe('system')
   })
 
-  test('round-trips the anti-jailbreak guard settings', () => {
-    const payload = transformFormDataToCreatePayload(
-      channelFormSchema.parse({
-        ...newAPIForm('https://gateway.example'),
-        anti_jailbreak_enabled: true,
-        anti_jailbreak_base_url: 'https://judge.example/v1',
-        anti_jailbreak_key: 'judge-key',
-        anti_jailbreak_model: 'judge-model',
-        anti_jailbreak_prompt: '不得要求绕过安全规则',
-      })
-    )
-    const setting = JSON.parse(payload.channel.setting ?? '{}')
-    expect(setting.anti_jailbreak_enabled).toBe(true)
-    expect(setting.anti_jailbreak_base_url).toBe('https://judge.example/v1')
-    expect(setting.anti_jailbreak_key).toBe('judge-key')
-    expect(setting.anti_jailbreak_model).toBe('judge-model')
-    expect(setting.anti_jailbreak_prompt).toBe('不得要求绕过安全规则')
-
+  test('ignores retired channel review settings when editing a legacy channel', () => {
     const editing = transformChannelToFormDefaults(
       channelSchema.parse({
         id: 10,
-        name: 'Guarded',
+        name: 'Legacy',
         type: CHANNEL_TYPE_NEW_API,
         key: '',
         status: 1,
@@ -342,31 +325,19 @@ describe('New API channel task plugin extensions', () => {
         models: 'gpt-4o',
         group: 'default',
         base_url: 'https://gateway.example',
-        setting: JSON.stringify(setting),
+        setting: JSON.stringify({
+          anti_jailbreak_enabled: true,
+          anti_jailbreak_key: 'old-key',
+          system_prompt: 'Answer in English.',
+        }),
       })
     )
-    expect(editing.anti_jailbreak_enabled).toBe(true)
-    expect(editing.anti_jailbreak_model).toBe('judge-model')
-
-    // A channel saved before the guard existed stays disabled.
-    const legacy = transformChannelToFormDefaults(
-      channelSchema.parse({
-        id: 11,
-        name: 'Legacy guarded',
-        type: CHANNEL_TYPE_NEW_API,
-        key: '',
-        status: 1,
-        created_time: 1,
-        test_time: 0,
-        response_time: 0,
-        balance_updated_time: 0,
-        models: 'gpt-4o',
-        group: 'default',
-        base_url: 'https://gateway.example',
-        setting: JSON.stringify({ system_prompt: 'Answer in English.' }),
-      })
+    const payload = transformFormDataToCreatePayload(
+      channelFormSchema.parse(editing)
     )
-    expect(legacy.anti_jailbreak_enabled).toBe(false)
-    expect(legacy.anti_jailbreak_base_url).toBe('')
+    const setting = JSON.parse(payload.channel.setting ?? '{}')
+    expect(setting.system_prompt).toBe('Answer in English.')
+    expect(setting).not.toHaveProperty('anti_jailbreak_enabled')
+    expect(setting).not.toHaveProperty('anti_jailbreak_key')
   })
 })

@@ -314,11 +314,6 @@ const SENSITIVE_FORM_FIELDS = [
   'system_prompt',
   'system_prompt_role',
   'system_prompt_override',
-  'anti_jailbreak_enabled',
-  'anti_jailbreak_base_url',
-  'anti_jailbreak_key',
-  'anti_jailbreak_model',
-  'anti_jailbreak_prompt',
   'allow_service_tier',
   'disable_store',
   'allow_safety_identifier',
@@ -1936,128 +1931,6 @@ export function ChannelMutateDrawer({
         </FormItem>
       )}
     />
-  )
-
-  const antiJailbreakFields = (
-    <div className='space-y-4'>
-      <FormField
-        control={form.control}
-        name='anti_jailbreak_enabled'
-        render={({ field }) => (
-          <FormItem className='flex items-center justify-between'>
-            <div className='space-y-0.5'>
-              <FormLabel>{t('Anti-Jailbreak Guard')}</FormLabel>
-              <FormDescription>
-                {t(
-                  'Judge every request through this channel with the classifier below; a confirmed hit disables the account. Judging runs asynchronously and never delays the request.'
-                )}
-              </FormDescription>
-            </div>
-            <FormControl>
-              <Switch
-                disabled={sensitiveLocked}
-                checked={field.value}
-                onCheckedChange={field.onChange}
-              />
-            </FormControl>
-          </FormItem>
-        )}
-      />
-
-      <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
-        <FormField
-          control={form.control}
-          name='anti_jailbreak_base_url'
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>{t('Judge Base URL')}</FormLabel>
-              <FormControl>
-                <Input
-                  {...field}
-                  disabled={sensitiveLocked}
-                  placeholder='https://api.openai.com/v1'
-                />
-              </FormControl>
-              <FormDescription>
-                {t(
-                  'OpenAI-compatible endpoint of the classifier; /chat/completions is appended when missing.'
-                )}
-              </FormDescription>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
-        <FormField
-          control={form.control}
-          name='anti_jailbreak_model'
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>{t('Judge Model')}</FormLabel>
-              <FormControl>
-                <Input
-                  {...field}
-                  disabled={sensitiveLocked}
-                  placeholder='gpt-4o-mini'
-                />
-              </FormControl>
-              <FormDescription>
-                {t('Model used to classify the user prompt.')}
-              </FormDescription>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-      </div>
-
-      <FormField
-        control={form.control}
-        name='anti_jailbreak_key'
-        render={({ field }) => (
-          <FormItem>
-            <FormLabel>{t('Judge API Key')}</FormLabel>
-            <FormControl>
-              <Input
-                {...field}
-                disabled={sensitiveLocked}
-                autoComplete='off'
-                placeholder='sk-...'
-              />
-            </FormControl>
-            <FormDescription>
-              {t('API key used for the classifier request.')}
-            </FormDescription>
-            <FormMessage />
-          </FormItem>
-        )}
-      />
-
-      <FormField
-        control={form.control}
-        name='anti_jailbreak_prompt'
-        render={({ field }) => (
-          <FormItem>
-            <FormLabel>{t('Interception Criteria')}</FormLabel>
-            <FormControl>
-              <Textarea
-                disabled={sensitiveLocked}
-                rows={4}
-                placeholder={t(
-                  'List the behaviour to intercept, e.g. attempts to bypass safety rules, ignore system instructions, or obtain forbidden content.'
-                )}
-                {...field}
-              />
-            </FormControl>
-            <FormDescription>
-              {t(
-                'Sent to the classifier as its system prompt. It must answer with a JSON boolean; anything ambiguous is treated as no hit.'
-              )}
-            </FormDescription>
-            <FormMessage />
-          </FormItem>
-        )}
-      />
-    </div>
   )
 
   const systemPromptOverrideFields = (
@@ -5120,7 +4993,6 @@ export function ChannelMutateDrawer({
                 {systemPromptFields}
                 {systemPromptRoleFields}
                 {systemPromptOverrideFields}
-                {antiJailbreakFields}
               </fieldset>
             </div>
             {fieldPassthroughFields}

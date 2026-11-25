@@ -16,11 +16,17 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useCallback, useMemo, useState } from 'react'
+import { lazy, Suspense, useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { Dialog } from '@/components/dialog'
+import { ErrorState } from '@/components/error-state'
 import { PublicLayout, PublicPageHero } from '@/components/layout'
+import { LoadingState } from '@/components/loading-state'
 import { PageTransition } from '@/components/page-transition'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Button } from '@/components/ui/button'
+import { getServerErrorMessage } from '@/lib/server-error-message'
 
 import {
   LoadingSkeleton,
@@ -30,11 +36,16 @@ import {
   PricingSidebar,
   PricingToolbar,
   ModelCardGrid,
-  ModelDetailsDrawer,
 } from './components'
 import { EXCLUDED_GROUPS, VIEW_MODES } from './constants'
 import { useFilters } from './hooks/use-filters'
 import { usePricingData } from './hooks/use-pricing-data'
+
+const ModelDetailsDrawer = lazy(() =>
+  import('./components/model-details').then((module) => ({
+    default: module.ModelDetailsDrawer,
+  }))
+)
 
 export function Pricing() {
   const { t } = useTranslation()
@@ -51,6 +62,10 @@ export function Pricing() {
     endpointMap,
     autoGroups,
     isLoading,
+    isFetching,
+    hasData,
+    error,
+    refetch,
     priceRate,
     usdExchangeRate,
   } = usePricingData()
@@ -152,9 +167,29 @@ export function Pricing() {
   if (isLoading) {
     return (
       <PublicLayout showMainContainer={false}>
-        <div className='mx-auto w-full max-w-[1800px] px-3 pt-16 pb-8 sm:px-6 sm:pt-20 sm:pb-10 xl:px-8'>
+        <div className='mx-auto w-full max-w-[1800px] px-4 py-6 sm:px-8 xl:px-12'>
           <LoadingSkeleton viewMode={viewMode} />
         </div>
+      </PublicLayout>
+    )
+  }
+
+  if (error && !hasData) {
+    return (
+      <PublicLayout>
+        <ErrorState
+          title={t('Failed to load models')}
+          description={getServerErrorMessage(error)}
+          action={
+            <Button
+              variant='outline'
+              disabled={isFetching}
+              onClick={() => void refetch()}
+            >
+              {t('Retry')}
+            </Button>
+          }
+        />
       </PublicLayout>
     )
   }
@@ -163,14 +198,13 @@ export function Pricing() {
     <PublicLayout showMainContainer={false}>
       <PublicPageHero
         size='lg'
-        eyebrow={t('Model Square')}
-        title={t('Pricing')}
+        title={t('Model Square')}
         description={t(
           'Discover curated AI models, compare pricing and capabilities, and choose the right model for every scenario.'
         )}
       >
-        <div className='mx-auto max-w-2xl'>
-          <p className='text-muted-foreground mb-4 text-xs sm:text-sm'>
+        <div className='flex min-w-0 flex-col-reverse gap-2'>
+          <p className='text-muted-foreground text-xs'>
             {t('This site currently has {{count}} models enabled', {
               count: models?.length || 0,
             })}
@@ -184,8 +218,23 @@ export function Pricing() {
         </div>
       </PublicPageHero>
 
-      <PageTransition className='relative mx-auto w-full max-w-[1800px] px-3 pb-8 sm:px-6 sm:pb-10 xl:px-8'>
-        <div className='grid gap-4 xl:grid-cols-[280px_minmax(0,1fr)]'>
+      <PageTransition className='studio-catalog relative mx-auto w-full max-w-[1800px] px-4 py-6 sm:px-8 xl:px-12'>
+        {error && (
+          <Alert variant='destructive' className='mb-4'>
+            <AlertDescription className='flex flex-wrap items-center justify-between gap-3'>
+              <span>{getServerErrorMessage(error)}</span>
+              <Button
+                variant='outline'
+                size='sm'
+                disabled={isFetching}
+                onClick={() => void refetch()}
+              >
+                {t('Retry')}
+              </Button>
+            </AlertDescription>
+          </Alert>
+        )}
+        <div className='grid gap-6 xl:grid-cols-[minmax(0,1fr)_15rem]'>
           <PricingSidebar
             quotaTypeFilter={quotaTypeFilter}
             endpointTypeFilter={endpointTypeFilter}
@@ -205,10 +254,10 @@ export function Pricing() {
             models={models || []}
             hasActiveFilters={hasActiveFilters}
             onClearFilters={clearFilters}
-            className='hover-scrollbar sticky top-20 hidden max-h-[calc(100dvh-6rem)] self-start overflow-y-auto xl:block'
+            className='hover-scrollbar sticky top-20 hidden max-h-[calc(100dvh-6rem)] self-start overflow-y-auto xl:col-start-2 xl:row-start-1 xl:block'
           />
 
-          <div className='min-w-0 space-y-4'>
+          <div className='min-w-0 space-y-4 xl:col-start-1 xl:row-start-1'>
             <PricingToolbar
               filteredCount={filteredModels.length}
               totalCount={models?.length}
@@ -245,26 +294,40 @@ export function Pricing() {
         </div>
 
         {selectedModel && (
-          <ModelDetailsDrawer
-            open={Boolean(selectedModel)}
-            onOpenChange={(open) => {
-              if (!open) setSelectedModelName(null)
-            }}
-            model={selectedModel}
-            groupRatio={groupRatio || {}}
-            usableGroup={usableGroup || {}}
-            endpointMap={
-              (endpointMap as Record<
-                string,
-                { path?: string; method?: string }
-              >) || {}
+          <Suspense
+            fallback={
+              <Dialog
+                open
+                onOpenChange={(open) => {
+                  if (!open) setSelectedModelName(null)
+                }}
+                title={selectedModel.model_name}
+              >
+                <LoadingState />
+              </Dialog>
             }
-            autoGroups={autoGroups || []}
-            priceRate={priceRate ?? 1}
-            usdExchangeRate={usdExchangeRate ?? 1}
-            tokenUnit={tokenUnit}
-            showRechargePrice={showRechargePrice}
-          />
+          >
+            <ModelDetailsDrawer
+              open={Boolean(selectedModel)}
+              onOpenChange={(open) => {
+                if (!open) setSelectedModelName(null)
+              }}
+              model={selectedModel}
+              groupRatio={groupRatio || {}}
+              usableGroup={usableGroup || {}}
+              endpointMap={
+                (endpointMap as Record<
+                  string,
+                  { path?: string; method?: string }
+                >) || {}
+              }
+              autoGroups={autoGroups || []}
+              priceRate={priceRate ?? 1}
+              usdExchangeRate={usdExchangeRate ?? 1}
+              tokenUnit={tokenUnit}
+              showRechargePrice={showRechargePrice}
+            />
+          </Suspense>
         )}
       </PageTransition>
     </PublicLayout>

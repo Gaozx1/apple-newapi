@@ -413,6 +413,7 @@ func InitResources() error {
 	}
 
 	service.StartAuthArtifactCleanup()
+	service.StartTrainingChatCleanup()
 
 	return nil
 }

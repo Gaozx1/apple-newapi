@@ -207,7 +207,11 @@ func Redeem(key string, userId int) (quota int, err error) {
 			if perr != nil {
 				return fmt.Errorf("订阅套餐不存在: %w", perr)
 			}
-			if _, serr := CreateUserSubscriptionFromPlanTx(tx, userId, plan, "redemption"); serr != nil {
+			if plan.IsResetCardPlan() {
+				if _, serr := IssueResetCardsFromPlanTx(tx, userId, plan, ResetCardSourceRedemption, ""); serr != nil {
+					return serr
+				}
+			} else if _, serr := CreateUserSubscriptionFromPlanTx(tx, userId, plan, "redemption"); serr != nil {
 				return serr
 			}
 			// 订阅兑换码按其套餐价格计入累计充值（与订阅购买口径一致）

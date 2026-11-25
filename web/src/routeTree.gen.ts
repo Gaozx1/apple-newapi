@@ -34,6 +34,7 @@ import { Route as Oauth2AuthorizeRouteImport } from './routes/oauth2/authorize'
 import { Route as PricingIndexRouteImport } from './routes/pricing/index'
 import { Route as RankingsIndexRouteImport } from './routes/rankings/index'
 import { Route as SetupIndexRouteImport } from './routes/setup/index'
+import { Route as UserBansIndexRouteImport } from './routes/user-bans/index'
 import { Route as authUserResetRouteImport } from './routes/(auth)/user/reset'
 import { Route as AuthenticatedAdminOauth2IndexRouteImport } from './routes/_authenticated/admin-oauth2/index'
 import { Route as AuthenticatedAdminTicketsIndexRouteImport } from './routes/_authenticated/admin-tickets/index'
@@ -46,6 +47,7 @@ import { Route as AuthenticatedErrorsErrorRouteImport } from './routes/_authenti
 import { Route as AuthenticatedJailbreakRecordsIndexRouteImport } from './routes/_authenticated/jailbreak-records/index'
 import { Route as AuthenticatedKeysIndexRouteImport } from './routes/_authenticated/keys/index'
 import { Route as AuthenticatedLotteryIndexRouteImport } from './routes/_authenticated/lottery/index'
+import { Route as AuthenticatedModelFingerprintIndexRouteImport } from './routes/_authenticated/model-fingerprint/index'
 import { Route as AuthenticatedModelsIndexRouteImport } from './routes/_authenticated/models/index'
 import { Route as AuthenticatedModelsSectionRouteImport } from './routes/_authenticated/models/$section'
 import { Route as AuthenticatedMyChannelsIndexRouteImport } from './routes/_authenticated/my-channels/index'
@@ -209,6 +211,11 @@ const SetupIndexRoute = SetupIndexRouteImport.update({
   path: '/setup/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const UserBansIndexRoute = UserBansIndexRouteImport.update({
+  id: '/user-bans/',
+  path: '/user-bans/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const authUserResetRoute = authUserResetRouteImport.update({
   id: '/user/reset',
   path: '/user/reset',
@@ -276,6 +283,12 @@ const AuthenticatedLotteryIndexRoute =
   AuthenticatedLotteryIndexRouteImport.update({
     id: '/lottery/',
     path: '/lottery/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedModelFingerprintIndexRoute =
+  AuthenticatedModelFingerprintIndexRouteImport.update({
+    id: '/model-fingerprint/',
+    path: '/model-fingerprint/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedModelsIndexRoute =
@@ -528,6 +541,7 @@ export interface FileRoutesByFullPath {
   '/pricing/': typeof PricingIndexRoute
   '/rankings/': typeof RankingsIndexRoute
   '/setup/': typeof SetupIndexRoute
+  '/user-bans/': typeof UserBansIndexRoute
   '/user/reset': typeof authUserResetRoute
   '/chat/$chatId': typeof AuthenticatedChatChatIdRoute
   '/dashboard/$section': typeof AuthenticatedDashboardSectionRoute
@@ -543,6 +557,7 @@ export interface FileRoutesByFullPath {
   '/jailbreak-records/': typeof AuthenticatedJailbreakRecordsIndexRoute
   '/keys/': typeof AuthenticatedKeysIndexRoute
   '/lottery/': typeof AuthenticatedLotteryIndexRoute
+  '/model-fingerprint/': typeof AuthenticatedModelFingerprintIndexRoute
   '/models/': typeof AuthenticatedModelsIndexRoute
   '/my-channels/': typeof AuthenticatedMyChannelsIndexRoute
   '/oauth2-clients/': typeof AuthenticatedOauth2ClientsIndexRoute
@@ -602,6 +617,7 @@ export interface FileRoutesByTo {
   '/pricing': typeof PricingIndexRoute
   '/rankings': typeof RankingsIndexRoute
   '/setup': typeof SetupIndexRoute
+  '/user-bans': typeof UserBansIndexRoute
   '/user/reset': typeof authUserResetRoute
   '/chat/$chatId': typeof AuthenticatedChatChatIdRoute
   '/dashboard/$section': typeof AuthenticatedDashboardSectionRoute
@@ -617,6 +633,7 @@ export interface FileRoutesByTo {
   '/jailbreak-records': typeof AuthenticatedJailbreakRecordsIndexRoute
   '/keys': typeof AuthenticatedKeysIndexRoute
   '/lottery': typeof AuthenticatedLotteryIndexRoute
+  '/model-fingerprint': typeof AuthenticatedModelFingerprintIndexRoute
   '/models': typeof AuthenticatedModelsIndexRoute
   '/my-channels': typeof AuthenticatedMyChannelsIndexRoute
   '/oauth2-clients': typeof AuthenticatedOauth2ClientsIndexRoute
@@ -680,6 +697,7 @@ export interface FileRoutesById {
   '/pricing/': typeof PricingIndexRoute
   '/rankings/': typeof RankingsIndexRoute
   '/setup/': typeof SetupIndexRoute
+  '/user-bans/': typeof UserBansIndexRoute
   '/(auth)/user/reset': typeof authUserResetRoute
   '/_authenticated/chat/$chatId': typeof AuthenticatedChatChatIdRoute
   '/_authenticated/dashboard/$section': typeof AuthenticatedDashboardSectionRoute
@@ -695,6 +713,7 @@ export interface FileRoutesById {
   '/_authenticated/jailbreak-records/': typeof AuthenticatedJailbreakRecordsIndexRoute
   '/_authenticated/keys/': typeof AuthenticatedKeysIndexRoute
   '/_authenticated/lottery/': typeof AuthenticatedLotteryIndexRoute
+  '/_authenticated/model-fingerprint/': typeof AuthenticatedModelFingerprintIndexRoute
   '/_authenticated/models/': typeof AuthenticatedModelsIndexRoute
   '/_authenticated/my-channels/': typeof AuthenticatedMyChannelsIndexRoute
   '/_authenticated/oauth2-clients/': typeof AuthenticatedOauth2ClientsIndexRoute
@@ -757,6 +776,7 @@ export interface FileRouteTypes {
     | '/pricing/'
     | '/rankings/'
     | '/setup/'
+    | '/user-bans/'
     | '/user/reset'
     | '/chat/$chatId'
     | '/dashboard/$section'
@@ -772,6 +792,7 @@ export interface FileRouteTypes {
     | '/jailbreak-records/'
     | '/keys/'
     | '/lottery/'
+    | '/model-fingerprint/'
     | '/models/'
     | '/my-channels/'
     | '/oauth2-clients/'
@@ -831,6 +852,7 @@ export interface FileRouteTypes {
     | '/pricing'
     | '/rankings'
     | '/setup'
+    | '/user-bans'
     | '/user/reset'
     | '/chat/$chatId'
     | '/dashboard/$section'
@@ -846,6 +868,7 @@ export interface FileRouteTypes {
     | '/jailbreak-records'
     | '/keys'
     | '/lottery'
+    | '/model-fingerprint'
     | '/models'
     | '/my-channels'
     | '/oauth2-clients'
@@ -908,6 +931,7 @@ export interface FileRouteTypes {
     | '/pricing/'
     | '/rankings/'
     | '/setup/'
+    | '/user-bans/'
     | '/(auth)/user/reset'
     | '/_authenticated/chat/$chatId'
     | '/_authenticated/dashboard/$section'
@@ -923,6 +947,7 @@ export interface FileRouteTypes {
     | '/_authenticated/jailbreak-records/'
     | '/_authenticated/keys/'
     | '/_authenticated/lottery/'
+    | '/_authenticated/model-fingerprint/'
     | '/_authenticated/models/'
     | '/_authenticated/my-channels/'
     | '/_authenticated/oauth2-clients/'
@@ -977,6 +1002,7 @@ export interface RootRouteChildren {
   PricingIndexRoute: typeof PricingIndexRoute
   RankingsIndexRoute: typeof RankingsIndexRoute
   SetupIndexRoute: typeof SetupIndexRoute
+  UserBansIndexRoute: typeof UserBansIndexRoute
   PricingModelIdIndexRoute: typeof PricingModelIdIndexRoute
 }
 
@@ -1157,6 +1183,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SetupIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/user-bans/': {
+      id: '/user-bans/'
+      path: '/user-bans'
+      fullPath: '/user-bans/'
+      preLoaderRoute: typeof UserBansIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/(auth)/user/reset': {
       id: '/(auth)/user/reset'
       path: '/user/reset'
@@ -1239,6 +1272,13 @@ declare module '@tanstack/react-router' {
       path: '/lottery'
       fullPath: '/lottery/'
       preLoaderRoute: typeof AuthenticatedLotteryIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/model-fingerprint/': {
+      id: '/_authenticated/model-fingerprint/'
+      path: '/model-fingerprint'
+      fullPath: '/model-fingerprint/'
+      preLoaderRoute: typeof AuthenticatedModelFingerprintIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/models/': {
@@ -1616,6 +1656,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedJailbreakRecordsIndexRoute: typeof AuthenticatedJailbreakRecordsIndexRoute
   AuthenticatedKeysIndexRoute: typeof AuthenticatedKeysIndexRoute
   AuthenticatedLotteryIndexRoute: typeof AuthenticatedLotteryIndexRoute
+  AuthenticatedModelFingerprintIndexRoute: typeof AuthenticatedModelFingerprintIndexRoute
   AuthenticatedModelsIndexRoute: typeof AuthenticatedModelsIndexRoute
   AuthenticatedMyChannelsIndexRoute: typeof AuthenticatedMyChannelsIndexRoute
   AuthenticatedOauth2ClientsIndexRoute: typeof AuthenticatedOauth2ClientsIndexRoute
@@ -1654,6 +1695,8 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
     AuthenticatedJailbreakRecordsIndexRoute,
   AuthenticatedKeysIndexRoute: AuthenticatedKeysIndexRoute,
   AuthenticatedLotteryIndexRoute: AuthenticatedLotteryIndexRoute,
+  AuthenticatedModelFingerprintIndexRoute:
+    AuthenticatedModelFingerprintIndexRoute,
   AuthenticatedModelsIndexRoute: AuthenticatedModelsIndexRoute,
   AuthenticatedMyChannelsIndexRoute: AuthenticatedMyChannelsIndexRoute,
   AuthenticatedOauth2ClientsIndexRoute: AuthenticatedOauth2ClientsIndexRoute,
@@ -1694,6 +1737,7 @@ const rootRouteChildren: RootRouteChildren = {
   PricingIndexRoute: PricingIndexRoute,
   RankingsIndexRoute: RankingsIndexRoute,
   SetupIndexRoute: SetupIndexRoute,
+  UserBansIndexRoute: UserBansIndexRoute,
   PricingModelIdIndexRoute: PricingModelIdIndexRoute,
 }
 export const routeTree = rootRouteImport

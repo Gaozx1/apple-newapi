@@ -50,9 +50,19 @@ export function useSubscriptionsColumns(): ColumnDef<PlanRecord>[] {
         meta: { mobileTitle: true },
         cell: ({ row }) => {
           const plan = row.original.plan
+          const isResetCard = plan.plan_type === 'reset_card'
           return (
             <div className='max-w-full min-w-0'>
-              <div className='truncate font-medium'>{plan.title}</div>
+              <div className='flex items-center gap-1.5'>
+                <span className='truncate font-medium'>{plan.title}</span>
+                {isResetCard && (
+                  <StatusBadge
+                    label={t('Reset Card')}
+                    variant='warning'
+                    copyable={false}
+                  />
+                )}
+              </div>
               {plan.subtitle && (
                 <div className='text-muted-foreground truncate text-xs'>
                   {plan.subtitle}
@@ -165,8 +175,17 @@ export function useSubscriptionsColumns(): ColumnDef<PlanRecord>[] {
         header: t('Plan Quota'),
         meta: { mobileHidden: true },
         cell: ({ row }) => {
-          const total = Number(row.original.plan.total_amount || 0)
           const plan = row.original.plan
+          if (plan.plan_type === 'reset_card') {
+            return (
+              <span className='text-muted-foreground'>
+                {t('{{count}} reset cards per purchase', {
+                  count: Number(plan.reset_card_count || 1),
+                })}
+              </span>
+            )
+          }
+          const total = Number(row.original.plan.total_amount || 0)
           let bucketSummary: string | null = null
           try {
             const tokenBuckets = JSON.parse(

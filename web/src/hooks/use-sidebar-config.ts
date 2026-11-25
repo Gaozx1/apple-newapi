@@ -45,6 +45,7 @@ const DEFAULT_SIDEBAR_MODULES: SidebarModulesAdminConfig = {
   console: {
     enabled: true,
     detail: true,
+    model_fingerprint: true,
     token: true,
     log: true,
     audit: true,
@@ -118,6 +119,7 @@ const URL_TO_CONFIG_MAP: Record<string, { section: string; module: string }> = {
   '/tickets': { section: 'personal', module: 'tickets' },
   '/profile': { section: 'personal', module: 'personal' },
   '/security': { section: 'personal', module: 'security' },
+  '/model-fingerprint': { section: 'console', module: 'model_fingerprint' },
   '/channels': { section: 'admin', module: 'channel' },
   '/models': { section: 'admin', module: 'models' },
   '/models/metadata': { section: 'admin', module: 'models' },

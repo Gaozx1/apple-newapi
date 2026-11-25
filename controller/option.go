@@ -88,7 +88,7 @@ func GetOptions(c *gin.Context) {
 	optionValues := make(map[string]string)
 	common.OptionMapRWMutex.Lock()
 	for k, v := range common.OptionMap {
-		if k == "theme.frontend" || k == "billing_setting.billing_mode" || k == "billing_setting.billing_expr" || k == "ResendKeyConfigured" {
+		if k == "theme.frontend" || k == "billing_setting.billing_mode" || k == "billing_setting.billing_expr" || k == "ResendKeyConfigured" || k == "JailbreakKeyConfigured" {
 			continue
 		}
 		value := common.Interface2String(v)
@@ -113,6 +113,9 @@ func GetOptions(c *gin.Context) {
 	}
 	options = append(options, &model.Option{
 		Key: "ResendKeyConfigured", Value: strconv.FormatBool(strings.TrimSpace(common.OptionMap["ResendApiKey"]) != ""),
+	})
+	options = append(options, &model.Option{
+		Key: "JailbreakKeyConfigured", Value: strconv.FormatBool(strings.TrimSpace(common.OptionMap["jailbreak_setting.api_key"]) != ""),
 	})
 	common.OptionMapRWMutex.Unlock()
 	// Display the same effective expressions used by pricing and settlement,
@@ -230,6 +233,12 @@ func UpdateOption(c *gin.Context) {
 	if option.Key == "TaskPublicAddress" && option.Value.(string) != "" {
 		if err := service.ValidateTaskArtifactBaseURL(option.Value.(string)); err != nil {
 			common.ApiError(c, err)
+			return
+		}
+	}
+	if strings.HasPrefix(option.Key, "jailbreak_setting.") {
+		if err := system_setting.ValidateJailbreakOption(option.Key, option.Value.(string)); err != nil {
+			common.ApiErrorT(c, err.Error())
 			return
 		}
 	}

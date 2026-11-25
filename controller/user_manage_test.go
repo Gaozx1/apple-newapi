@@ -20,6 +20,7 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/service/authz"
+	"github.com/QuantumNous/new-api/setting/system_setting"
 	"github.com/alicebob/miniredis/v2"
 	"github.com/go-redis/redis/v8"
 
@@ -69,7 +70,7 @@ func setupManageUserTestDB(t *testing.T) *gorm.DB {
 			}
 		}
 	})
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.UserSession{}, &model.CasbinRule{}, &model.AuthzRole{}, &model.AuthFlow{}, &model.TwoFA{}, &model.PasskeyCredential{}, &model.UserAccessToken{}, &model.TopUp{}, &model.Redemption{}))
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.UserBan{}, &model.UserSession{}, &model.OAuthAccessToken{}, &model.CasbinRule{}, &model.AuthzRole{}, &model.AuthFlow{}, &model.TwoFA{}, &model.PasskeyCredential{}, &model.UserAccessToken{}, &model.TopUp{}, &model.Redemption{}))
 	require.NoError(t, logDB.AutoMigrate(&model.Log{}, &model.AuditLog{}))
 	versionQuery := "SELECT version()"
 	if dialect == "sqlite" {
@@ -141,7 +142,18 @@ func TestManageUserDisableAdvancesAuthVersionOnceAndRevokesSession(t *testing.T)
 	}).Error)
 
 	identity, proof := manageUserProof(t, db, service.VerificationOperation{Scope: service.VerificationScopeAdminUserManage, Context: []byte(fmt.Sprintf(`{"user_id":%d,"action":"disable"}`, user.Id))})
-	recorder := performVerifiedManageUserRequest(t, fmt.Sprintf(`{"id":%d,"action":"disable"}`, user.Id), identity, proof)
+	for _, invalid := range []string{"", " \t\n ", "\u200b", strings.Repeat("违", 201)} {
+		body, err := common.Marshal(ManageRequest{Id: user.Id, Action: "disable", Reason: invalid})
+		require.NoError(t, err)
+		rejected := performVerifiedManageUserRequest(t, string(body), identity, proof)
+		assert.Contains(t, rejected.Body.String(), `"success":false`)
+	}
+	var beforeBan model.User
+	require.NoError(t, db.First(&beforeBan, user.Id).Error)
+	assert.Equal(t, common.UserStatusEnabled, beforeBan.Status)
+	assert.EqualValues(t, 1, beforeBan.AuthVersion)
+
+	recorder := performVerifiedManageUserRequest(t, fmt.Sprintf(`{"id":%d,"action":"disable","reason":"  Repeated policy violations  "}`, user.Id), identity, proof)
 	assert.Equal(t, http.StatusOK, recorder.Code)
 	assert.Contains(t, recorder.Body.String(), `"success":true`)
 
@@ -152,6 +164,28 @@ func TestManageUserDisableAdvancesAuthVersionOnceAndRevokesSession(t *testing.T)
 	var session model.UserSession
 	require.NoError(t, db.First(&session, "sid = ?", "managed-disable-session").Error)
 	assert.Equal(t, model.UserSessionStatusRevoked, session.Status)
+
+	response := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(response)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/api/user-bans", nil)
+	GetPublicUserBans(ctx)
+	require.Equal(t, http.StatusOK, response.Code)
+	assert.Contains(t, response.Body.String(), `"account":"managed-disable-user"`)
+	assert.Contains(t, response.Body.String(), `"reason":"Repeated policy violations"`)
+	assert.Contains(t, response.Body.String(), `"source":"manual"`)
+	assert.NotContains(t, response.Body.String(), "user_id")
+
+	binding, err := service.BindVerificationOperation(service.VerificationOperation{
+		Scope: service.VerificationScopeAdminUserManage, Context: []byte(fmt.Sprintf(`{"user_id":%d,"action":"enable"}`, user.Id)),
+	})
+	require.NoError(t, err)
+	enableProof, _, err := service.IssueSecurityProof(identity, service.VerificationMethodPassword, binding)
+	require.NoError(t, err)
+	enabled := performVerifiedManageUserRequest(t, fmt.Sprintf(`{"id":%d,"action":"enable"}`, user.Id), identity, enableProof)
+	assert.Contains(t, enabled.Body.String(), `"status":1`)
+	bans, _, err := model.ListPublicUserBans(0, 6)
+	require.NoError(t, err)
+	assert.Empty(t, bans)
 }
 
 func TestManageUserDemoteAdvancesAuthVersionAndRevokesSessionsOnce(t *testing.T) {
@@ -831,4 +865,165 @@ func TestUpdateUserSettingKeepsWhatTheRequestLeavesOut(t *testing.T) {
 			assert.Equal(t, tc.want, user.GetSetting())
 		})
 	}
+}
+
+func TestTrainingConsentAndPlaygroundChatRetention(t *testing.T) {
+	db := setupManageUserTestDB(t)
+	require.NoError(t, db.AutoMigrate(&model.TrainingChat{}, &model.Option{}))
+	gin.SetMode(gin.TestMode)
+	newSession := func(name string) (int, string) {
+		user := model.User{Username: name, AffCode: name, Status: common.UserStatusEnabled, AuthVersion: 1}
+		require.NoError(t, db.Create(&user).Error)
+		identity := service.AuthIdentity{UserID: user.Id, SessionID: name, UserAuthVersion: 1, SessionVersion: 1}
+		require.NoError(t, db.Create(&model.UserSession{
+			SID: name, UserID: user.Id, Version: 1, UserAuthVersion: 1, Status: model.UserSessionStatusActive,
+			RefreshHash: name, LoginMethod: "password", ExpiresAt: time.Now().Add(time.Hour).Unix(),
+		}).Error)
+		token, _, err := service.IssueAccessToken(identity)
+		require.NoError(t, err)
+		return user.Id, token
+	}
+	userID, token := newSession("training-user")
+	otherID, otherToken := newSession("training-other")
+
+	const consentPath = "/api/user/self/training-consent"
+	const agreementPath = "/api/user/self/user-agreement"
+	const chatPath = "/pg/chat/completions"
+	const prompt = `{"messages":[{"role":"user","content":"old prompt"},{"role":"assistant","content":"old reply"},{"role":"user","content":[{"type":"text","text":"new prompt"},{"type":"image_url","image_url":{"url":"attachment"}}]}]}`
+	api := gin.New()
+	api.GET(consentPath, middleware.DisableCache(), middleware.UserAuth(), GetTrainingConsent)
+	api.PUT(consentPath, middleware.DisableCache(), middleware.UserAuth(), UpdateTrainingConsent)
+	api.GET(agreementPath, middleware.DisableCache(), middleware.UserAuth(), GetUserAgreementStatus)
+	api.PUT(agreementPath, middleware.DisableCache(), middleware.UserAuth(), AcceptUserAgreement)
+	api.POST(chatPath, middleware.UserAuth(), middleware.PlaygroundTrainingChat(), func(c *gin.Context) {
+		if c.Query("stream") == "1" {
+			c.Header("Content-Type", "text/event-stream")
+			_, _ = c.Writer.WriteString("data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"stream\",\"reasoning_content\":\"private\"}}]}\n\n")
+			c.Writer.Flush()
+			_, _ = c.Writer.WriteString("data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\" reply\"}}]}\n\n")
+			if c.Query("incomplete") != "1" {
+				_, _ = c.Writer.WriteString("data: [DONE]\n\n")
+			}
+			return
+		}
+		c.Data(http.StatusOK, "application/json", []byte(`{"choices":[{"index":0,"message":{"content":"normal reply","reasoning_content":"private"}}]}`))
+	})
+	request := func(method, path, body, bearer, site string) *httptest.ResponseRecorder {
+		response := httptest.NewRecorder()
+		req := httptest.NewRequest(method, path, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		if bearer != "" {
+			req.Header.Set("Authorization", "Bearer "+bearer)
+		}
+		if site != "" {
+			req.Header.Set("Sec-Fetch-Site", site)
+		}
+		api.ServeHTTP(response, req)
+		return response
+	}
+	assertDecision := func(resp *httptest.ResponseRecorder, want string) {
+		t.Helper()
+		require.Equal(t, http.StatusOK, resp.Code, resp.Body.String())
+		assert.Contains(t, resp.Header().Get("Cache-Control"), "no-store")
+		assert.JSONEq(t, fmt.Sprintf(`{"success":true,"message":"","data":{"decision":%q}}`, want), resp.Body.String())
+	}
+	assertDecision(request(http.MethodGet, consentPath, "", token, ""), model.TrainingUndecided)
+	assert.Equal(t, http.StatusPreconditionRequired, request(http.MethodPost, chatPath, prompt, token, "").Code)
+	assert.Equal(t, http.StatusUnauthorized, request(http.MethodPut, consentPath, `{"decision":"accepted"}`, "", "").Code)
+	assert.Equal(t, http.StatusForbidden, request(http.MethodPut, consentPath, `{"decision":"accepted"}`, token, "cross-site").Code)
+	assert.Equal(t, http.StatusBadRequest, request(http.MethodPut, consentPath, `{"decision":"undecided"}`, token, "same-origin").Code)
+
+	assertDecision(request(http.MethodPut, consentPath, `{"decision":"declined"}`, token, "same-origin"), model.TrainingDeclined)
+	assert.Equal(t, http.StatusOK, request(http.MethodPost, chatPath, prompt, token, "").Code)
+	var chats []model.TrainingChat
+	require.NoError(t, db.Find(&chats).Error)
+	assert.Empty(t, chats)
+
+	forgedTarget := fmt.Sprintf(`{"decision":"accepted","user_id":%d}`, otherID)
+	assertDecision(request(http.MethodPut, consentPath, forgedTarget, token, "same-origin"), model.TrainingAccepted)
+	assertDecision(request(http.MethodGet, consentPath, "", otherToken, ""), model.TrainingUndecided)
+	oldConsent, err := model.GetTrainingConsent(t.Context(), userID)
+	require.NoError(t, err)
+	before := time.Now().Add(24 * time.Hour).Unix()
+	assert.Equal(t, http.StatusOK, request(http.MethodPost, chatPath, prompt, token, "").Code)
+	stream := request(http.MethodPost, chatPath+"?stream=1", prompt, token, "")
+	assert.True(t, stream.Flushed)
+	assert.Contains(t, stream.Body.String(), "data: [DONE]")
+	assert.Equal(t, http.StatusOK, request(http.MethodPost, chatPath+"?stream=1&incomplete=1", prompt, token, "").Code)
+	require.NoError(t, db.Order("id ASC").Find(&chats).Error)
+	require.Len(t, chats, 2)
+	assert.Equal(t, "normal reply", chats[0].Reply)
+	assert.Equal(t, "stream reply", chats[1].Reply)
+	for _, chat := range chats {
+		assert.Equal(t, userID, chat.UserID)
+		assert.Equal(t, "new prompt", chat.Prompt)
+		assert.GreaterOrEqual(t, chat.ExpiresAt, before)
+		assert.LessOrEqual(t, chat.ExpiresAt, time.Now().Add(24*time.Hour).Unix())
+	}
+	cutoff := time.Now().Truncate(time.Second)
+	require.NoError(t, db.Model(&chats[0]).Update("expires_at", cutoff.Unix()).Error)
+	require.NoError(t, model.DeleteExpiredTrainingChats(cutoff))
+	require.NoError(t, db.Find(&chats).Error)
+	require.Len(t, chats, 1)
+	assert.Equal(t, "stream reply", chats[0].Reply)
+
+	assertDecision(request(http.MethodPut, consentPath, `{"decision":"declined"}`, token, "same-origin"), model.TrainingDeclined)
+	assertDecision(request(http.MethodPut, consentPath, `{"decision":"accepted"}`, token, "same-origin"), model.TrainingAccepted)
+	require.NoError(t, model.SaveTrainingChat(t.Context(), userID, oldConsent, "in-flight prompt", "in-flight reply"))
+	require.NoError(t, db.Find(&chats).Error)
+	assert.Empty(t, chats, "withdrawal must purge saved data and fence older in-flight replies")
+
+	// Existing agreements get a baseline revision. Editing or restoring the text
+	// creates a new revision for every account, including accounts already signed in.
+	oldLegalSettings := *system_setting.GetLegalSettings()
+	common.OptionMapRWMutex.Lock()
+	oldOptions := common.OptionMap
+	common.OptionMap = make(map[string]string)
+	common.OptionMapRWMutex.Unlock()
+	t.Cleanup(func() {
+		*system_setting.GetLegalSettings() = oldLegalSettings
+		common.OptionMapRWMutex.Lock()
+		common.OptionMap = oldOptions
+		common.OptionMapRWMutex.Unlock()
+	})
+	const agreementKey = "legal.user_agreement"
+	require.NoError(t, db.Create(&model.Option{Key: agreementKey, Value: "Legacy terms"}).Error)
+	agreementStatus := func(bearer string) model.UserAgreementStatus {
+		t.Helper()
+		response := request(http.MethodGet, agreementPath, "", bearer, "")
+		require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+		var result struct {
+			Data model.UserAgreementStatus `json:"data"`
+		}
+		require.NoError(t, common.Unmarshal(response.Body.Bytes(), &result))
+		return result.Data
+	}
+	accept := func(revision, site string) int {
+		return request(http.MethodPut, agreementPath, fmt.Sprintf(`{"revision":%q}`, revision), token, site).Code
+	}
+	legacy := agreementStatus(token)
+	require.True(t, legacy.Required)
+	require.NotEmpty(t, legacy.Revision)
+	assert.Contains(t, request(http.MethodPost, chatPath, prompt, token, "").Body.String(), "user_agreement_required")
+	assert.Equal(t, http.StatusForbidden, accept(legacy.Revision, "cross-site"))
+	assert.Equal(t, http.StatusOK, accept(legacy.Revision, "same-origin"))
+	assert.False(t, agreementStatus(token).Required)
+	assert.True(t, agreementStatus(otherToken).Required)
+	require.NoError(t, model.UpdateOption(agreementKey, "Legacy terms"))
+	assert.Equal(t, legacy.Revision, agreementStatus(token).Revision)
+	require.NoError(t, model.UpdateOption(agreementKey, "Updated terms"))
+	updated := agreementStatus(token)
+	require.True(t, updated.Required)
+	assert.NotEqual(t, legacy.Revision, updated.Revision)
+	assert.Equal(t, http.StatusConflict, accept(legacy.Revision, "same-origin"))
+	assert.Equal(t, http.StatusOK, accept(updated.Revision, "same-origin"))
+	assert.False(t, agreementStatus(token).Required)
+	require.NoError(t, model.UpdateOption(agreementKey, "Legacy terms"))
+	assert.True(t, agreementStatus(token).Required)
+	assert.NotEqual(t, legacy.Revision, agreementStatus(token).Revision)
+	require.NoError(t, model.UpdateOption(agreementKey, ""))
+	assert.False(t, agreementStatus(token).Required)
+
+	require.NoError(t, db.Model(&model.UserSession{}).Where("sid = ?", "training-user").Update("expires_at", time.Now().Add(-time.Minute).Unix()).Error)
+	assert.Equal(t, http.StatusUnauthorized, request(http.MethodPut, consentPath, `{"decision":"declined"}`, token, "same-origin").Code)
 }

@@ -32,6 +32,7 @@ import { ProfileHeader } from './components/profile-header'
 import { ProfileLevelCard } from './components/profile-level-card'
 import { ProfileSettingsCard } from './components/profile-settings-card'
 import { SidebarModulesCard } from './components/sidebar-modules-card'
+import { TrainingConsentCard } from './components/training-consent'
 import { useProfile } from './hooks'
 
 export function Profile() {
@@ -67,6 +68,7 @@ export function Profile() {
                   quotaRemindEnabled={quotaRemindEnabled}
                   quotaRemindThreshold={quotaRemindThreshold}
                 />
+                <TrainingConsentCard />
                 <LanguagePreferencesCard
                   profile={profile}
                   onProfileUpdate={refreshProfile}

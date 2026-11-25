@@ -16,18 +16,60 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { lazy } from 'react'
+
 import type { ContentSettings } from '../types'
 import { createSectionRegistry } from '../utils/section-registry'
-import { AnnouncementsSection } from './announcements-section'
-import { ApiInfoSection } from './api-info-section'
-import { ChatSettingsSection } from './chat-settings-section'
-import { DashboardSection } from './dashboard-section'
-import { DrawingSettingsSection } from './drawing-settings-section'
-import { FAQSection } from './faq-section'
-import { LotteryPrizesSection } from './lottery-prizes-section'
-import { LotterySettingsSection } from './lottery-settings-section'
-import { OAuth2CallPlansSection } from './oauth2-call-plans-section'
-import { UptimeKumaSection } from './uptime-kuma-section'
+
+// Navigation reads this registry eagerly; load each form only when rendered.
+const AnnouncementsSection = lazy(() =>
+  import('./announcements-section').then((module) => ({
+    default: module.AnnouncementsSection,
+  }))
+)
+const ApiInfoSection = lazy(() =>
+  import('./api-info-section').then((module) => ({
+    default: module.ApiInfoSection,
+  }))
+)
+const ChatSettingsSection = lazy(() =>
+  import('./chat-settings-section').then((module) => ({
+    default: module.ChatSettingsSection,
+  }))
+)
+const DashboardSection = lazy(() =>
+  import('./dashboard-section').then((module) => ({
+    default: module.DashboardSection,
+  }))
+)
+const DrawingSettingsSection = lazy(() =>
+  import('./drawing-settings-section').then((module) => ({
+    default: module.DrawingSettingsSection,
+  }))
+)
+const FAQSection = lazy(() =>
+  import('./faq-section').then((module) => ({ default: module.FAQSection }))
+)
+const LotteryPrizesSection = lazy(() =>
+  import('./lottery-prizes-section').then((module) => ({
+    default: module.LotteryPrizesSection,
+  }))
+)
+const LotterySettingsSection = lazy(() =>
+  import('./lottery-settings-section').then((module) => ({
+    default: module.LotterySettingsSection,
+  }))
+)
+const OAuth2CallPlansSection = lazy(() =>
+  import('./oauth2-call-plans-section').then((module) => ({
+    default: module.OAuth2CallPlansSection,
+  }))
+)
+const UptimeKumaSection = lazy(() =>
+  import('./uptime-kuma-section').then((module) => ({
+    default: module.UptimeKumaSection,
+  }))
+)
 
 /**
  * Validate and coerce DataExportDefaultTime to a safe value

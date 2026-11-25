@@ -94,12 +94,6 @@ export interface ChannelSettings {
   /** Where the channel prompt is injected: "system" (default) or "user". */
   system_prompt_role?: 'system' | 'user'
   system_prompt_override?: boolean
-  /** Anti-jailbreak guard: judge every request through a classifier model. */
-  anti_jailbreak_enabled?: boolean
-  anti_jailbreak_base_url?: string
-  anti_jailbreak_key?: string
-  anti_jailbreak_model?: string
-  anti_jailbreak_prompt?: string
   http_protocol?: 'auto' | 'http1' | string
   http2_connection_shards?: number
   tls_insecure_skip_verify?: boolean

@@ -1,0 +1,251 @@
+{
+  "cases": [
+    {
+      "name": "path model names the tool and the body passes through",
+      "hook": "native",
+      "member": "toolCall",
+      "args": [
+        {
+          "method": "POST",
+          "path": "/v1/tools/search",
+          "params": { "model": "search" },
+          "query": {},
+          "body": { "kind": "json", "value": { "query": "deepseek", "count": 3 } }
+        }
+      ],
+      "expected": {
+        "kind": "submit",
+        "model": "search",
+        "action": "tool_call",
+        "requestBody": { "query": "deepseek", "count": 3 }
+      }
+    },
+    {
+      "name": "a case variant names the declared tool",
+      "hook": "native",
+      "member": "toolCall",
+      "args": [
+        {
+          "method": "POST",
+          "path": "/v1/tools/SEARCH",
+          "params": { "model": "SEARCH" },
+          "query": {},
+          "body": { "kind": "json", "value": { "query": "deepseek" } }
+        }
+      ],
+      "expected": {
+        "kind": "submit",
+        "model": "search",
+        "action": "tool_call",
+        "requestBody": { "query": "deepseek" }
+      }
+    },
+    {
+      "name": "an unknown tool is rejected",
+      "hook": "native",
+      "member": "toolCall",
+      "args": [
+        {
+          "method": "POST",
+          "path": "/v1/tools/images",
+          "params": { "model": "images" },
+          "query": {},
+          "body": { "kind": "json", "value": { "prompt": "a cat" } }
+        }
+      ],
+      "expectedError": "model must be one of"
+    },
+    {
+      "name": "a body model of another tool is rejected",
+      "hook": "native",
+      "member": "toolCall",
+      "args": [
+        {
+          "method": "POST",
+          "path": "/v1/tools/search",
+          "params": { "model": "search" },
+          "query": {},
+          "body": { "kind": "json", "value": { "model": "fetch", "url": "https://example.com/" } }
+        }
+      ],
+      "expectedError": "this route serves only model"
+    },
+    {
+      "name": "a body model naming the same tool is kept",
+      "hook": "native",
+      "member": "toolCall",
+      "args": [
+        {
+          "method": "POST",
+          "path": "/v1/tools/fetch",
+          "params": { "model": "fetch" },
+          "query": {},
+          "body": { "kind": "json", "value": { "model": "fetch", "url": "https://example.com/" } }
+        }
+      ],
+      "expected": {
+        "kind": "submit",
+        "model": "fetch",
+        "action": "tool_call",
+        "requestBody": { "model": "fetch", "url": "https://example.com/" }
+      }
+    },
+    {
+      "name": "a non-JSON body is rejected",
+      "hook": "native",
+      "member": "toolCall",
+      "args": [
+        {
+          "method": "POST",
+          "path": "/v1/tools/search",
+          "params": { "model": "search" },
+          "query": {},
+          "body": { "kind": "form", "fields": { "query": ["deepseek"] } }
+        }
+      ],
+      "expectedError": "JSON body required"
+    },
+    {
+      "name": "the vendor request posts the standard body to the tool path",
+      "hook": "buildSubmitRequest",
+      "args": [
+        {
+          "action": "tool_call",
+          "model": "search",
+          "upstreamModel": "search",
+          "baseUrl": "https://tools.example.com/",
+          "apiKey": "sk-upstream",
+          "upstream": { "kind": "vendor" },
+          "requestBody": { "query": "deepseek", "count": 3 }
+        }
+      ],
+      "expected": {
+        "url": "https://tools.example.com/v1/tools/search",
+        "method": "POST",
+        "headers": { "Content-Type": "application/json", "Authorization": "Bearer sk-upstream" },
+        "body": { "query": "deepseek", "count": 3 }
+      }
+    },
+    {
+      "name": "a channel mapping names the vendor's own tool id",
+      "hook": "buildSubmitRequest",
+      "args": [
+        {
+          "action": "tool_call",
+          "model": "search",
+          "upstreamModel": "vendor-search",
+          "baseUrl": "https://tools.example.com",
+          "apiKey": "sk-upstream",
+          "upstream": { "kind": "vendor" },
+          "requestBody": { "query": "deepseek" }
+        }
+      ],
+      "expected": {
+        "url": "https://tools.example.com/v1/tools/vendor-search",
+        "method": "POST",
+        "headers": { "Content-Type": "application/json", "Authorization": "Bearer sk-upstream" },
+        "body": { "query": "deepseek" }
+      }
+    },
+    {
+      "name": "an upstream gateway is called on this plugin's own native route",
+      "hook": "buildSubmitRequest",
+      "args": [
+        {
+          "action": "tool_call",
+          "model": "fetch",
+          "upstreamModel": "fetch",
+          "baseUrl": "https://gateway.example",
+          "apiKey": "sk-gateway",
+          "upstream": { "kind": "new_api" },
+          "requestBody": { "url": "https://example.com/" }
+        }
+      ],
+      "expected": {
+        "url": "https://gateway.example/tools/v1/tools/fetch",
+        "method": "POST",
+        "headers": { "Content-Type": "application/json", "Authorization": "Bearer sk-gateway" },
+        "body": { "url": "https://example.com/" }
+      }
+    },
+    {
+      "name": "an empty channel key is rejected before any upstream call",
+      "hook": "buildSubmitRequest",
+      "args": [
+        {
+          "action": "tool_call",
+          "model": "search",
+          "upstreamModel": "search",
+          "baseUrl": "https://tools.example.com",
+          "apiKey": "   ",
+          "upstream": { "kind": "vendor" },
+          "requestBody": { "query": "deepseek" }
+        }
+      ],
+      "expectedError": "channel key is empty"
+    },
+    {
+      "name": "an empty base URL is rejected",
+      "hook": "buildSubmitRequest",
+      "args": [
+        {
+          "action": "tool_call",
+          "model": "search",
+          "upstreamModel": "search",
+          "baseUrl": " ",
+          "apiKey": "sk-upstream",
+          "upstream": { "kind": "vendor" },
+          "requestBody": { "query": "deepseek" }
+        }
+      ],
+      "expectedError": "channel Base URL is empty"
+    },
+    {
+      "name": "one delivered call is one billed call",
+      "hook": "extractUsage",
+      "args": [{ "action": "tool_call", "model": "search", "requestBody": { "query": "deepseek" } }],
+      "expected": { "calls": 1 }
+    },
+    {
+      "name": "a completed call keeps its single billed call",
+      "hook": "extractUsageOnComplete",
+      "args": [
+        { "taskId": "tool_1", "model": "search", "upstreamModel": "search" },
+        { "status": "SUCCESS" },
+        { "tool": "search", "body": { "results": [] } }
+      ],
+      "expected": { "calls": 1 }
+    },
+    {
+      "name": "a delivered call answers with the vendor's own payload",
+      "hook": "native",
+      "member": "toolResult",
+      "args": [
+        {},
+        {
+          "task_id": "tool_1",
+          "status": "SUCCESS",
+          "data": { "tool": "search", "body": { "results": [{ "title": "deepseek", "url": "https://example.com/" }] } }
+        }
+      ],
+      "expected": { "results": [{ "title": "deepseek", "url": "https://example.com/" }] }
+    },
+    {
+      "name": "a failed call answers with an OpenAI error envelope",
+      "hook": "native",
+      "member": "toolResult",
+      "args": [
+        {},
+        {
+          "task_id": "tool_1",
+          "status": "FAILURE",
+          "fail_reason": "upstream refused the call",
+          "data": { "tool": "fetch", "error": "upstream refused the call" }
+        }
+      ],
+      "expected": {
+        "error": { "message": "upstream refused the call", "type": "tool_error", "code": "tool_call_failed" }
+      }
+    }
+  ]
+}

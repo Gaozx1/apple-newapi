@@ -40,7 +40,7 @@ export function PublicLayout(props: PublicLayoutProps) {
   const showFooter = props.showFooter ?? props.showMainContainer !== false
 
   return (
-    <div className='bg-background text-foreground relative min-h-svh overflow-x-clip'>
+    <div className='site-public bg-background text-foreground relative min-h-svh overflow-x-clip'>
       <SkipToMain />
       <PublicHeader
         navContent={props.navContent}
@@ -53,17 +53,19 @@ export function PublicLayout(props: PublicLayoutProps) {
         {...props.headerProps}
       />
 
-      {props.showMainContainer !== false ? (
-        <main id='content' className='container px-4 py-6 pt-20 md:px-4'>
-          {props.children}
-        </main>
-      ) : (
-        <main id='content' className='relative'>
-          {props.children}
-        </main>
-      )}
+      <div className='studio-public-body'>
+        {props.showMainContainer !== false ? (
+          <main id='content' className='container px-4 py-6 sm:px-8'>
+            {props.children}
+          </main>
+        ) : (
+          <main id='content' className='relative'>
+            {props.children}
+          </main>
+        )}
 
-      {showFooter ? <Footer /> : null}
+        {showFooter ? <Footer /> : null}
+      </div>
     </div>
   )
 }

@@ -26,6 +26,11 @@ export const subscriptionPlanSchema = z.object({
   id: z.number(),
   title: z.string(),
   subtitle: z.string().optional(),
+  // subscription = regular quota plan; reset_card = sells reset cards instead
+  // of creating a subscription.
+  plan_type: z.enum(['subscription', 'reset_card']).default('subscription'),
+  // Number of reset cards issued per purchase for plan_type=reset_card.
+  reset_card_count: z.number().default(1),
   price_amount: z.number(),
   currency: z.string().default('USD'),
   duration_unit: z.enum(['year', 'month', 'day', 'hour', 'custom']),
@@ -101,6 +106,64 @@ export interface UserSubscriptionRecord {
   // Present when the plan caps the rolling 5-hour / 7-day window.
   window_5h?: SubscriptionWindowUsage
   window_7d?: SubscriptionWindowUsage
+}
+
+// ============================================================================
+// Reset Card Schema & Types
+// ============================================================================
+
+// A reset card resets the used quota of one active subscription owned by the
+// user who consumes it. Admin-issued cards may belong to one user; cards sold
+// through a reset-card plan stay unassigned until a buyer claims them.
+export const resetCardSchema = z.object({
+  id: z.number(),
+  user_id: z.number(),
+  card_key: z.string(),
+  status: z.string(), // unused/used/expired/disabled
+  source: z.string().optional(), // admin/order/balance
+  plan_id: z.number().optional(),
+  plan_title: z.string().optional(),
+  note: z.string().optional(),
+  expires_at: z.number(), // 0 = never expires
+  // 0 = the card can reset any active subscription; >0 = only that user_subscription.
+  target_subscription_id: z.number().optional(),
+  target_subscription_plan_title: z.string().optional(),
+  used_at: z.number().optional(),
+  used_by_user_id: z.number().optional(),
+  used_subscription_id: z.number().optional(),
+  created_at: z.number().optional(),
+})
+
+export type ResetCard = z.infer<typeof resetCardSchema>
+
+export interface ResetCardListResponse {
+  items: ResetCard[]
+  total: number
+  page: number
+  page_size: number
+}
+
+export interface AdminGrantResetCardsRequest {
+  user_id: number
+  count: number
+  expires_at: number
+  note?: string
+  // 0 or omitted = any active subscription.
+  target_subscription_id?: number
+  // true grants `count` cards to every active user; user_id must then be 0.
+  all_users?: boolean
+}
+
+export interface AdminGrantResetCardsResponse {
+  card_keys?: string[]
+  all_users?: boolean
+  granted_users?: number
+  total_cards?: number
+}
+
+export interface UseResetCardRequest {
+  card_key: string
+  user_subscription_id: number
 }
 
 // ============================================================================

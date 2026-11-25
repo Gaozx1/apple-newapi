@@ -98,6 +98,10 @@ export function SidebarModulesSection({
       },
     },
     console: {
+      model_fingerprint: {
+        title: t('Model Fingerprinting'),
+        description: t('Compare advertised models with fingerprint candidates.'),
+      },
       detail: {
         title: t('Dashboard'),
         description: t('Aggregated usage metrics and trend charts.'),

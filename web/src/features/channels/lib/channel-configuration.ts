@@ -68,16 +68,6 @@ const CONFIGURATION_BLOCKS = {
       'system_prompt_override',
     ],
   },
-  antiJailbreak: {
-    section: 'request',
-    fields: [
-      'anti_jailbreak_enabled',
-      'anti_jailbreak_base_url',
-      'anti_jailbreak_key',
-      'anti_jailbreak_model',
-      'anti_jailbreak_prompt',
-    ],
-  },
   fieldPassthrough: {
     section: 'request',
     fields: [
@@ -174,12 +164,6 @@ export function getChannelConfigurationState(
       (values.type === CHANNEL_TYPE_OLLAMA && values.ollama_openai_chat) ||
       values.system_prompt?.trim() ||
       values.system_prompt_override
-    ),
-    antiJailbreak: Boolean(
-      values.anti_jailbreak_enabled ||
-      values.anti_jailbreak_base_url?.trim() ||
-      values.anti_jailbreak_model?.trim() ||
-      values.anti_jailbreak_prompt?.trim()
     ),
     fieldPassthrough: Boolean(
       ((openaiPassthrough || claudePassthrough) &&
